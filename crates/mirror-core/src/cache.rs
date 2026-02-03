@@ -71,6 +71,8 @@ pub struct RepoInventoryRepo {
     pub name: String,
     pub clone_url: String,
     pub default_branch: String,
+    #[serde(default)]
+    pub archived: bool,
     pub provider: ProviderKind,
     pub scope: ProviderScope,
 }
@@ -97,6 +99,7 @@ mod tests {
                     name: "Repo One".into(),
                     clone_url: "https://example.com/repo.git".into(),
                     default_branch: "main".into(),
+                    archived: true,
                     provider: ProviderKind::AzureDevOps,
                     scope: ProviderScope::new(vec!["org".into(), "project".into()]).unwrap(),
                 }],

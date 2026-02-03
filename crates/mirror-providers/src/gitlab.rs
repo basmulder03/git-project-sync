@@ -89,6 +89,7 @@ impl RepoProvider for GitLabProvider {
                     name: repo.name.clone(),
                     clone_url: repo.http_url_to_repo,
                     default_branch: Self::normalize_branch(repo.default_branch),
+                    archived: repo.archived.unwrap_or(false),
                     provider: ProviderKind::GitLab,
                     scope: target.scope.clone(),
                     auth: Some(auth.clone()),
@@ -155,12 +156,14 @@ struct ProjectItem {
     name: String,
     http_url_to_repo: String,
     default_branch: Option<String>,
+    archived: Option<bool>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use reqwest::header::HeaderValue;
+    use serde_json::json;
 
     #[test]
     fn next_page_reads_gitlab_header() {
@@ -173,5 +176,18 @@ mod tests {
     fn normalize_branch_trims_refs() {
         let value = Some("refs/heads/main".to_string());
         assert_eq!(GitLabProvider::normalize_branch(value), "main");
+    }
+
+    #[test]
+    fn project_item_deserializes_archived_flag() {
+        let value = json!({
+            "id": 1,
+            "name": "repo",
+            "http_url_to_repo": "https://example.com/repo.git",
+            "default_branch": "main",
+            "archived": true
+        });
+        let repo: ProjectItem = serde_json::from_value(value).unwrap();
+        assert_eq!(repo.archived, Some(true));
     }
 }

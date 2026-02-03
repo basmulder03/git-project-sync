@@ -115,6 +115,7 @@ impl RepoProvider for AzureDevOpsProvider {
                         .unwrap_or_else(|| "refs/heads/main".to_string())
                         .trim_start_matches("refs/heads/")
                         .to_string(),
+                    archived: repo.is_disabled.unwrap_or(false),
                     provider: ProviderKind::AzureDevOps,
                     scope,
                     auth: Some(auth.clone()),
@@ -187,6 +188,7 @@ struct RepoItem {
     name: String,
     remote_url: String,
     default_branch: Option<String>,
+    is_disabled: Option<bool>,
     project: Option<ProjectRef>,
 }
 
@@ -199,6 +201,7 @@ struct ProjectRef {
 mod tests {
     use super::*;
     use reqwest::header::HeaderValue;
+    use serde_json::json;
 
     #[test]
     fn parse_scope_allows_org_only() {
@@ -222,5 +225,18 @@ mod tests {
         headers.insert("x-ms-continuationtoken", HeaderValue::from_static("token-123"));
         let token = AzureDevOpsProvider::continuation_token(&headers);
         assert_eq!(token, Some("token-123".to_string()));
+    }
+
+    #[test]
+    fn repo_item_deserializes_archived_flag() {
+        let value = json!({
+            "id": "1",
+            "name": "repo",
+            "remoteUrl": "https://example.com/repo.git",
+            "defaultBranch": "refs/heads/main",
+            "isDisabled": true
+        });
+        let repo: RepoItem = serde_json::from_value(value).unwrap();
+        assert_eq!(repo.is_disabled, Some(true));
     }
 }

@@ -87,7 +87,8 @@ pub fn run_sync_filtered(
         "starting sync for target"
     );
 
-    let (mut repos, used_cache) = load_repos_with_cache(provider, target, &mut cache, refresh)?;
+    let (mut repos, used_cache) =
+        load_repos_with_cache(provider, target, &mut cache, refresh)?;
     if detect_missing && !used_cache {
         let current_ids: HashSet<String> = repos.iter().map(|repo| repo.id.clone()).collect();
         let missing_summary = handle_missing_repos(
@@ -187,6 +188,7 @@ fn load_repos_with_cache(
                         name: repo.name,
                         clone_url: repo.clone_url,
                         default_branch: repo.default_branch,
+                        archived: repo.archived,
                         provider: repo.provider,
                         scope: repo.scope,
                         auth: auth.clone(),
@@ -207,6 +209,7 @@ fn load_repos_with_cache(
                 name: repo.name.clone(),
                 clone_url: repo.clone_url.clone(),
                 default_branch: repo.default_branch.clone(),
+                archived: repo.archived,
                 provider: repo.provider.clone(),
                 scope: repo.scope.clone(),
             })

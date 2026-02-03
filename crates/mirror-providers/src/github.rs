@@ -105,6 +105,7 @@ impl RepoProvider for GitHubProvider {
                     name: repo.name.clone(),
                     clone_url: repo.clone_url,
                     default_branch: Self::normalize_branch(repo.default_branch),
+                    archived: repo.archived.unwrap_or(false),
                     provider: ProviderKind::GitHub,
                     scope: target.scope.clone(),
                     auth: Some(auth.clone()),
@@ -172,12 +173,14 @@ struct RepoItem {
     name: String,
     clone_url: String,
     default_branch: Option<String>,
+    archived: Option<bool>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use reqwest::header::HeaderValue;
+    use serde_json::json;
 
     #[test]
     fn next_page_parses_link_header() {
@@ -195,5 +198,18 @@ mod tests {
     fn normalize_branch_trims_refs() {
         let value = Some("refs/heads/main".to_string());
         assert_eq!(GitHubProvider::normalize_branch(value), "main");
+    }
+
+    #[test]
+    fn repo_item_deserializes_archived_flag() {
+        let value = json!({
+            "id": 1,
+            "name": "repo",
+            "clone_url": "https://example.com/repo.git",
+            "default_branch": "main",
+            "archived": true
+        });
+        let repo: RepoItem = serde_json::from_value(value).unwrap();
+        assert_eq!(repo.archived, Some(true));
     }
 }

@@ -55,6 +55,8 @@ pub struct RemoteRepo {
     pub name: String,
     pub clone_url: String,
     pub default_branch: String,
+    #[serde(default)]
+    pub archived: bool,
     pub provider: ProviderKind,
     pub scope: ProviderScope,
     pub auth: Option<RepoAuth>,

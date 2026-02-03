@@ -135,6 +135,8 @@ struct SyncArgs {
     #[arg(long)]
     refresh: bool,
     #[arg(long)]
+    include_archived: bool,
+    #[arg(long)]
     non_interactive: bool,
     #[arg(long, value_enum, default_value = "prompt")]
     missing_remote: MissingRemotePolicyValue,
@@ -568,7 +570,8 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                 }
             });
 
-            let summary = if let Some(filter) = repo_filter.as_ref() {
+        let include_archived = args.include_archived;
+        let summary = if let Some(filter) = repo_filter.as_ref() {
             run_sync_filtered(
                 provider.as_ref(),
                 &runtime_target,
@@ -576,7 +579,10 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                 &cache_path,
                 policy,
                 decider,
-                Some(filter),
+                Some(&|repo| {
+                    let allowed = include_archived || !repo.archived;
+                    allowed && filter(repo)
+                }),
                 false,
                 args.refresh,
             )
@@ -589,7 +595,7 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                 &cache_path,
                 policy,
                 decider,
-                None,
+                Some(&|repo| include_archived || !repo.archived),
                 true,
                 args.refresh,
             )
@@ -889,7 +895,7 @@ fn run_sync_job(
             host: target.host.clone(),
         };
         let bucketed = |repo: &mirror_core::model::RemoteRepo| {
-            bucket_for_repo_id(&repo.id) == day_bucket
+            !repo.archived && bucket_for_repo_id(&repo.id) == day_bucket
         };
         let _ = run_sync_filtered(
             provider.as_ref(),

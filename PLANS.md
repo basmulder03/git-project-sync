@@ -86,11 +86,11 @@
 - [x] Add `--refresh` to bypass repo list cache per target/provider
 - [x] Add tests for cache read/write and TTL invalidation
 
-## Milestone 24 — Provider Feature Parity (Metadata)
+## Milestone 24 — Provider Feature Parity (Metadata) (completed)
 
-- [ ] Capture repo metadata (archived/disabled status where available)
-- [ ] Skip archived/disabled repos by default; add `--include-archived`
-- [ ] Add tests for metadata parsing and skip behavior
+- [x] Capture repo metadata (archived/disabled status where available)
+- [x] Skip archived/disabled repos by default; add `--include-archived`
+- [x] Add tests for metadata parsing and skip behavior
 
 ## Milestone 25 — Robust Daemon Operation
 

@@ -68,6 +68,36 @@
 - [x] Include a failure-focused view with error details and remediation hints
 - [x] Add tests for log parsing and filter behavior
 
+## Milestone 21 — Provider Auth + Scope Diagnostics
+
+- [ ] Add provider-level health checks to validate tokens/scopes (AzDO/GitHub/GitLab)
+- [ ] Improve CLI error messages for missing scopes or invalid hosts with provider hints
+- [ ] Add tests for auth failures and scope validation across providers
+
+## Milestone 22 — Sync Safety Edge Cases
+
+- [ ] Handle missing default branch on remote (log and skip, no local changes)
+- [ ] Detect and log orphaned local branches after remote deletion
+- [ ] Add tests for missing default branch and orphaned branch detection
+
+## Milestone 23 — Repo Inventory Caching + Incremental Sync
+
+- [ ] Cache remote repo lists per target with TTL to reduce API calls
+- [ ] Add `--refresh` to bypass repo list cache per target/provider
+- [ ] Add tests for cache read/write and TTL invalidation
+
+## Milestone 24 — Provider Feature Parity (Metadata)
+
+- [ ] Capture repo metadata (archived/disabled status where available)
+- [ ] Skip archived/disabled repos by default; add `--include-archived`
+- [ ] Add tests for metadata parsing and skip behavior
+
+## Milestone 25 — Robust Daemon Operation
+
+- [ ] Add backoff strategy for repeated provider failures in daemon mode
+- [ ] Track per-target last-success timestamps in cache for monitoring
+- [ ] Add tests for backoff timing and last-success update logic
+
 ## Notes / Decisions
 
 - Focus: architecture tidy (per user request).

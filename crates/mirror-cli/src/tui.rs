@@ -76,6 +76,7 @@ enum View {
     TargetAdd,
     TargetRemove,
     TokenSetup,
+    Service,
     Message,
 }
 
@@ -170,6 +171,7 @@ impl TuiApp {
             View::TargetAdd => self.draw_form(frame, layout[1], "Add Target"),
             View::TargetRemove => self.draw_form(frame, layout[1], "Remove Target"),
             View::TokenSetup => self.draw_form(frame, layout[1], "Token Setup"),
+            View::Service => self.draw_service(frame, layout[1]),
             View::Message => self.draw_message(frame, layout[1]),
         }
 
@@ -186,6 +188,7 @@ impl TuiApp {
             View::TargetAdd | View::TargetRemove | View::TokenSetup => {
                 "Tab: next field | Enter: submit | Esc: back".to_string()
             }
+            View::Service => "i: install | u: uninstall | Esc: back".to_string(),
             View::Message => "Enter: back".to_string(),
         }
     }
@@ -195,6 +198,7 @@ impl TuiApp {
             "Config Root",
             "Targets",
             "Token Setup",
+            "Service Installer",
             "Quit",
         ];
         let list_items: Vec<ListItem> = items
@@ -211,6 +215,27 @@ impl TuiApp {
         let list = List::new(list_items)
             .block(Block::default().borders(Borders::ALL).title("Main Menu"));
         frame.render_widget(list, area);
+    }
+
+    fn draw_service(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let os = std::env::consts::OS;
+        let os_hint = match os {
+            "linux" => "systemd user service",
+            "macos" => "LaunchAgent",
+            "windows" => "Windows service",
+            _ => "service helper",
+        };
+        let lines = vec![
+            Line::from(Span::raw("Install or uninstall the background service.")),
+            Line::from(Span::raw(format!("Detected OS: {os} ({os_hint})"))),
+            Line::from(Span::raw("")),
+            Line::from(Span::raw("Press i to install")),
+            Line::from(Span::raw("Press u to uninstall")),
+        ];
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(Block::default().borders(Borders::ALL).title("Service Installer"));
+        frame.render_widget(widget, area);
     }
 
     fn draw_config_root(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
@@ -294,6 +319,7 @@ impl TuiApp {
             View::TargetAdd => self.handle_target_add(key),
             View::TargetRemove => self.handle_target_remove(key),
             View::TokenSetup => self.handle_token_setup(key),
+            View::Service => self.handle_service(key),
             View::Message => self.handle_message(key),
         }
     }
@@ -301,10 +327,10 @@ impl TuiApp {
     fn handle_main(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
         match key.code {
             KeyCode::Char('q') => return Ok(true),
-            KeyCode::Down => self.menu_index = (self.menu_index + 1) % 4,
+            KeyCode::Down => self.menu_index = (self.menu_index + 1) % 5,
             KeyCode::Up => {
                 if self.menu_index == 0 {
-                    self.menu_index = 3;
+                    self.menu_index = 4;
                 } else {
                     self.menu_index -= 1;
                 }
@@ -326,6 +352,7 @@ impl TuiApp {
                     self.input_index = 0;
                     self.provider_index = 0;
                 }
+                3 => self.view = View::Service,
                 _ => return Ok(true),
             },
             _ => {}
@@ -546,6 +573,67 @@ impl TuiApp {
         Ok(false)
     }
 
+    fn handle_service(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
+        match key.code {
+            KeyCode::Esc => self.view = View::Main,
+            KeyCode::Char('i') => {
+                let exe = std::env::current_exe().context("resolve current executable")?;
+                let result = mirror_core::service::install_service(&exe);
+                match result {
+                    Ok(()) => {
+                        let audit_id = self.audit.record(
+                            "tui.service.install",
+                            AuditStatus::Ok,
+                            Some("tui"),
+                            None,
+                            None,
+                        )?;
+                        self.message = format!("Service installed. Audit ID: {audit_id}");
+                    }
+                    Err(err) => {
+                        let _ = self.audit.record(
+                            "tui.service.install",
+                            AuditStatus::Failed,
+                            Some("tui"),
+                            None,
+                            Some(&err.to_string()),
+                        );
+                        self.message = format!("Install failed: {err}");
+                    }
+                }
+                self.view = View::Message;
+            }
+            KeyCode::Char('u') => {
+                let result = mirror_core::service::uninstall_service();
+                match result {
+                    Ok(()) => {
+                        let audit_id = self.audit.record(
+                            "tui.service.uninstall",
+                            AuditStatus::Ok,
+                            Some("tui"),
+                            None,
+                            None,
+                        )?;
+                        self.message = format!("Service uninstalled. Audit ID: {audit_id}");
+                    }
+                    Err(err) => {
+                        let _ = self.audit.record(
+                            "tui.service.uninstall",
+                            AuditStatus::Failed,
+                            Some("tui"),
+                            None,
+                            Some(&err.to_string()),
+                        );
+                        self.message = format!("Uninstall failed: {err}");
+                    }
+                }
+                self.view = View::Message;
+            }
+            _ => {}
+        }
+        Ok(false)
+    }
+
     fn handle_text_input(&mut self, key: KeyEvent) {
         if self.input_fields.is_empty() {
             return;
@@ -603,6 +691,7 @@ fn split_labels(value: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn optional_text_handles_empty() {
@@ -615,5 +704,24 @@ mod tests {
     fn split_labels_parses_list() {
         let labels = split_labels("a, b, ,c");
         assert_eq!(labels, vec!["a".to_string(), "b".to_string(), "c".to_string()]);
+    }
+
+    #[test]
+    fn menu_index_wraps_with_service_item() {
+        let tmp = TempDir::new().unwrap();
+        let mut app = TuiApp {
+            config_path: std::path::PathBuf::from("/tmp/config.json"),
+            config: AppConfigV2::default(),
+            view: View::Main,
+            menu_index: 4,
+            message: String::new(),
+            input_index: 0,
+            input_fields: Vec::new(),
+            provider_index: 0,
+            audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
+        };
+        let key = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
+        app.handle_main(key).unwrap();
+        assert_eq!(app.menu_index, 0);
     }
 }

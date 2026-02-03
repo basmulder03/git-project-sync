@@ -56,11 +56,11 @@
 - [x] Include audit IDs in CLI/TUI output for traceability
 - [x] Add tests for audit log schema and write/rotation behavior
 
-## Milestone 19 — Terminal GUI: Service Installer
+## Milestone 19 — Terminal GUI: Service Installer (completed)
 
-- [ ] Add a TUI for install/uninstall with OS-specific status summaries
-- [ ] Provide clear confirmation prompts and error views for failures
-- [ ] Add tests for installer TUI state and error handling
+- [x] Add a TUI for install/uninstall with OS-specific status summaries
+- [x] Provide clear confirmation prompts and error views for failures
+- [x] Add tests for installer TUI state and error handling
 
 ## Milestone 20 — Terminal GUI: Audit Log Viewer
 

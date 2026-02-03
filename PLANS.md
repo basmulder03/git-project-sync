@@ -2,27 +2,27 @@
 
 ## Milestone 0 — Repo scaffolding
 
-- [ ] Create Rust workspace + crates
-- [ ] Add basic CI commands (fmt, clippy, test)
+- [x] Create Rust workspace + crates
+ - [x] Add basic CI commands (fmt, clippy, test)
 
 ## Milestone 1 — Core contracts (provider-agnostic)
 
-- [ ] Define normalized models: RemoteRepo, ProviderScope, ProviderTarget
-- [ ] Define RepoProvider trait (list_repos, validate_auth, optional get_repo)
-- [ ] Define filesystem mapping (root/provider/scope/repo)
+- [x] Define normalized models: RemoteRepo, ProviderScope, ProviderTarget
+- [x] Define RepoProvider trait (list_repos, validate_auth, optional get_repo)
+- [x] Define filesystem mapping (root/provider/scope/repo)
 
 ## Milestone 2 — Azure DevOps adapter (first provider)
 
-- [ ] Implement AzdoProvider list_repos for org+project
-- [ ] PAT auth via keyring
-- [ ] Minimal config for target: { org, project }
+- [x] Implement AzdoProvider list_repos for org+project
+- [x] PAT auth via keyring
+- [x] Minimal config for target: { org, project }
 
 ## Milestone 3 — Git engine (safe sync)
 
-- [ ] Clone missing repos
-- [ ] Detect clean working tree
-- [ ] Fetch origin
-- [ ] Fast-forward default branch only
+- [x] Clone missing repos
+- [x] Detect clean working tree
+- [x] Fetch origin
+- [x] Fast-forward default branch only
 
 ## Milestone 4 — Cache + deleted remote handling
 

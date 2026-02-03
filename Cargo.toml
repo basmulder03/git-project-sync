@@ -1,6 +1,8 @@
-[package]
-name = "git-project-sync"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = [
+  "crates/mirror-core",
+  "crates/mirror-providers",
+  "crates/mirror-cli",
+]
+resolver = "2"
 
-[dependencies]

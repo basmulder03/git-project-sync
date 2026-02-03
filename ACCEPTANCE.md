@@ -22,3 +22,4 @@
 15) Trigger a failing target in daemon mode and confirm a backoff skip is logged on subsequent runs until the backoff window expires.
 16) Register a webhook (`webhook register --provider <provider> --scope <scope> --url <url>`) and verify a success/failure message plus a new audit entry.
 17) Run `sync --verify` and confirm mismatched branch refs are logged without modifying non-default branches.
+18) Run `cache prune` and confirm it removes cache entries for targets no longer in config.

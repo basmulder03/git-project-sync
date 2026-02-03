@@ -110,11 +110,11 @@
 - [x] Detect and log ref mismatches beyond default branch (no auto-fix)
 - [x] Add tests for verify logic and mismatch logging
 
-## Milestone 28 — Cache/State Management Hardening
+## Milestone 28 — Cache/State Management Hardening (completed)
 
-- [ ] Introduce cache schema versioning and migration path
-- [ ] Add cache prune command to remove stale target entries
-- [ ] Add tests for cache migrations and prune behavior
+- [x] Introduce cache schema versioning and migration path
+- [x] Add cache prune command to remove stale target entries
+- [x] Add tests for cache migrations and prune behavior
 
 ## Milestone 29 — Token Provisioning Helpers
 

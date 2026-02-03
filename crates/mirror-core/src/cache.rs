@@ -6,6 +6,7 @@ use std::path::Path;
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct RepoCache {
+    pub version: u32,
     pub last_sync: HashMap<String, String>,
     pub repos: HashMap<String, RepoCacheEntry>,
     #[serde(default)]
@@ -19,13 +20,29 @@ pub struct RepoCache {
 }
 
 impl RepoCache {
+    pub fn new() -> Self {
+        Self {
+            version: 2,
+            last_sync: HashMap::new(),
+            repos: HashMap::new(),
+            repo_inventory: HashMap::new(),
+            target_last_success: HashMap::new(),
+            target_backoff_until: HashMap::new(),
+            target_backoff_attempts: HashMap::new(),
+        }
+    }
+
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         if !path.exists() {
-            return Ok(Self::default());
+            return Ok(Self::new());
         }
         let data = fs::read_to_string(path)?;
-        let cache = serde_json::from_str(&data)?;
-        Ok(cache)
+        let json: serde_json::Value = serde_json::from_str(&data)?;
+        match json.get("version").and_then(|value| value.as_u64()) {
+            Some(2) => Ok(serde_json::from_value(json)?),
+            Some(1) | None => Ok(migrate_v1(json)?),
+            Some(other) => anyhow::bail!("unsupported cache version {other}"),
+        }
     }
 
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
@@ -69,6 +86,42 @@ impl RepoCache {
         self.target_backoff_until
             .insert(target_key, now.saturating_add(delay));
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+struct RepoCacheV1 {
+    last_sync: HashMap<String, String>,
+    repos: HashMap<String, RepoCacheEntry>,
+}
+
+fn migrate_v1(json: serde_json::Value) -> anyhow::Result<RepoCache> {
+    let v1: RepoCacheV1 = serde_json::from_value(json)?;
+    Ok(RepoCache {
+        version: 2,
+        last_sync: v1.last_sync,
+        repos: v1.repos,
+        repo_inventory: HashMap::new(),
+        target_last_success: HashMap::new(),
+        target_backoff_until: HashMap::new(),
+        target_backoff_attempts: HashMap::new(),
+    })
+}
+
+pub fn prune_cache_for_targets(path: &Path, target_ids: &[String]) -> anyhow::Result<u32> {
+    let mut cache = RepoCache::load(path)?;
+    let mut removed = 0;
+    cache.repo_inventory.retain(|key, _| {
+        let keep = target_ids.contains(key);
+        if !keep {
+            removed += 1;
+        }
+        keep
+    });
+    cache.target_last_success.retain(|key, _| target_ids.contains(key));
+    cache.target_backoff_until.retain(|key, _| target_ids.contains(key));
+    cache.target_backoff_attempts.retain(|key, _| target_ids.contains(key));
+    cache.save(path)?;
+    Ok(removed)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -138,7 +191,7 @@ mod tests {
     fn cache_roundtrip() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("cache.json");
-        let mut cache = RepoCache::default();
+        let mut cache = RepoCache::new();
         cache
             .last_sync
             .insert("repo-1".into(), "2025-01-01T00:00:00Z".into());
@@ -171,6 +224,50 @@ mod tests {
 
         let loaded = RepoCache::load(&path).unwrap();
         assert_eq!(cache, loaded);
+    }
+
+    #[test]
+    fn migrates_v1_cache() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("cache.json");
+        let mut v1 = RepoCacheV1 {
+            last_sync: HashMap::new(),
+            repos: HashMap::new(),
+        };
+        v1.last_sync.insert("repo-1".into(), "1".into());
+        let data = serde_json::to_string_pretty(&v1).unwrap();
+        fs::write(&path, data).unwrap();
+
+        let loaded = RepoCache::load(&path).unwrap();
+        assert_eq!(loaded.version, 2);
+        assert!(loaded.last_sync.contains_key("repo-1"));
+    }
+
+    #[test]
+    fn prune_cache_removes_stale_targets() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("cache.json");
+        let mut cache = RepoCache::new();
+        cache.repo_inventory.insert(
+            "keep".into(),
+            RepoInventoryEntry {
+                fetched_at: 1,
+                repos: Vec::new(),
+            },
+        );
+        cache.repo_inventory.insert(
+            "drop".into(),
+            RepoInventoryEntry {
+                fetched_at: 1,
+                repos: Vec::new(),
+            },
+        );
+        cache.save(&path).unwrap();
+        let removed = prune_cache_for_targets(&path, &vec!["keep".into()]).unwrap();
+        assert_eq!(removed, 1);
+        let loaded = RepoCache::load(&path).unwrap();
+        assert!(loaded.repo_inventory.contains_key("keep"));
+        assert!(!loaded.repo_inventory.contains_key("drop"));
     }
 
     #[test]

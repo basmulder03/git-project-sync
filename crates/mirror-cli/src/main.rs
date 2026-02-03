@@ -47,6 +47,8 @@ enum Commands {
     Health(HealthArgs),
     #[command(about = "Manage webhooks")]
     Webhook(WebhookArgs),
+    #[command(about = "Manage cache")]
+    Cache(CacheArgs),
     #[command(about = "Launch terminal UI")]
     Tui,
 }
@@ -202,6 +204,26 @@ struct WebhookRegisterArgs {
 }
 
 #[derive(Parser)]
+struct CacheArgs {
+    #[command(subcommand)]
+    command: CacheCommands,
+}
+
+#[derive(clap::Subcommand)]
+enum CacheCommands {
+    #[command(about = "Prune cache entries for missing targets")]
+    Prune(CachePruneArgs),
+}
+
+#[derive(Parser)]
+struct CachePruneArgs {
+    #[arg(long)]
+    config: Option<PathBuf>,
+    #[arg(long)]
+    cache: Option<PathBuf>,
+}
+
+#[derive(Parser)]
 struct HealthArgs {
     #[arg(long)]
     target_id: Option<String>,
@@ -273,6 +295,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Service(args) => handle_service(args, &audit),
         Commands::Health(args) => handle_health(args, &audit),
         Commands::Webhook(args) => handle_webhook(args, &audit),
+        Commands::Cache(args) => handle_cache(args, &audit),
         Commands::Tui => tui::run_tui(&audit),
     };
 
@@ -962,6 +985,47 @@ fn handle_webhook_register(args: WebhookRegisterArgs, audit: &AuditLogger) -> an
             Some(&err.to_string()),
         );
     }
+    result
+}
+
+fn handle_cache(args: CacheArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    match args.command {
+        CacheCommands::Prune(args) => handle_cache_prune(args, audit),
+    }
+}
+
+fn handle_cache_prune(args: CachePruneArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = (|| {
+        let config_path = args.config.unwrap_or(default_config_path()?);
+        let cache_path = args.cache.unwrap_or(default_cache_path()?);
+        let (config, migrated) = load_or_migrate(&config_path)?;
+        if migrated {
+            config.save(&config_path)?;
+        }
+        let target_ids: Vec<String> = config.targets.iter().map(|t| t.id.clone()).collect();
+        let removed = mirror_core::cache::prune_cache_for_targets(&cache_path, &target_ids)?;
+        println!("Pruned {removed} cache entries.");
+        let audit_id = audit.record(
+            "cache.prune",
+            AuditStatus::Ok,
+            Some("cache.prune"),
+            None,
+            None,
+        )?;
+        println!("Audit ID: {audit_id}");
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "cache.prune",
+            AuditStatus::Failed,
+            Some("cache.prune"),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+
     result
 }
 

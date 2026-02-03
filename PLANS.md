@@ -35,12 +35,12 @@
 - [x] Improve logging + summary for skipped repos (dirty, diverged, missing-remote)
 - [x] Add tests for missing origin, default-branch change, and logging outcomes
 
-## Milestone 16 — Documentation & README
+## Milestone 16 — Documentation & README (completed)
 
-- [ ] Create README with overview, install, and usage examples
-- [ ] Document config file structure and cache/token storage locations
-- [ ] Add provider scope examples and mirror folder layout
-- [ ] Add daemon/service usage and troubleshooting notes
+- [x] Create README with overview, install, and usage examples
+- [x] Document config file structure and cache/token storage locations
+- [x] Add provider scope examples and mirror folder layout
+- [x] Add daemon/service usage and troubleshooting notes
 
 ## Notes / Decisions
 

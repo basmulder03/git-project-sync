@@ -1,0 +1,130 @@
+# Git Project Sync
+
+Mirror repositories from multiple Git providers into a local root folder with safe, fast-forward-only updates.
+
+## Highlights
+
+- Provider-agnostic core with Azure DevOps, GitHub, and GitLab adapters
+- Safe sync: never overwrites dirty trees, fast-forward only, logs diverged branches
+- Missing remote handling: prompt or policy-based archive/remove/skip
+- Staggered auto-sync across 7 days (daemon syncs the current day bucket)
+- Tokens stored in OS keychain; config/cache stored in OS AppData equivalents
+
+## Install
+
+Build the CLI with Cargo:
+
+```bash
+cargo build --release
+```
+
+The binary will be at `target/release/mirror-cli`.
+
+## Quick Start
+
+Initialize config with a mirror root:
+
+```bash
+mirror-cli config init --root /path/to/mirrors
+```
+
+Add a target:
+
+```bash
+# Azure DevOps project scope
+mirror-cli target add --provider azure-devops --scope org project
+
+# Azure DevOps org-wide scope
+mirror-cli target add --provider azure-devops --scope org
+
+# GitHub org or user
+mirror-cli target add --provider github --scope org-or-user
+
+# GitLab group or subgroup path
+mirror-cli target add --provider gitlab --scope group subgroup
+```
+
+Store a token:
+
+```bash
+mirror-cli token set --provider azure-devops --scope org project --token <pat>
+mirror-cli token set --provider github --scope org-or-user --token <token>
+mirror-cli token set --provider gitlab --scope group --token <token>
+```
+
+Run a sync:
+
+```bash
+mirror-cli sync
+```
+
+## Scope Shapes
+
+- Azure DevOps: `<org>` or `<org>/<project>`
+- GitHub: `<org-or-user>`
+- GitLab: `<group>/<subgroup>/...`
+
+For Azure DevOps org-wide listing, each repo is mapped to its project name so paths remain `<org>/<project>/<repo>`.
+
+## Mirror Layout
+
+Default layout on disk includes provider prefixes:
+
+```
+<root>/
+  azure-devops/<org>/<project>/<repo>/
+  github/<org>/<repo>/
+  gitlab/<group>/<subgroup>/.../<repo>/
+  _archive/...
+```
+
+## Config, Cache, and Tokens
+
+- Config: `config.json` under the OS config directory (AppData equivalents)
+- Cache: `cache.json` under the OS cache directory
+- Lock file: `mirror.lock` under the OS runtime directory (or cache dir fallback)
+- Tokens: stored in the OS keychain via `keyring`
+
+## Non-interactive Mode
+
+When running unattended, pass a missing-remote policy:
+
+```bash
+mirror-cli sync --non-interactive --missing-remote <archive|remove|skip>
+```
+
+## Daemon
+
+Run a background loop:
+
+```bash
+mirror-cli daemon --missing-remote skip
+```
+
+Run one cycle only:
+
+```bash
+mirror-cli daemon --run-once --missing-remote skip
+```
+
+## Service Install
+
+Register the daemon with the OS:
+
+```bash
+mirror-cli service install
+mirror-cli service uninstall
+```
+
+Notes:
+
+- Linux: installs a systemd user service
+- macOS: installs a LaunchAgent
+- Windows: installs a Windows service
+
+## Troubleshooting
+
+- If a working tree is dirty, sync will skip it and log the reason
+- If the default branch diverges, sync will skip it and log the reason
+- If origin is missing or mismatched, sync will update the origin URL before fetch
+- For Azure DevOps 401/403/404 responses, the CLI prints a friendly scope/token hint

@@ -1,0 +1,13 @@
+# .codex/config.toml
+
+[project]
+# Optional: pin what "done" means for this repo.
+done_checklist = [
+  "cargo fmt --all",
+  "cargo clippy --all-targets --all-features -D warnings",
+  "cargo test --all",
+]
+
+[tools]
+# If your workflow uses extra commands, list them here for Codex to prefer.
+preferred_shell = "bash" # or "pwsh" on Windows-heavy repos

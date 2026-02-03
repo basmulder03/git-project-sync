@@ -142,6 +142,8 @@ struct SyncArgs {
     #[arg(long)]
     include_archived: bool,
     #[arg(long)]
+    verify: bool,
+    #[arg(long)]
     non_interactive: bool,
     #[arg(long, value_enum, default_value = "prompt")]
     missing_remote: MissingRemotePolicyValue,
@@ -617,6 +619,7 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                 }),
                 false,
                 args.refresh,
+                args.verify,
             )
             .or_else(|err| map_azdo_error(&runtime_target, err))?
         } else {
@@ -630,6 +633,7 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                 Some(&|repo| include_archived || !repo.archived),
                 true,
                 args.refresh,
+                args.verify,
             )
             .or_else(|err| map_azdo_error(&runtime_target, err))?
         };
@@ -1018,6 +1022,7 @@ fn run_sync_job(
             None,
             Some(&bucketed),
             true,
+            false,
             false,
         )
         .or_else(|err| map_azdo_error(&runtime_target, err));

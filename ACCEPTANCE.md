@@ -21,3 +21,4 @@
 14) Verify archived/disabled repos are skipped by default; run `sync --include-archived` to include them.
 15) Trigger a failing target in daemon mode and confirm a backoff skip is logged on subsequent runs until the backoff window expires.
 16) Register a webhook (`webhook register --provider <provider> --scope <scope> --url <url>`) and verify a success/failure message plus a new audit entry.
+17) Run `sync --verify` and confirm mismatched branch refs are logged without modifying non-default branches.

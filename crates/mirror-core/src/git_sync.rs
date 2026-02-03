@@ -21,6 +21,7 @@ pub fn sync_repo(
     remote_url: &str,
     default_branch: &str,
     auth: Option<&RepoAuth>,
+    verify: bool,
 ) -> anyhow::Result<SyncOutcome> {
     if !repo_path.exists() {
         clone_repo(repo_path, remote_url, auth)?;
@@ -35,6 +36,22 @@ pub fn sync_repo(
 
     ensure_origin_remote(&repo, remote_url)?;
     fetch_origin(&repo, auth)?;
+    if verify {
+        let summary = verify_refs(&repo, default_branch)?;
+        if summary.default_mismatch {
+            warn!(
+                default_branch = %default_branch,
+                "default branch does not match remote HEAD"
+            );
+        }
+        if !summary.mismatched_branches.is_empty() {
+            warn!(
+                count = summary.mismatched_branches.len(),
+                branches = ?summary.mismatched_branches,
+                "branch refs do not match their upstreams"
+            );
+        }
+    }
     detect_orphaned_branches(&repo)?;
     fast_forward_default_branch(&repo, default_branch)
 }
@@ -170,6 +187,44 @@ fn detect_orphaned_branches(repo: &Repository) -> anyhow::Result<Vec<String>> {
         }
     }
     Ok(orphaned)
+}
+
+#[derive(Debug, Default)]
+struct VerifySummary {
+    default_mismatch: bool,
+    mismatched_branches: Vec<String>,
+}
+
+fn verify_refs(repo: &Repository, default_branch: &str) -> anyhow::Result<VerifySummary> {
+    let mut summary = VerifySummary::default();
+    let local_ref = format!("refs/heads/{default_branch}");
+    let remote_ref = format!("refs/remotes/origin/{default_branch}");
+    if let (Ok(local_oid), Ok(remote_oid)) =
+        (repo.refname_to_id(&local_ref), repo.refname_to_id(&remote_ref))
+    {
+        if local_oid != remote_oid {
+            summary.default_mismatch = true;
+        }
+    }
+
+    let branches = repo.branches(Some(git2::BranchType::Local))?;
+    for branch in branches {
+        let (branch, _) = branch?;
+        let name = branch.name()?.unwrap_or("").to_string();
+        if name.is_empty() || name == default_branch {
+            continue;
+        }
+        if let Some(upstream_name) = upstream_ref_from_config(repo, &name)? {
+            if let (Ok(local_oid), Ok(upstream_oid)) =
+                (repo.refname_to_id(&format!("refs/heads/{name}")), repo.refname_to_id(&upstream_name))
+            {
+                if local_oid != upstream_oid {
+                    summary.mismatched_branches.push(name);
+                }
+            }
+        }
+    }
+    Ok(summary)
 }
 
 fn upstream_ref_from_config(repo: &Repository, branch_name: &str) -> anyhow::Result<Option<String>> {
@@ -364,6 +419,74 @@ mod tests {
         repo.find_reference("refs/remotes/origin/main").unwrap().delete().unwrap();
         let orphaned = detect_orphaned_branches(&repo).unwrap();
         assert_eq!(orphaned, vec!["main".to_string()]);
+    }
+
+    #[test]
+    fn verify_detects_default_mismatch() {
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::init(tmp.path()).unwrap();
+        repo.remote("origin", "https://example.com/repo.git").unwrap();
+
+        let base = commit_file(&repo, "base.txt", "base", &[], Some("refs/heads/main"));
+        repo.reference(
+            "refs/remotes/origin/main",
+            base,
+            true,
+            "remote main",
+        )
+        .unwrap();
+        let base_commit = repo.find_commit(base).unwrap();
+        let local = commit_file(
+            &repo,
+            "local.txt",
+            "local",
+            &[&base_commit],
+            Some("refs/heads/main"),
+        );
+        repo.reference("refs/heads/main", local, true, "local main").unwrap();
+
+        let summary = verify_refs(&repo, "main").unwrap();
+        assert!(summary.default_mismatch);
+    }
+
+    #[test]
+    fn verify_detects_branch_mismatch() {
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::init(tmp.path()).unwrap();
+        repo.remote("origin", "https://example.com/repo.git").unwrap();
+
+        let base = commit_file(&repo, "base.txt", "base", &[], Some("refs/heads/main"));
+        repo.reference(
+            "refs/remotes/origin/main",
+            base,
+            true,
+            "remote main",
+        )
+        .unwrap();
+        repo.reference("refs/heads/main", base, true, "local main").unwrap();
+
+        let feature_local = commit_file(&repo, "feat.txt", "feat", &[], Some("refs/heads/feature"));
+        let feature_remote = commit_file(
+            &repo,
+            "feat-remote.txt",
+            "feat-remote",
+            &[],
+            Some("refs/remotes/origin/feature"),
+        );
+        repo.reference("refs/heads/feature", feature_local, true, "local feature")
+            .unwrap();
+        repo.reference(
+            "refs/remotes/origin/feature",
+            feature_remote,
+            true,
+            "remote feature",
+        )
+        .unwrap();
+        let mut feature = repo.find_branch("feature", git2::BranchType::Local).unwrap();
+        feature.set_upstream(Some("origin/feature")).unwrap();
+
+        let summary = verify_refs(&repo, "main").unwrap();
+        assert_eq!(summary.mismatched_branches, vec!["feature".to_string()]);
     }
 
     fn commit_file(

@@ -104,11 +104,11 @@
 - [x] Add rate-limit awareness and retries (provider-specific backoff headers)
 - [x] Add tests for rate-limit parsing and retry decisions (mocked)
 
-## Milestone 27 — Sync Integrity Enhancements
+## Milestone 27 — Sync Integrity Enhancements (completed)
 
-- [ ] Add optional verify pass (compare remote HEAD OIDs vs local) in clean repos
-- [ ] Detect and log ref mismatches beyond default branch (no auto-fix)
-- [ ] Add tests for verify logic and mismatch logging
+- [x] Add optional verify pass (compare remote HEAD OIDs vs local) in clean repos
+- [x] Detect and log ref mismatches beyond default branch (no auto-fix)
+- [x] Add tests for verify logic and mismatch logging
 
 ## Milestone 28 — Cache/State Management Hardening
 

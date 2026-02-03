@@ -61,6 +61,7 @@ pub fn run_sync(
         None,
         true,
         false,
+        false,
     )
 }
 
@@ -74,6 +75,7 @@ pub fn run_sync_filtered(
     repo_filter: Option<&dyn Fn(&RemoteRepo) -> bool>,
     detect_missing: bool,
     refresh: bool,
+    verify: bool,
 ) -> anyhow::Result<SyncSummary> {
     provider
         .validate_auth(target)
@@ -111,6 +113,7 @@ pub fn run_sync_filtered(
             &repo.clone_url,
             &repo.default_branch,
             repo.auth.as_ref(),
+            verify,
         ) {
             Ok(outcome) => outcome,
             Err(err) => {

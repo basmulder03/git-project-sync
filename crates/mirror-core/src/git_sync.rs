@@ -200,11 +200,17 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let repo = Repository::init(tmp.path()).unwrap();
 
-        let base = commit_file(&repo, "base.txt", "base", &[]);
+        let base = commit_file(&repo, "base.txt", "base", &[], Some("HEAD"));
         let base_commit = repo.find_commit(base).unwrap();
 
-        let local = commit_file(&repo, "local.txt", "local", &[&base_commit]);
-        let remote = commit_file(&repo, "remote.txt", "remote", &[&base_commit]);
+        let local = commit_file(&repo, "local.txt", "local", &[&base_commit], Some("HEAD"));
+        let remote = commit_file(
+            &repo,
+            "remote.txt",
+            "remote",
+            &[&base_commit],
+            Some("refs/remotes/origin/main"),
+        );
 
         repo.reference("refs/heads/main", local, true, "local main")
             .unwrap();
@@ -225,6 +231,7 @@ mod tests {
         name: &str,
         contents: &str,
         parents: &[&Commit<'_>],
+        update_ref: Option<&str>,
     ) -> Oid {
         let workdir = repo.workdir().unwrap();
         std::fs::write(workdir.join(name), contents).unwrap();
@@ -233,7 +240,7 @@ mod tests {
         let tree_id = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
         let sig = Signature::now("tester", "tester@example.com").unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "commit", &tree, parents)
+        repo.commit(update_ref, &sig, &sig, "commit", &tree, parents)
             .unwrap()
     }
 }

@@ -144,7 +144,7 @@ mod tests {
     fn migrate_v1_to_v2() {
         let scope = ProviderScope::new(vec!["org".into(), "project".into()]).unwrap();
         let v1 = AppConfigV1 {
-            root: Some(PathBuf::from(\"/tmp\")),
+            root: Some(PathBuf::from("/tmp")),
             targets: vec![ProviderTarget {
                 provider: ProviderKind::AzureDevOps,
                 scope: scope.clone(),
@@ -162,10 +162,10 @@ mod tests {
     #[test]
     fn load_or_migrate_handles_v1() {
         let tmp = TempDir::new().unwrap();
-        let path = tmp.path().join(\"config.json\");
-        let scope = ProviderScope::new(vec![\"org\".into(), \"project\".into()]).unwrap();
+        let path = tmp.path().join("config.json");
+        let scope = ProviderScope::new(vec!["org".into(), "project".into()]).unwrap();
         let v1 = AppConfigV1 {
-            root: Some(PathBuf::from(\"/tmp\")),
+            root: Some(PathBuf::from("/tmp")),
             targets: vec![ProviderTarget {
                 provider: ProviderKind::AzureDevOps,
                 scope,

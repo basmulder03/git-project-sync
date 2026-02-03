@@ -6,8 +6,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const SERVICE_NAME: &str = "git-project-sync";
+#[cfg(target_os = "linux")]
 const SYSTEMD_UNIT_NAME: &str = "git-project-sync.service";
+#[cfg(target_os = "macos")]
 const LAUNCHD_LABEL: &str = "com.git-project-sync.daemon";
 
 pub fn install_service(exec_path: &Path) -> anyhow::Result<()> {

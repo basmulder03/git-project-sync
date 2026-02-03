@@ -161,6 +161,7 @@ fn handle_missing_repos(
         return Ok(());
     }
 
+    let mut remove_ids: Vec<String> = Vec::new();
     for repo in missing {
         let action = resolve_action(repo.entry, policy, decider)?;
         match action {
@@ -178,7 +179,7 @@ fn handle_missing_repos(
                     path = %destination.display(),
                     "archived missing repo"
                 );
-                cache.repos.remove(repo.repo_id);
+                remove_ids.push(repo.repo_id.to_string());
             }
             DeletedRepoAction::Remove => {
                 remove_repo(
@@ -193,7 +194,7 @@ fn handle_missing_repos(
                     repo_id = %repo.repo_id,
                     "removed missing repo"
                 );
-                cache.repos.remove(repo.repo_id);
+                remove_ids.push(repo.repo_id.to_string());
             }
             DeletedRepoAction::Skip => {
                 warn!(
@@ -204,6 +205,10 @@ fn handle_missing_repos(
                 );
             }
         }
+    }
+
+    for repo_id in remove_ids {
+        cache.repos.remove(&repo_id);
     }
 
     Ok(())

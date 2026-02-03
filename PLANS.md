@@ -22,11 +22,11 @@
 - [x] Add AzDO-specific error handling for auth failures (401/403) and not-found scopes
 - [x] Add tests for AzDO pagination + scope parsing + auth failure mapping
 
-## Milestone 14 — Provider Parity (GitHub/GitLab)
+## Milestone 14 — Provider Parity (GitHub/GitLab) (completed)
 
-- [ ] Implement pagination for GitHub and GitLab repo listings
-- [ ] Normalize default branch handling across providers (explicit fallbacks if API omits)
-- [ ] Add tests for GitHub/GitLab listing + pagination + scope validation
+- [x] Implement pagination for GitHub and GitLab repo listings
+- [x] Normalize default branch handling across providers (explicit fallbacks if API omits)
+- [x] Add tests for GitHub/GitLab listing + pagination + scope validation
 
 ## Milestone 15 — Sync Safety & Robustness
 

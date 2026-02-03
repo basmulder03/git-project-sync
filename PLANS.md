@@ -73,3 +73,4 @@
 - Git implementation: start with git2; shelling out to git can be added later if needed.
 - Missing-remote CLI uses newline-delimited repo ids as the "current" provider set.
 - When only 1-2 milestones remain unchecked, add new milestones to keep the plan rolling forward.
+- For future milestones: create a descriptive commit and push to remote after each milestone is completed.

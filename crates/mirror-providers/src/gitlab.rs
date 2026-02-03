@@ -112,6 +112,29 @@ impl RepoProvider for GitLabProvider {
         let _ = auth::get_pat(&account)?;
         Ok(())
     }
+
+    fn health_check(&self, target: &ProviderTarget) -> anyhow::Result<()> {
+        if target.provider != ProviderKind::GitLab {
+            anyhow::bail!("invalid provider target for GitLab");
+        }
+        let spec = GitLabSpec;
+        let host = host_or_default(target.host.as_deref(), &spec);
+        let group = Self::parse_scope(&target.scope)?;
+        let account = spec.account_key(&host, &target.scope)?;
+        let token = auth::get_pat(&account)?;
+
+        let url = format!("{host}/groups/{group}/projects?per_page=1&page=1");
+        let response = self
+            .client
+            .get(url)
+            .header("PRIVATE-TOKEN", token.as_str())
+            .send()
+            .context("call GitLab health check")?
+            .error_for_status()
+            .context("GitLab health check status")?;
+        let _payload: Vec<ProjectItem> = response.json().context("decode health response")?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Deserialize)]

@@ -40,6 +40,8 @@ enum Commands {
     Daemon(DaemonArgs),
     #[command(about = "Install or uninstall background service helpers (placeholder)")]
     Service(ServiceArgs),
+    #[command(about = "Validate provider auth and scope")]
+    Health(HealthArgs),
     #[command(about = "Launch terminal UI")]
     Tui,
 }
@@ -162,6 +164,18 @@ struct ServiceArgs {
     action: ServiceAction,
 }
 
+#[derive(Parser)]
+struct HealthArgs {
+    #[arg(long)]
+    target_id: Option<String>,
+    #[arg(long, value_enum)]
+    provider: Option<ProviderKindValue>,
+    #[arg(long)]
+    scope: Vec<String>,
+    #[arg(long)]
+    config: Option<PathBuf>,
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 enum ServiceAction {
     Install,
@@ -220,6 +234,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Sync(args) => handle_sync(args, &audit),
         Commands::Daemon(args) => handle_daemon(args, &audit),
         Commands::Service(args) => handle_service(args, &audit),
+        Commands::Health(args) => handle_health(args, &audit),
         Commands::Tui => tui::run_tui(&audit),
     };
 
@@ -750,6 +765,102 @@ fn handle_service(args: ServiceArgs, audit: &AuditLogger) -> anyhow::Result<()> 
     result
 }
 
+fn handle_health(args: HealthArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result = (|| {
+        let config_path = args.config.unwrap_or(default_config_path()?);
+        let (config, migrated) = load_or_migrate(&config_path)?;
+        if migrated {
+            config.save(&config_path)?;
+        }
+
+        let targets = select_targets(&config, args.target_id.as_deref(), args.provider, &args.scope)?;
+        if targets.is_empty() {
+            println!("No matching targets found.");
+            let audit_id = audit.record(
+                "health.check",
+                AuditStatus::Skipped,
+                Some("health"),
+                None,
+                Some("no matching targets"),
+            )?;
+            println!("Audit ID: {audit_id}");
+            return Ok(());
+        }
+
+        let registry = ProviderRegistry::new();
+        for target in targets {
+            let provider_kind = target.provider.clone();
+            let provider = registry.provider(provider_kind.clone())?;
+            let runtime_target = ProviderTarget {
+                provider: provider_kind,
+                scope: target.scope.clone(),
+                host: target.host.clone(),
+            };
+
+            let outcome = provider
+                .health_check(&runtime_target)
+                .or_else(|err| map_provider_error(&runtime_target, err));
+            match outcome {
+                Ok(()) => {
+                    println!(
+                        "Health OK: {} {}",
+                        target.provider.as_prefix(),
+                        target.scope.segments().join("/")
+                    );
+                    let audit_id = audit.record_with_context(
+                        "health.check",
+                        AuditStatus::Ok,
+                        Some("health"),
+                        AuditContext {
+                            provider: Some(target.provider.as_prefix().to_string()),
+                            scope: Some(target.scope.segments().join("/")),
+                            repo_id: Some(target.id.clone()),
+                            path: None,
+                        },
+                        None,
+                        None,
+                    )?;
+                    println!("Audit ID: {audit_id}");
+                }
+                Err(err) => {
+                    eprintln!(
+                        "Health FAILED: {} {} -> {err}",
+                        target.provider.as_prefix(),
+                        target.scope.segments().join("/")
+                    );
+                    let audit_id = audit.record_with_context(
+                        "health.check",
+                        AuditStatus::Failed,
+                        Some("health"),
+                        AuditContext {
+                            provider: Some(target.provider.as_prefix().to_string()),
+                            scope: Some(target.scope.segments().join("/")),
+                            repo_id: Some(target.id.clone()),
+                            path: None,
+                        },
+                        None,
+                        Some(&err.to_string()),
+                    )?;
+                    println!("Audit ID: {audit_id}");
+                }
+            }
+        }
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "health.check",
+            AuditStatus::Failed,
+            Some("health"),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+
+    result
+}
+
 fn run_sync_job(
     config_path: &Path,
     cache_path: &Path,
@@ -885,17 +996,65 @@ fn map_azdo_error(
     Err(err)
 }
 
+fn map_provider_error(
+    target: &ProviderTarget,
+    err: anyhow::Error,
+) -> anyhow::Result<()> {
+    if let Some(reqwest_err) = err.downcast_ref::<reqwest::Error>() {
+        if let Some(status) = reqwest_err.status() {
+            let scope = target.scope.segments().join("/");
+            let message = match target.provider {
+                ProviderKind::AzureDevOps => azdo_status_message(&scope, status),
+                ProviderKind::GitHub => github_status_message(&scope, status),
+                ProviderKind::GitLab => gitlab_status_message(&scope, status),
+            };
+            if let Some(message) = message {
+                return Err(anyhow::anyhow!(message));
+            }
+        }
+    }
+    Err(err)
+}
+
 fn azdo_message_for_status(
     target: &ProviderTarget,
     status: StatusCode,
 ) -> Option<String> {
     let scope = target.scope.segments().join("/");
+    azdo_status_message(&scope, status)
+}
+
+fn azdo_status_message(scope: &str, status: StatusCode) -> Option<String> {
     match status {
         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => Some(format!(
             "Azure DevOps authentication failed for scope {scope} (HTTP {status}). Check your PAT.",
         )),
         StatusCode::NOT_FOUND => Some(format!(
             "Azure DevOps scope not found: {scope} (HTTP {status}). Check org/project.",
+        )),
+        _ => None,
+    }
+}
+
+fn github_status_message(scope: &str, status: StatusCode) -> Option<String> {
+    match status {
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => Some(format!(
+            "GitHub authentication failed for scope {scope} (HTTP {status}). Check your token and org access.",
+        )),
+        StatusCode::NOT_FOUND => Some(format!(
+            "GitHub scope not found: {scope} (HTTP {status}). Check org/user.",
+        )),
+        _ => None,
+    }
+}
+
+fn gitlab_status_message(scope: &str, status: StatusCode) -> Option<String> {
+    match status {
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => Some(format!(
+            "GitLab authentication failed for scope {scope} (HTTP {status}). Check your token and group access.",
+        )),
+        StatusCode::NOT_FOUND => Some(format!(
+            "GitLab scope not found: {scope} (HTTP {status}). Check group path.",
         )),
         _ => None,
     }
@@ -930,5 +1089,23 @@ mod tests {
         let message = azdo_message_for_status(&target, StatusCode::NOT_FOUND).unwrap();
         assert!(message.contains("scope not found"));
         assert!(message.contains("org/proj"));
+    }
+
+    #[test]
+    fn github_status_messages() {
+        let scope = "org";
+        let message = github_status_message(scope, StatusCode::UNAUTHORIZED).unwrap();
+        assert!(message.contains("GitHub authentication failed"));
+        let message = github_status_message(scope, StatusCode::NOT_FOUND).unwrap();
+        assert!(message.contains("scope not found"));
+    }
+
+    #[test]
+    fn gitlab_status_messages() {
+        let scope = "group";
+        let message = gitlab_status_message(scope, StatusCode::FORBIDDEN).unwrap();
+        assert!(message.contains("GitLab authentication failed"));
+        let message = gitlab_status_message(scope, StatusCode::NOT_FOUND).unwrap();
+        assert!(message.contains("scope not found"));
     }
 }

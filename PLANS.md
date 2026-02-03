@@ -68,11 +68,11 @@
 - [x] Include a failure-focused view with error details and remediation hints
 - [x] Add tests for log parsing and filter behavior
 
-## Milestone 21 — Provider Auth + Scope Diagnostics
+## Milestone 21 — Provider Auth + Scope Diagnostics (completed)
 
-- [ ] Add provider-level health checks to validate tokens/scopes (AzDO/GitHub/GitLab)
-- [ ] Improve CLI error messages for missing scopes or invalid hosts with provider hints
-- [ ] Add tests for auth failures and scope validation across providers
+- [x] Add provider-level health checks to validate tokens/scopes (AzDO/GitHub/GitLab)
+- [x] Improve CLI error messages for missing scopes or invalid hosts with provider hints
+- [x] Add tests for auth failures and scope validation across providers
 
 ## Milestone 22 — Sync Safety Edge Cases
 

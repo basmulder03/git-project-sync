@@ -138,6 +138,29 @@ impl RepoProvider for AzureDevOpsProvider {
         let _ = auth::get_pat(&account)?;
         Ok(())
     }
+
+    fn health_check(&self, target: &ProviderTarget) -> anyhow::Result<()> {
+        if target.provider != ProviderKind::AzureDevOps {
+            anyhow::bail!("invalid provider target for Azure DevOps");
+        }
+        let spec = AzureDevOpsSpec;
+        let host = host_or_default(target.host.as_deref(), &spec);
+        let (org, project) = Self::parse_scope(&target.scope)?;
+        let account = spec.account_key(&host, &target.scope)?;
+        let pat = auth::get_pat(&account)?;
+
+        let url = Self::build_repos_url(&host, org, project, None)?;
+        let response = self
+            .client
+            .get(url)
+            .basic_auth("", Some(pat.as_str()))
+            .send()
+            .context("call Azure DevOps health check")?
+            .error_for_status()
+            .context("Azure DevOps health check status")?;
+        let _payload: ReposResponse = response.json().context("decode health response")?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Deserialize)]

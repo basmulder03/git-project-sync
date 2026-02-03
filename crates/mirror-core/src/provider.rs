@@ -4,6 +4,9 @@ pub trait RepoProvider {
     fn kind(&self) -> ProviderKind;
     fn list_repos(&self, target: &ProviderTarget) -> anyhow::Result<Vec<RemoteRepo>>;
     fn validate_auth(&self, target: &ProviderTarget) -> anyhow::Result<()>;
+    fn health_check(&self, target: &ProviderTarget) -> anyhow::Result<()> {
+        self.validate_auth(target)
+    }
 
     fn get_repo(
         &self,

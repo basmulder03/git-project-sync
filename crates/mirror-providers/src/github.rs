@@ -128,6 +128,30 @@ impl RepoProvider for GitHubProvider {
         let _ = auth::get_pat(&account)?;
         Ok(())
     }
+
+    fn health_check(&self, target: &ProviderTarget) -> anyhow::Result<()> {
+        if target.provider != ProviderKind::GitHub {
+            anyhow::bail!("invalid provider target for GitHub");
+        }
+        let spec = GitHubSpec;
+        let host = host_or_default(target.host.as_deref(), &spec);
+        let org = Self::parse_scope(&target.scope)?;
+        let account = spec.account_key(&host, &target.scope)?;
+        let token = auth::get_pat(&account)?;
+
+        let url = format!("{host}/orgs/{org}/repos?per_page=1&page=1");
+        let response = self
+            .client
+            .get(url)
+            .header("User-Agent", "git-project-sync")
+            .bearer_auth(token.as_str())
+            .send()
+            .context("call GitHub health check")?
+            .error_for_status()
+            .context("GitHub health check status")?;
+        let _payload: Vec<RepoItem> = response.json().context("decode health response")?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Deserialize)]

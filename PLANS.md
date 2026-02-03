@@ -15,6 +15,33 @@
 - [x] Implement launchd agent install/uninstall
 - [x] Implement Windows service install/uninstall
 
+## Milestone 13 — Azure DevOps Depth
+
+- [ ] Implement AzDO pagination and continuation tokens for repo listing
+- [ ] Support project-scoped vs org-scoped listing (confirm and document scope behavior)
+- [ ] Add AzDO-specific error handling for auth failures (401/403) and not-found scopes
+- [ ] Add tests for AzDO pagination + scope parsing + auth failure mapping
+
+## Milestone 14 — Provider Parity (GitHub/GitLab)
+
+- [ ] Implement pagination for GitHub and GitLab repo listings
+- [ ] Normalize default branch handling across providers (explicit fallbacks if API omits)
+- [ ] Add tests for GitHub/GitLab listing + pagination + scope validation
+
+## Milestone 15 — Sync Safety & Robustness
+
+- [ ] Handle missing origin remote explicitly (create or repair remote to expected URL)
+- [ ] Handle default-branch rename detection (if remote default changes)
+- [ ] Improve logging + summary for skipped repos (dirty, diverged, missing-remote)
+- [ ] Add tests for missing origin, default-branch change, and logging outcomes
+
+## Milestone 16 — Documentation & README
+
+- [ ] Create README with overview, install, and usage examples
+- [ ] Document config file structure and cache/token storage locations
+- [ ] Add provider scope examples and mirror folder layout
+- [ ] Add daemon/service usage and troubleshooting notes
+
 ## Notes / Decisions
 
 - Focus: architecture tidy (per user request).
@@ -24,3 +51,4 @@
 - Token storage: keyring; fallback disabled unless explicitly configured.
 - Git implementation: git2; shelling out to git can be added later if needed.
 - Docs alignment: spec-first, concise edits only.
+- Roadmap focus: Azure DevOps depth first, then provider parity, then sync safety.

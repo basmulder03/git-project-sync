@@ -1,12 +1,12 @@
 use crate::RepoProvider;
 use crate::auth;
+use crate::spec::{AzureDevOpsSpec, host_or_default};
 use anyhow::Context;
 use mirror_core::model::{ProviderKind, ProviderScope, ProviderTarget, RemoteRepo, RepoAuth};
+use mirror_core::provider::ProviderSpec;
 use reqwest::blocking::Client;
 use serde::Deserialize;
 use tracing::info;
-
-const DEFAULT_HOST: &str = "https://dev.azure.com";
 
 pub struct AzureDevOpsProvider {
     client: Client,
@@ -17,17 +17,6 @@ impl AzureDevOpsProvider {
         Ok(Self {
             client: Client::new(),
         })
-    }
-
-    fn host_for(&self, target: &ProviderTarget) -> String {
-        target
-            .host
-            .clone()
-            .unwrap_or_else(|| DEFAULT_HOST.to_string())
-    }
-
-    fn account_key(&self, host: &str, org: &str) -> String {
-        format!("azdo:{host}:{org}")
     }
 
     fn parse_scope(scope: &ProviderScope) -> anyhow::Result<(&str, &str)> {
@@ -48,9 +37,10 @@ impl RepoProvider for AzureDevOpsProvider {
         if target.provider != ProviderKind::AzureDevOps {
             anyhow::bail!("invalid provider target for Azure DevOps");
         }
-        let host = self.host_for(target);
+        let spec = AzureDevOpsSpec;
+        let host = host_or_default(target.host.as_deref(), &spec);
         let (org, project) = Self::parse_scope(&target.scope)?;
-        let account = self.account_key(&host, org);
+        let account = spec.account_key(&host, &target.scope)?;
         let pat = auth::get_pat(&account)?;
 
         let url =
@@ -91,9 +81,10 @@ impl RepoProvider for AzureDevOpsProvider {
     }
 
     fn validate_auth(&self, target: &ProviderTarget) -> anyhow::Result<()> {
-        let host = self.host_for(target);
-        let (org, _project) = Self::parse_scope(&target.scope)?;
-        let account = self.account_key(&host, org);
+        let spec = AzureDevOpsSpec;
+        let host = host_or_default(target.host.as_deref(), &spec);
+        let _ = Self::parse_scope(&target.scope)?;
+        let account = spec.account_key(&host, &target.scope)?;
         let _ = auth::get_pat(&account)?;
         Ok(())
     }

@@ -1,4 +1,4 @@
-use crate::model::{ProviderKind, ProviderTarget, RemoteRepo};
+use crate::model::{ProviderKind, ProviderScope, ProviderTarget, RemoteRepo};
 
 pub trait RepoProvider {
     fn kind(&self) -> ProviderKind;
@@ -12,4 +12,12 @@ pub trait RepoProvider {
     ) -> anyhow::Result<Option<RemoteRepo>> {
         Ok(None)
     }
+}
+
+pub trait ProviderSpec {
+    fn kind(&self) -> ProviderKind;
+    fn default_host(&self) -> &'static str;
+    fn parse_scope(&self, segments: Vec<String>) -> anyhow::Result<ProviderScope>;
+    fn validate_scope(&self, scope: &ProviderScope) -> anyhow::Result<()>;
+    fn account_key(&self, host: &str, scope: &ProviderScope) -> anyhow::Result<String>;
 }

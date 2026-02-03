@@ -12,8 +12,17 @@ pub fn repo_path(
     for segment in scope.segments() {
         path.push(segment);
     }
-    path.push(repo);
+    path.push(sanitize_repo_name(repo));
     path
+}
+
+fn sanitize_repo_name(name: &str) -> String {
+    name.chars()
+        .map(|ch| match ch {
+            '/' | '\\' => '_',
+            _ => ch,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -37,6 +46,25 @@ mod tests {
                 .join("org")
                 .join("project")
                 .join("repo")
+        );
+    }
+
+    #[test]
+    fn sanitizes_repo_name() {
+        let scope = ProviderScope::new(vec!["org".into(), "project".into()]).unwrap();
+        let path = repo_path(
+            Path::new("/tmp"),
+            &ProviderKind::GitHub,
+            &scope,
+            "name/with\\slash",
+        );
+        assert_eq!(
+            path,
+            PathBuf::from("/tmp")
+                .join("github")
+                .join("org")
+                .join("project")
+                .join("name_with_slash")
         );
     }
 }

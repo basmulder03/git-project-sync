@@ -11,6 +11,28 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{info, warn};
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SyncSummary {
+    pub cloned: u32,
+    pub fast_forwarded: u32,
+    pub up_to_date: u32,
+    pub dirty: u32,
+    pub diverged: u32,
+    pub failed: u32,
+}
+
+impl SyncSummary {
+    fn record(&mut self, outcome: SyncOutcome) {
+        match outcome {
+            SyncOutcome::Cloned => self.cloned += 1,
+            SyncOutcome::FastForwarded => self.fast_forwarded += 1,
+            SyncOutcome::UpToDate => self.up_to_date += 1,
+            SyncOutcome::Dirty => self.dirty += 1,
+            SyncOutcome::Diverged => self.diverged += 1,
+        }
+    }
+}
+
 pub fn run_sync(
     provider: &dyn RepoProvider,
     target: &ProviderTarget,
@@ -18,7 +40,7 @@ pub fn run_sync(
     cache_path: &Path,
     missing_policy: MissingRemotePolicy,
     missing_decider: Option<&dyn Fn(&crate::cache::RepoCacheEntry) -> anyhow::Result<DeletedRepoAction>>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<SyncSummary> {
     run_sync_filtered(
         provider,
         target,
@@ -38,11 +60,12 @@ pub fn run_sync_filtered(
     missing_policy: MissingRemotePolicy,
     missing_decider: Option<&dyn Fn(&crate::cache::RepoCacheEntry) -> anyhow::Result<DeletedRepoAction>>,
     repo_filter: Option<&dyn Fn(&RemoteRepo) -> bool>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<SyncSummary> {
     provider
         .validate_auth(target)
         .context("validate provider auth")?;
     let mut cache = RepoCache::load(cache_path).context("load cache")?;
+    let mut summary = SyncSummary::default();
 
     info!(
         provider = %target.provider,
@@ -67,13 +90,33 @@ pub fn run_sync_filtered(
 
     for repo in repos {
         let path = repo_path(root, &repo.provider, &repo.scope, &repo.name);
-        let outcome = sync_repo(
+        let outcome = match sync_repo(
             &path,
             &repo.clone_url,
             &repo.default_branch,
             repo.auth.as_ref(),
-        )
-        .with_context(|| format!("sync repo {}", repo.name))?;
+        ) {
+            Ok(outcome) => outcome,
+            Err(err) => {
+                summary.failed += 1;
+                warn!(
+                    provider = %repo.provider,
+                    scope = ?repo.scope,
+                    repo_id = %repo.id,
+                    path = %path.display(),
+                    error = %err,
+                    "repo sync failed"
+                );
+                cache.record_repo(
+                    repo.id.clone(),
+                    repo.name.clone(),
+                    repo.provider.clone(),
+                    repo.scope.clone(),
+                    path.display().to_string(),
+                );
+                continue;
+            }
+        };
 
         info!(
             provider = %repo.provider,
@@ -83,6 +126,7 @@ pub fn run_sync_filtered(
             outcome = ?outcome,
             "repo sync outcome"
         );
+        summary.record(outcome);
 
         cache.record_repo(
             repo.id.clone(),
@@ -100,7 +144,7 @@ pub fn run_sync_filtered(
     }
 
     cache.save(cache_path).context("save cache")?;
-    Ok(())
+    Ok(summary)
 }
 
 fn handle_missing_repos(

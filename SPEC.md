@@ -29,7 +29,8 @@
 
 ## CLI
 
-- init/configure root + targets
-- set auth token per provider/host
+- config init root + targets
+- token set per provider/host
+- target add/list/remove
 - sync all / sync target / sync repo
 - non-interactive mode and missing-remote policy flags

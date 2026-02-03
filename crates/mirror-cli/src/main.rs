@@ -1,18 +1,16 @@
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
-use mirror_core::archive::{archive_repo, remove_repo};
-use mirror_core::cache::{RepoCache, RepoCacheEntry};
-use mirror_core::config::{AppConfig, default_cache_path, default_config_path, default_lock_path};
-use mirror_core::deleted::{DeletedRepoAction, MissingRemotePolicy, detect_deleted_repos};
-use mirror_core::model::{ProviderKind, ProviderScope, ProviderTarget};
-use mirror_core::sync_engine::run_sync_filtered;
+use mirror_core::cache::RepoCacheEntry;
+use mirror_core::config::{
+    AppConfigV2, TargetConfig, default_cache_path, default_config_path, default_lock_path,
+    load_or_migrate, target_id,
+};
+use mirror_core::deleted::{DeletedRepoAction, MissingRemotePolicy};
+use mirror_core::model::{ProviderKind, ProviderTarget};
+use mirror_core::sync_engine::{SyncSummary, run_sync_filtered};
 use mirror_providers::auth;
-use mirror_providers::azure_devops::AzureDevOpsProvider;
-use mirror_providers::github::GitHubProvider;
-use mirror_providers::gitlab::GitLabProvider;
-use mirror_providers::RepoProvider;
-use std::collections::HashSet;
-use std::fs;
+use mirror_providers::spec::{host_or_default, spec_for};
+use mirror_providers::ProviderRegistry;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use tracing_subscriber::EnvFilter;
@@ -26,26 +24,52 @@ struct Cli {
 
 #[derive(clap::Subcommand)]
 enum Commands {
-    #[command(about = "Initialize config with a mirror root path")]
-    Init(InitArgs),
-    #[command(about = "Add a provider target to the config")]
-    AddTarget(AddTargetArgs),
-    #[command(about = "Store an auth token for a provider target")]
-    SetToken(SetTokenArgs),
-    #[command(about = "Sync all targets, a single target, or a single repo")]
+    #[command(about = "Manage config")]
+    Config(ConfigArgs),
+    #[command(about = "Manage targets")]
+    Target(TargetArgs),
+    #[command(about = "Manage auth tokens")]
+    Token(TokenArgs),
+    #[command(about = "Sync repos")]
     Sync(SyncArgs),
-    #[command(about = "Handle missing-remote repos using cache and a current repo id list")]
-    MissingRemote(MissingRemoteArgs),
-    #[command(about = "Run the daemon loop (placeholder sync job)")]
+    #[command(about = "Run the daemon loop")]
     Daemon(DaemonArgs),
     #[command(about = "Install or uninstall background service helpers (placeholder)")]
     Service(ServiceArgs),
 }
 
 #[derive(Parser)]
+struct ConfigArgs {
+    #[command(subcommand)]
+    command: ConfigCommands,
+}
+
+#[derive(clap::Subcommand)]
+enum ConfigCommands {
+    #[command(about = "Initialize config with a mirror root path")]
+    Init(InitArgs),
+}
+
+#[derive(Parser)]
 struct InitArgs {
     #[arg(long)]
     root: PathBuf,
+}
+
+#[derive(Parser)]
+struct TargetArgs {
+    #[command(subcommand)]
+    command: TargetCommands,
+}
+
+#[derive(clap::Subcommand)]
+enum TargetCommands {
+    #[command(about = "Add a provider target to the config")]
+    Add(AddTargetArgs),
+    #[command(about = "List configured targets")]
+    List,
+    #[command(about = "Remove a target by id")]
+    Remove(RemoveTargetArgs),
 }
 
 #[derive(Parser)]
@@ -56,6 +80,26 @@ struct AddTargetArgs {
     scope: Vec<String>,
     #[arg(long)]
     host: Option<String>,
+    #[arg(long, value_delimiter = ',')]
+    label: Vec<String>,
+}
+
+#[derive(Parser)]
+struct RemoveTargetArgs {
+    #[arg(long)]
+    id: String,
+}
+
+#[derive(Parser)]
+struct TokenArgs {
+    #[command(subcommand)]
+    command: TokenCommands,
+}
+
+#[derive(clap::Subcommand)]
+enum TokenCommands {
+    #[command(about = "Store an auth token for a provider target")]
+    Set(SetTokenArgs),
 }
 
 #[derive(Parser)]
@@ -72,6 +116,8 @@ struct SetTokenArgs {
 
 #[derive(Parser)]
 struct SyncArgs {
+    #[arg(long)]
+    target_id: Option<String>,
     #[arg(long, value_enum)]
     provider: Option<ProviderKindValue>,
     #[arg(long)]
@@ -86,23 +132,6 @@ struct SyncArgs {
     config: Option<PathBuf>,
     #[arg(long)]
     cache: Option<PathBuf>,
-}
-
-#[derive(Parser)]
-struct MissingRemoteArgs {
-    #[arg(long)]
-    cache: PathBuf,
-    #[arg(long)]
-    root: PathBuf,
-    #[arg(
-        long,
-        help = "Path to newline-delimited repo ids from the remote provider"
-    )]
-    current: PathBuf,
-    #[arg(long)]
-    non_interactive: bool,
-    #[arg(long, value_enum, default_value = "prompt")]
-    missing_remote: MissingRemotePolicyValue,
 }
 
 #[derive(Parser)]
@@ -150,7 +179,7 @@ impl From<ProviderKindValue> for ProviderKind {
     }
 }
 
-#[derive(Clone, Copy, ValueEnum)]
+#[derive(Clone, Copy, ValueEnum, PartialEq, Eq)]
 enum MissingRemotePolicyValue {
     Prompt,
     Archive,
@@ -176,71 +205,153 @@ fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
     match cli.command {
-        Commands::Init(args) => handle_init(args),
-        Commands::AddTarget(args) => handle_add_target(args),
-        Commands::SetToken(args) => handle_set_token(args),
+        Commands::Config(args) => handle_config(args),
+        Commands::Target(args) => handle_target(args),
+        Commands::Token(args) => handle_token(args),
         Commands::Sync(args) => handle_sync(args),
-        Commands::MissingRemote(args) => handle_missing_remote(args),
         Commands::Daemon(args) => handle_daemon(args),
         Commands::Service(args) => handle_service(args),
     }
 }
 
+fn handle_config(args: ConfigArgs) -> anyhow::Result<()> {
+    match args.command {
+        ConfigCommands::Init(args) => handle_init(args),
+    }
+}
+
 fn handle_init(args: InitArgs) -> anyhow::Result<()> {
     let config_path = default_config_path()?;
-    let mut config = AppConfig::load(&config_path)?;
+    let (mut config, migrated) = load_or_migrate(&config_path)?;
     config.root = Some(args.root);
     config.save(&config_path)?;
-    println!("Config saved to {}", config_path.display());
+    if migrated {
+        println!("Config migrated and saved to {}", config_path.display());
+    } else {
+        println!("Config saved to {}", config_path.display());
+    }
     Ok(())
+}
+
+fn handle_target(args: TargetArgs) -> anyhow::Result<()> {
+    match args.command {
+        TargetCommands::Add(args) => handle_add_target(args),
+        TargetCommands::List => handle_list_targets(),
+        TargetCommands::Remove(args) => handle_remove_target(args),
+    }
 }
 
 fn handle_add_target(args: AddTargetArgs) -> anyhow::Result<()> {
     let config_path = default_config_path()?;
-    let mut config = AppConfig::load(&config_path)?;
+    let (mut config, migrated) = load_or_migrate(&config_path)?;
+    let provider: ProviderKind = args.provider.into();
+    let spec = spec_for(provider);
+    let scope = spec.parse_scope(args.scope)?;
 
-    let scope = ProviderScope::new(args.scope)?;
-    let target = ProviderTarget {
-        provider: args.provider.into(),
-        scope,
-        host: args.host,
-    };
+    let host = args.host.as_ref().map(|value| value.trim_end_matches('/').to_string());
+    let id = target_id(provider, host.as_deref(), &scope);
 
-    if config.targets.contains(&target) {
-        println!("Target already exists.");
+    if config.targets.iter().any(|target| target.id == id) {
+        println!("Target already exists: {id}");
         return Ok(());
     }
 
+    let target = TargetConfig {
+        id,
+        provider,
+        scope,
+        host,
+        labels: args.label,
+    };
+
     config.targets.push(target);
     config.save(&config_path)?;
-    println!("Target added to {}", config_path.display());
+    if migrated {
+        println!("Config migrated and target added to {}", config_path.display());
+    } else {
+        println!("Target added to {}", config_path.display());
+    }
     Ok(())
+}
+
+fn handle_list_targets() -> anyhow::Result<()> {
+    let config_path = default_config_path()?;
+    let (config, migrated) = load_or_migrate(&config_path)?;
+    if migrated {
+        config.save(&config_path)?;
+    }
+
+    if config.targets.is_empty() {
+        println!("No targets configured.");
+        return Ok(());
+    }
+
+    for target in config.targets {
+        let host = target.host.clone().unwrap_or_else(|| "(default)".to_string());
+        println!(
+            "{} | {} | {} | {}",
+            target.id,
+            target.provider.as_prefix(),
+            target.scope.segments().join("/"),
+            host
+        );
+    }
+    Ok(())
+}
+
+fn handle_remove_target(args: RemoveTargetArgs) -> anyhow::Result<()> {
+    let config_path = default_config_path()?;
+    let (mut config, migrated) = load_or_migrate(&config_path)?;
+    let before = config.targets.len();
+    config.targets.retain(|target| target.id != args.id);
+    let after = config.targets.len();
+    if before == after {
+        println!("No target found with id {}", args.id);
+        return Ok(());
+    }
+    config.save(&config_path)?;
+    if migrated {
+        println!("Config migrated and target removed from {}", config_path.display());
+    } else {
+        println!("Target removed from {}", config_path.display());
+    }
+    Ok(())
+}
+
+fn handle_token(args: TokenArgs) -> anyhow::Result<()> {
+    match args.command {
+        TokenCommands::Set(args) => handle_set_token(args),
+    }
 }
 
 fn handle_set_token(args: SetTokenArgs) -> anyhow::Result<()> {
     let provider: ProviderKind = args.provider.into();
-    let scope = ProviderScope::new(args.scope)?;
-    let host = args.host.unwrap_or_else(|| default_host(provider).to_string());
-    let account = account_key(provider, &host, &scope)?;
+    let spec = spec_for(provider);
+    let scope = spec.parse_scope(args.scope)?;
+    let host = host_or_default(args.host.as_deref(), spec.as_ref());
+    let account = spec.account_key(&host, &scope)?;
     auth::set_pat(&account, &args.token)?;
-    println!("Token stored for {}", account);
+    println!("Token stored for {account}");
     Ok(())
 }
 
 fn handle_sync(args: SyncArgs) -> anyhow::Result<()> {
-    let config_path = args.config.unwrap_or(default_config_path()?);
-    let cache_path = args.cache.unwrap_or(default_cache_path()?);
-    let config = AppConfig::load(&config_path)?;
-    let root = config
-        .root
-        .as_ref()
-        .context("config missing root; run init")?;
-
     if args.non_interactive && args.missing_remote == MissingRemotePolicyValue::Prompt {
         anyhow::bail!("non-interactive mode requires --missing-remote policy");
     }
 
-    let targets = select_targets(&config, args.provider, &args.scope)?;
+    let config_path = args.config.unwrap_or(default_config_path()?);
+    let cache_path = args.cache.unwrap_or(default_cache_path()?);
+    let (config, migrated) = load_or_migrate(&config_path)?;
+    if migrated {
+        config.save(&config_path)?;
+    }
+    let root = config
+        .root
+        .as_ref()
+        .context("config missing root; run config init")?;
+
+    let targets = select_targets(&config, args.target_id.as_deref(), args.provider, &args.scope)?;
     if targets.is_empty() {
         println!("No matching targets found.");
         return Ok(());
@@ -253,137 +364,64 @@ fn handle_sync(args: SyncArgs) -> anyhow::Result<()> {
         None
     };
 
+    let registry = ProviderRegistry::new();
     let repo_name = args.repo.clone();
+    let mut total = SyncSummary::default();
+
+    let target_count = targets.len();
     for target in targets {
-        let provider = provider_for(target.provider)?;
+        let provider = registry.provider(target.provider)?;
+        let runtime_target = ProviderTarget {
+            provider: target.provider,
+            scope: target.scope.clone(),
+            host: target.host.clone(),
+        };
         let repo_filter = repo_name.as_ref().map(|repo| {
             let repo = repo.clone();
             move |remote: &mirror_core::model::RemoteRepo| {
                 remote.name == repo || remote.id == repo
             }
         });
-        if let Some(filter) = repo_filter.as_ref() {
+
+        let summary = if let Some(filter) = repo_filter.as_ref() {
             run_sync_filtered(
                 provider.as_ref(),
-                &target,
+                &runtime_target,
                 root,
                 &cache_path,
                 policy,
                 decider,
                 Some(filter),
-            )?;
+            )?
         } else {
             run_sync_filtered(
                 provider.as_ref(),
-                &target,
+                &runtime_target,
                 root,
                 &cache_path,
                 policy,
                 decider,
                 None,
-            )?;
-        }
+            )?
+        };
+
+        print_summary(&target, summary);
+        accumulate_summary(&mut total, summary);
+    }
+
+    if target_count > 1 {
+        println!(
+            "Total: cloned={} fast_forwarded={} up_to_date={} dirty={} diverged={} failed={} ",
+            total.cloned,
+            total.fast_forwarded,
+            total.up_to_date,
+            total.dirty,
+            total.diverged,
+            total.failed
+        );
     }
 
     Ok(())
-}
-
-fn handle_missing_remote(args: MissingRemoteArgs) -> anyhow::Result<()> {
-    let cache = RepoCache::load(&args.cache).context("load cache")?;
-    let current_ids = load_current_ids(&args.current)?;
-    let missing = detect_deleted_repos(&cache, &current_ids);
-    if missing.is_empty() {
-        println!("No missing remote repos detected.");
-        return Ok(());
-    }
-
-    let policy: MissingRemotePolicy = args.missing_remote.into();
-    if args.non_interactive && policy == MissingRemotePolicy::Prompt {
-        anyhow::bail!("non-interactive mode requires --missing-remote policy");
-    }
-
-    for missing_repo in missing {
-        let entry = missing_repo.entry;
-        let action = decide_action(entry, policy, args.non_interactive)?;
-        match action {
-            DeletedRepoAction::Archive => {
-                let destination = archive_repo(
-                    &args.root,
-                    entry.provider.clone(),
-                    &entry.scope,
-                    &entry.name,
-                )?;
-                println!("Archived {} -> {}", entry.name, destination.display());
-            }
-            DeletedRepoAction::Remove => {
-                remove_repo(
-                    &args.root,
-                    entry.provider.clone(),
-                    &entry.scope,
-                    &entry.name,
-                )?;
-                println!("Removed {}", entry.name);
-            }
-            DeletedRepoAction::Skip => {
-                println!("Skipped {}", entry.name);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn decide_action(
-    entry: &RepoCacheEntry,
-    policy: MissingRemotePolicy,
-    non_interactive: bool,
-) -> anyhow::Result<DeletedRepoAction> {
-    if policy != MissingRemotePolicy::Prompt {
-        return Ok(map_policy(policy));
-    }
-    if non_interactive {
-        anyhow::bail!("non-interactive mode cannot prompt");
-    }
-    prompt_action(entry)
-}
-
-fn map_policy(policy: MissingRemotePolicy) -> DeletedRepoAction {
-    match policy {
-        MissingRemotePolicy::Prompt => DeletedRepoAction::Skip,
-        MissingRemotePolicy::Archive => DeletedRepoAction::Archive,
-        MissingRemotePolicy::Remove => DeletedRepoAction::Remove,
-        MissingRemotePolicy::Skip => DeletedRepoAction::Skip,
-    }
-}
-
-fn prompt_action(entry: &RepoCacheEntry) -> anyhow::Result<DeletedRepoAction> {
-    println!(
-        "Remote repo missing: {} (path: {}). Choose [a]rchive / [r]emove / [s]kip:",
-        entry.name, entry.path
-    );
-    loop {
-        print!("> ");
-        io::stdout().flush().ok();
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        match input.trim().to_lowercase().as_str() {
-            "a" | "archive" => return Ok(DeletedRepoAction::Archive),
-            "r" | "remove" => return Ok(DeletedRepoAction::Remove),
-            "s" | "skip" => return Ok(DeletedRepoAction::Skip),
-            _ => println!("Please enter a, r, or s."),
-        }
-    }
-}
-
-fn load_current_ids(path: &Path) -> anyhow::Result<HashSet<String>> {
-    let data = fs::read_to_string(path).context("read current repo ids")?;
-    let ids = data
-        .lines()
-        .map(|line| line.trim())
-        .filter(|line| !line.is_empty())
-        .map(str::to_string)
-        .collect::<HashSet<_>>();
-    Ok(ids)
 }
 
 fn handle_daemon(args: DaemonArgs) -> anyhow::Result<()> {
@@ -423,16 +461,25 @@ fn run_sync_job(
     cache_path: &Path,
     policy: MissingRemotePolicy,
 ) -> anyhow::Result<()> {
-    let config = AppConfig::load(config_path)?;
+    let (config, migrated) = load_or_migrate(config_path)?;
+    if migrated {
+        config.save(config_path)?;
+    }
     let root = config
         .root
         .as_ref()
-        .context("config missing root; run init")?;
+        .context("config missing root; run config init")?;
+    let registry = ProviderRegistry::new();
     for target in config.targets {
-        let provider = provider_for(target.provider)?;
-        run_sync_filtered(
+        let provider = registry.provider(target.provider)?;
+        let runtime_target = ProviderTarget {
+            provider: target.provider,
+            scope: target.scope.clone(),
+            host: target.host.clone(),
+        };
+        let _ = run_sync_filtered(
             provider.as_ref(),
-            &target,
+            &runtime_target,
             root,
             cache_path,
             policy,
@@ -444,66 +491,73 @@ fn run_sync_job(
 }
 
 fn select_targets(
-    config: &AppConfig,
+    config: &AppConfigV2,
+    target_id: Option<&str>,
     provider: Option<ProviderKindValue>,
     scope: &[String],
-) -> anyhow::Result<Vec<ProviderTarget>> {
+) -> anyhow::Result<Vec<TargetConfig>> {
     let mut targets = config.targets.clone();
-    if let Some(provider) = provider {
-        let provider: ProviderKind = provider.into();
-        targets.retain(|target| target.provider == provider);
+
+    if let Some(target_id) = target_id {
+        targets.retain(|target| target.id == target_id);
+        return Ok(targets);
+    }
+
+    let provider_kind = provider.map(ProviderKind::from);
+
+    if let Some(provider_kind) = provider_kind {
+        targets.retain(|target| target.provider == provider_kind);
     } else if !scope.is_empty() {
-        anyhow::bail!("--scope requires --provider");
+        anyhow::bail!("--scope requires --provider when selecting targets");
     }
 
     if !scope.is_empty() {
-        let scope = ProviderScope::new(scope.to_vec())?;
+        let provider_kind = provider_kind.context("provider required")?;
+        let spec = spec_for(provider_kind);
+        let scope = spec.parse_scope(scope.to_vec())?;
         targets.retain(|target| target.scope == scope);
     }
 
     Ok(targets)
 }
 
-fn provider_for(kind: ProviderKind) -> anyhow::Result<Box<dyn RepoProvider>> {
-    match kind {
-        ProviderKind::AzureDevOps => Ok(Box::new(AzureDevOpsProvider::new()?)),
-        ProviderKind::GitHub => Ok(Box::new(GitHubProvider::new()?)),
-        ProviderKind::GitLab => Ok(Box::new(GitLabProvider::new()?)),
+fn prompt_action(entry: &RepoCacheEntry) -> anyhow::Result<DeletedRepoAction> {
+    println!(
+        "Remote repo missing: {} (path: {}). Choose [a]rchive / [r]emove / [s]kip:",
+        entry.name, entry.path
+    );
+    loop {
+        print!("> ");
+        io::stdout().flush().ok();
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        match input.trim().to_lowercase().as_str() {
+            "a" | "archive" => return Ok(DeletedRepoAction::Archive),
+            "r" | "remove" => return Ok(DeletedRepoAction::Remove),
+            "s" | "skip" => return Ok(DeletedRepoAction::Skip),
+            _ => println!("Please enter a, r, or s."),
+        }
     }
 }
 
-fn default_host(provider: ProviderKind) -> &'static str {
-    match provider {
-        ProviderKind::AzureDevOps => "https://dev.azure.com",
-        ProviderKind::GitHub => "https://api.github.com",
-        ProviderKind::GitLab => "https://gitlab.com/api/v4",
-    }
+fn print_summary(target: &TargetConfig, summary: SyncSummary) {
+    println!(
+        "Target {}: cloned={} fast_forwarded={} up_to_date={} dirty={} diverged={} failed={}",
+        target.id,
+        summary.cloned,
+        summary.fast_forwarded,
+        summary.up_to_date,
+        summary.dirty,
+        summary.diverged,
+        summary.failed
+    );
 }
 
-fn account_key(
-    provider: ProviderKind,
-    host: &str,
-    scope: &ProviderScope,
-) -> anyhow::Result<String> {
-    let segments = scope.segments();
-    match provider {
-        ProviderKind::AzureDevOps => {
-            if segments.len() != 2 {
-                anyhow::bail!("azure devops scope requires org and project segments");
-            }
-            Ok(format!("azdo:{host}:{}", segments[0]))
-        }
-        ProviderKind::GitHub => {
-            if segments.len() != 1 {
-                anyhow::bail!("github scope requires a single org/user segment");
-            }
-            Ok(format!("github:{host}:{}", segments[0]))
-        }
-        ProviderKind::GitLab => {
-            if segments.is_empty() {
-                anyhow::bail!("gitlab scope requires at least one group segment");
-            }
-            Ok(format!("gitlab:{host}:{}", segments.join("/")))
-        }
-    }
+fn accumulate_summary(total: &mut SyncSummary, summary: SyncSummary) {
+    total.cloned += summary.cloned;
+    total.fast_forwarded += summary.fast_forwarded;
+    total.up_to_date += summary.up_to_date;
+    total.dirty += summary.dirty;
+    total.diverged += summary.diverged;
+    total.failed += summary.failed;
 }

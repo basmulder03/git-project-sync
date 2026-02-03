@@ -1,12 +1,12 @@
 use crate::auth;
 use crate::RepoProvider;
+use crate::spec::{GitHubSpec, host_or_default};
 use anyhow::Context;
 use mirror_core::model::{ProviderKind, ProviderScope, ProviderTarget, RemoteRepo, RepoAuth};
+use mirror_core::provider::ProviderSpec;
 use reqwest::blocking::Client;
 use serde::Deserialize;
 use tracing::info;
-
-const DEFAULT_HOST: &str = "https://api.github.com";
 
 pub struct GitHubProvider {
     client: Client,
@@ -17,19 +17,6 @@ impl GitHubProvider {
         Ok(Self {
             client: Client::new(),
         })
-    }
-
-    fn host_for(&self, target: &ProviderTarget) -> String {
-        target
-            .host
-            .clone()
-            .unwrap_or_else(|| DEFAULT_HOST.to_string())
-            .trim_end_matches('/')
-            .to_string()
-    }
-
-    fn account_key(&self, host: &str, org: &str) -> String {
-        format!("github:{host}:{org}")
     }
 
     fn parse_scope(scope: &ProviderScope) -> anyhow::Result<&str> {
@@ -50,9 +37,10 @@ impl RepoProvider for GitHubProvider {
         if target.provider != ProviderKind::GitHub {
             anyhow::bail!("invalid provider target for GitHub");
         }
-        let host = self.host_for(target);
+        let spec = GitHubSpec;
+        let host = host_or_default(target.host.as_deref(), &spec);
         let org = Self::parse_scope(&target.scope)?;
-        let account = self.account_key(&host, org);
+        let account = spec.account_key(&host, &target.scope)?;
         let token = auth::get_pat(&account)?;
 
         let mut page = 1;
@@ -98,9 +86,10 @@ impl RepoProvider for GitHubProvider {
     }
 
     fn validate_auth(&self, target: &ProviderTarget) -> anyhow::Result<()> {
-        let host = self.host_for(target);
-        let org = Self::parse_scope(&target.scope)?;
-        let account = self.account_key(&host, org);
+        let spec = GitHubSpec;
+        let host = host_or_default(target.host.as_deref(), &spec);
+        let _ = Self::parse_scope(&target.scope)?;
+        let account = spec.account_key(&host, &target.scope)?;
         let _ = auth::get_pat(&account)?;
         Ok(())
     }

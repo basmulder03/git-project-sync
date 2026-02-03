@@ -42,6 +42,32 @@
 - [x] Add provider scope examples and mirror folder layout
 - [x] Add daemon/service usage and troubleshooting notes
 
+## Milestone 17 — Terminal GUI: Config & Targets
+
+- [ ] Add a TUI for config initialization and root selection
+- [ ] Add a TUI for managing targets (add/list/remove) with scope validation
+- [ ] Add a TUI for token setup per provider/host/scope
+- [ ] Add tests for TUI state transitions and validation logic
+
+## Milestone 18 — Audit Logging & Operational Telemetry
+
+- [ ] Add structured audit log entries for startup, commands, sync runs, and errors
+- [ ] Persist audit logs to OS app data directory with rotation policy
+- [ ] Include audit IDs in CLI/TUI output for traceability
+- [ ] Add tests for audit log schema and write/rotation behavior
+
+## Milestone 19 — Terminal GUI: Service Installer
+
+- [ ] Add a TUI for install/uninstall with OS-specific status summaries
+- [ ] Provide clear confirmation prompts and error views for failures
+- [ ] Add tests for installer TUI state and error handling
+
+## Milestone 20 — Terminal GUI: Audit Log Viewer
+
+- [ ] Add a TUI for browsing audit logs with filters (time, command, status)
+- [ ] Include a failure-focused view with error details and remediation hints
+- [ ] Add tests for log parsing and filter behavior
+
 ## Notes / Decisions
 
 - Focus: architecture tidy (per user request).

@@ -40,6 +40,10 @@ impl AuditLogger {
         })
     }
 
+    pub fn base_dir(&self) -> &Path {
+        &self.base_dir
+    }
+
     pub fn record(
         &self,
         event: &str,

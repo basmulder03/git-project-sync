@@ -62,11 +62,11 @@
 - [x] Provide clear confirmation prompts and error views for failures
 - [x] Add tests for installer TUI state and error handling
 
-## Milestone 20 — Terminal GUI: Audit Log Viewer
+## Milestone 20 — Terminal GUI: Audit Log Viewer (completed)
 
-- [ ] Add a TUI for browsing audit logs with filters (time, command, status)
-- [ ] Include a failure-focused view with error details and remediation hints
-- [ ] Add tests for log parsing and filter behavior
+- [x] Add a TUI for browsing audit logs with filters (time, command, status)
+- [x] Include a failure-focused view with error details and remediation hints
+- [x] Add tests for log parsing and filter behavior
 
 ## Notes / Decisions
 

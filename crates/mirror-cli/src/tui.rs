@@ -77,6 +77,7 @@ enum View {
     TargetRemove,
     TokenSetup,
     Service,
+    AuditLog,
     Message,
 }
 
@@ -131,6 +132,7 @@ struct TuiApp {
     input_fields: Vec<InputField>,
     provider_index: usize,
     audit: AuditLogger,
+    audit_filter: AuditFilter,
 }
 
 impl TuiApp {
@@ -150,6 +152,7 @@ impl TuiApp {
             input_fields: Vec::new(),
             provider_index: 0,
             audit,
+            audit_filter: AuditFilter::All,
         })
     }
 
@@ -172,6 +175,7 @@ impl TuiApp {
             View::TargetRemove => self.draw_form(frame, layout[1], "Remove Target"),
             View::TokenSetup => self.draw_form(frame, layout[1], "Token Setup"),
             View::Service => self.draw_service(frame, layout[1]),
+            View::AuditLog => self.draw_audit_log(frame, layout[1]),
             View::Message => self.draw_message(frame, layout[1]),
         }
 
@@ -189,6 +193,7 @@ impl TuiApp {
                 "Tab: next field | Enter: submit | Esc: back".to_string()
             }
             View::Service => "i: install | u: uninstall | Esc: back".to_string(),
+            View::AuditLog => "f: failures | a: all | Esc: back".to_string(),
             View::Message => "Enter: back".to_string(),
         }
     }
@@ -199,6 +204,7 @@ impl TuiApp {
             "Targets",
             "Token Setup",
             "Service Installer",
+            "Audit Log Viewer",
             "Quit",
         ];
         let list_items: Vec<ListItem> = items
@@ -214,6 +220,21 @@ impl TuiApp {
             .collect();
         let list = List::new(list_items)
             .block(Block::default().borders(Borders::ALL).title("Main Menu"));
+        frame.render_widget(list, area);
+    }
+
+    fn draw_audit_log(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let log_path = self.audit_log_path();
+        let lines = match read_audit_lines(&log_path, self.audit_filter) {
+            Ok(lines) => lines,
+            Err(err) => vec![format!("Failed to read audit log: {err}")],
+        };
+        let list_items: Vec<ListItem> = lines
+            .into_iter()
+            .map(|line| ListItem::new(Line::from(Span::raw(line))))
+            .collect();
+        let list = List::new(list_items)
+            .block(Block::default().borders(Borders::ALL).title("Audit Log Viewer"));
         frame.render_widget(list, area);
     }
 
@@ -320,6 +341,7 @@ impl TuiApp {
             View::TargetRemove => self.handle_target_remove(key),
             View::TokenSetup => self.handle_token_setup(key),
             View::Service => self.handle_service(key),
+            View::AuditLog => self.handle_audit_log(key),
             View::Message => self.handle_message(key),
         }
     }
@@ -327,10 +349,10 @@ impl TuiApp {
     fn handle_main(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
         match key.code {
             KeyCode::Char('q') => return Ok(true),
-            KeyCode::Down => self.menu_index = (self.menu_index + 1) % 5,
+            KeyCode::Down => self.menu_index = (self.menu_index + 1) % 6,
             KeyCode::Up => {
                 if self.menu_index == 0 {
-                    self.menu_index = 4;
+                    self.menu_index = 5;
                 } else {
                     self.menu_index -= 1;
                 }
@@ -353,6 +375,7 @@ impl TuiApp {
                     self.provider_index = 0;
                 }
                 3 => self.view = View::Service,
+                4 => self.view = View::AuditLog,
                 _ => return Ok(true),
             },
             _ => {}
@@ -573,6 +596,20 @@ impl TuiApp {
         Ok(false)
     }
 
+    fn handle_audit_log(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
+        match key.code {
+            KeyCode::Esc => self.view = View::Main,
+            KeyCode::Char('f') => {
+                self.audit_filter = AuditFilter::Failures;
+            }
+            KeyCode::Char('a') => {
+                self.audit_filter = AuditFilter::All;
+            }
+            _ => {}
+        }
+        Ok(false)
+    }
+
     fn handle_service(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
         match key.code {
             KeyCode::Esc => self.view = View::Main,
@@ -652,6 +689,20 @@ impl TuiApp {
             _ => {}
         }
     }
+
+    fn audit_log_path(&self) -> std::path::PathBuf {
+        let base_dir = self.audit.base_dir();
+        let date = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::parse("[year][month][day]").unwrap())
+            .unwrap();
+        base_dir.join(format!("audit-{date}.jsonl"))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AuditFilter {
+    All,
+    Failures,
 }
 
 fn provider_kind(index: usize) -> ProviderKind {
@@ -688,6 +739,21 @@ fn split_labels(value: &str) -> Vec<String> {
         .collect()
 }
 
+fn read_audit_lines(path: &std::path::Path, filter: AuditFilter) -> anyhow::Result<Vec<String>> {
+    if !path.exists() {
+        return Ok(vec!["No audit log found for today.".to_string()]);
+    }
+    let contents = std::fs::read_to_string(path)?;
+    let mut lines = Vec::new();
+    for line in contents.lines().rev().take(100) {
+        if filter == AuditFilter::Failures && !line.contains("\"status\":\"failed\"") {
+            continue;
+        }
+        lines.push(line.to_string());
+    }
+    Ok(lines)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -713,15 +779,40 @@ mod tests {
             config_path: std::path::PathBuf::from("/tmp/config.json"),
             config: AppConfigV2::default(),
             view: View::Main,
-            menu_index: 4,
+            menu_index: 5,
             message: String::new(),
             input_index: 0,
             input_fields: Vec::new(),
             provider_index: 0,
             audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
+            audit_filter: AuditFilter::All,
         };
         let key = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
         app.handle_main(key).unwrap();
         assert_eq!(app.menu_index, 0);
+    }
+
+    #[test]
+    fn read_audit_lines_handles_missing_file() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("missing.jsonl");
+        let lines = read_audit_lines(&path, AuditFilter::All).unwrap();
+        assert_eq!(lines[0], "No audit log found for today.");
+    }
+
+    #[test]
+    fn read_audit_lines_filters_failures() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("audit.jsonl");
+        std::fs::write(
+            &path,
+            r#"{"status":"ok","event":"a"}
+{"status":"failed","event":"b"}
+"#,
+        )
+        .unwrap();
+        let lines = read_audit_lines(&path, AuditFilter::Failures).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains("\"status\":\"failed\""));
     }
 }

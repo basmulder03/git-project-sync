@@ -6,7 +6,7 @@ use crossterm::{
 };
 use mirror_core::audit::{AuditContext, AuditLogger, AuditStatus};
 use mirror_core::config::{default_config_path, load_or_migrate, target_id, AppConfigV2, TargetConfig};
-use mirror_core::model::{ProviderKind, ProviderScope};
+use mirror_core::model::ProviderKind;
 use mirror_providers::auth;
 use mirror_providers::spec::{host_or_default, spec_for};
 use ratatui::{
@@ -449,7 +449,8 @@ impl TuiApp {
                 let provider = provider_kind(self.provider_index);
                 let spec = spec_for(provider.clone());
                 let scope_raw = self.input_fields[0].value.trim();
-                let scope = spec.parse_scope(scope_raw.split_whitespace().map(|s| s.to_string()).collect())
+                let scope = spec
+                    .parse_scope(scope_raw.split_whitespace().map(|s| s.to_string()).collect())
                     .context("invalid scope")?;
                 let host = optional_text(&self.input_fields[1].value);
                 let labels = split_labels(&self.input_fields[2].value);
@@ -474,10 +475,11 @@ impl TuiApp {
                     self.view = View::Message;
                     return Ok(false);
                 }
+                let scope_label = scope.segments().join("/");
                 self.config.targets.push(TargetConfig {
                     id,
-                    provider,
-                    scope,
+                    provider: provider.clone(),
+                    scope: scope.clone(),
                     host,
                     labels,
                 });
@@ -488,7 +490,7 @@ impl TuiApp {
                     Some("tui"),
                     AuditContext {
                         provider: Some(provider.as_prefix().to_string()),
-                        scope: Some(scope.segments().join("/")),
+                        scope: Some(scope_label),
                         repo_id: Some(self.config.targets.last().unwrap().id.clone()),
                         path: None,
                     },

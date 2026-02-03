@@ -265,7 +265,7 @@ fn handle_config(args: ConfigArgs, audit: &AuditLogger) -> anyhow::Result<()> {
 }
 
 fn handle_init(args: InitArgs, audit: &AuditLogger) -> anyhow::Result<()> {
-    let result = (|| {
+    let result: anyhow::Result<()> = (|| {
         let config_path = default_config_path()?;
         let (mut config, migrated) = load_or_migrate(&config_path)?;
         config.root = Some(args.root);
@@ -308,7 +308,7 @@ fn handle_target(args: TargetArgs, audit: &AuditLogger) -> anyhow::Result<()> {
 }
 
 fn handle_add_target(args: AddTargetArgs, audit: &AuditLogger) -> anyhow::Result<()> {
-    let result = (|| {
+    let result: anyhow::Result<()> = (|| {
         let config_path = default_config_path()?;
         let (mut config, migrated) = load_or_migrate(&config_path)?;
         let provider: ProviderKind = args.provider.into();
@@ -338,7 +338,7 @@ fn handle_add_target(args: AddTargetArgs, audit: &AuditLogger) -> anyhow::Result
         }
 
         let target = TargetConfig {
-            id,
+            id: id.clone(),
             provider: provider.clone(),
             scope: scope.clone(),
             host,
@@ -382,7 +382,7 @@ fn handle_add_target(args: AddTargetArgs, audit: &AuditLogger) -> anyhow::Result
 }
 
 fn handle_list_targets(audit: &AuditLogger) -> anyhow::Result<()> {
-    let result = (|| {
+    let result: anyhow::Result<()> = (|| {
         let config_path = default_config_path()?;
         let (config, migrated) = load_or_migrate(&config_path)?;
         if migrated {
@@ -424,7 +424,7 @@ fn handle_list_targets(audit: &AuditLogger) -> anyhow::Result<()> {
 }
 
 fn handle_remove_target(args: RemoveTargetArgs, audit: &AuditLogger) -> anyhow::Result<()> {
-    let result = (|| {
+    let result: anyhow::Result<()> = (|| {
         let config_path = default_config_path()?;
         let (mut config, migrated) = load_or_migrate(&config_path)?;
         let before = config.targets.len();
@@ -478,7 +478,7 @@ fn handle_token(args: TokenArgs, audit: &AuditLogger) -> anyhow::Result<()> {
 }
 
 fn handle_set_token(args: SetTokenArgs, audit: &AuditLogger) -> anyhow::Result<()> {
-    let result = (|| {
+    let result: anyhow::Result<()> = (|| {
         let provider: ProviderKind = args.provider.into();
         let spec = spec_for(provider.clone());
         let scope = spec.parse_scope(args.scope)?;
@@ -516,7 +516,7 @@ fn handle_set_token(args: SetTokenArgs, audit: &AuditLogger) -> anyhow::Result<(
 }
 
 fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
-    let result = (|| {
+    let result: anyhow::Result<()> = (|| {
         if args.non_interactive && args.missing_remote == MissingRemotePolicyValue::Prompt {
             anyhow::bail!("non-interactive mode requires --missing-remote policy");
         }
@@ -682,7 +682,7 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
 }
 
 fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Result<()> {
-    let result = (|| {
+    let result: anyhow::Result<()> = (|| {
         let interval = std::time::Duration::from_secs(args.interval_seconds);
         let lock_path = match args.lock {
             Some(path) => path,
@@ -731,7 +731,7 @@ fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Result<()> {
 }
 
 fn handle_service(args: ServiceArgs, audit: &AuditLogger) -> anyhow::Result<()> {
-    let result = (|| {
+    let result: anyhow::Result<()> = (|| {
         let exe = std::env::current_exe().context("resolve current executable")?;
         match args.action {
             ServiceAction::Install => {
@@ -779,7 +779,7 @@ fn handle_service(args: ServiceArgs, audit: &AuditLogger) -> anyhow::Result<()> 
 }
 
 fn handle_health(args: HealthArgs, audit: &AuditLogger) -> anyhow::Result<()> {
-    let result = (|| {
+    let result: anyhow::Result<()> = (|| {
         let config_path = args.config.unwrap_or(default_config_path()?);
         let (config, migrated) = load_or_migrate(&config_path)?;
         if migrated {

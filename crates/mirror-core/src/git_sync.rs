@@ -158,22 +158,39 @@ fn detect_orphaned_branches(repo: &Repository) -> anyhow::Result<Vec<String>> {
         if name.is_empty() {
             continue;
         }
-        if let Ok(upstream) = branch.upstream() {
-            if let Ok(upstream_name) = upstream.name() {
-                if let Some(upstream_name) = upstream_name {
-                    if repo.find_reference(upstream_name).is_err() {
-                        warn!(
-                            branch = %name,
-                            upstream = %upstream_name,
-                            "local branch upstream missing on remote"
-                        );
-                        orphaned.push(name);
-                    }
-                }
+        if let Some(upstream_name) = upstream_ref_from_config(repo, &name)? {
+            if repo.find_reference(&upstream_name).is_err() {
+                warn!(
+                    branch = %name,
+                    upstream = %upstream_name,
+                    "local branch upstream missing on remote"
+                );
+                orphaned.push(name);
             }
         }
     }
     Ok(orphaned)
+}
+
+fn upstream_ref_from_config(repo: &Repository, branch_name: &str) -> anyhow::Result<Option<String>> {
+    let config = repo.config().context("open repo config")?;
+    let remote_key = format!("branch.{branch_name}.remote");
+    let merge_key = format!("branch.{branch_name}.merge");
+    let remote = match config.get_string(&remote_key) {
+        Ok(value) => value,
+        Err(_) => return Ok(None),
+    };
+    let merge = match config.get_string(&merge_key) {
+        Ok(value) => value,
+        Err(_) => return Ok(None),
+    };
+    if remote == "." {
+        return Ok(Some(merge));
+    }
+    let merged_branch = merge
+        .strip_prefix("refs/heads/")
+        .unwrap_or(merge.as_str());
+    Ok(Some(format!("refs/remotes/{remote}/{merged_branch}")))
 }
 
 fn create_local_branch(repo: &Repository, default_branch: &str, target: Oid) -> anyhow::Result<()> {
@@ -328,6 +345,7 @@ mod tests {
     fn detects_orphaned_local_branch() {
         let tmp = TempDir::new().unwrap();
         let repo = Repository::init(tmp.path()).unwrap();
+        repo.remote("origin", "https://example.com/repo.git").unwrap();
 
         let base = commit_file(&repo, "base.txt", "base", &[], Some("refs/heads/main"));
         repo.set_head("refs/heads/main").unwrap();

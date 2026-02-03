@@ -1456,6 +1456,7 @@ dependencies = [
  "mirror-core",
  "reqwest",
  "serde",
+ "serde_json",
  "tracing",
 ]
 

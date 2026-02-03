@@ -1,6 +1,8 @@
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
-use mirror_core::cache::RepoCacheEntry;
+use mirror_core::cache::{
+    RepoCacheEntry, backoff_until, update_target_failure, update_target_success,
+};
 use mirror_core::config::{
     AppConfigV2, TargetConfig, default_cache_path, default_config_path, default_lock_path,
     load_or_migrate, target_id,
@@ -13,6 +15,7 @@ use mirror_core::sync_engine::{SyncSummary, run_sync_filtered};
 use mirror_providers::auth;
 use mirror_providers::spec::{host_or_default, spec_for};
 use mirror_providers::ProviderRegistry;
+use tracing::warn;
 use reqwest::StatusCode;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -886,7 +889,29 @@ fn run_sync_job(
         .context("config missing root; run config init")?;
     let registry = ProviderRegistry::new();
     let day_bucket = current_day_bucket();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let cache_snapshot = mirror_core::cache::RepoCache::load(cache_path).unwrap_or_default();
+    let mut had_failure = false;
     for target in config.targets {
+        let target_key = target_id(
+            target.provider.clone(),
+            target.host.as_deref(),
+            &target.scope,
+        );
+        if let Some(until) = backoff_until(&cache_snapshot, &target_key) {
+            if until > now {
+                warn!(
+                    provider = %target.provider,
+                    scope = ?target.scope,
+                    until = until,
+                    "skipping target due to backoff"
+                );
+                continue;
+            }
+        }
         let provider_kind = target.provider.clone();
         let provider = registry.provider(provider_kind.clone())?;
         let runtime_target = ProviderTarget {
@@ -897,7 +922,7 @@ fn run_sync_job(
         let bucketed = |repo: &mirror_core::model::RemoteRepo| {
             !repo.archived && bucket_for_repo_id(&repo.id) == day_bucket
         };
-        let _ = run_sync_filtered(
+        let result = run_sync_filtered(
             provider.as_ref(),
             &runtime_target,
             root,
@@ -908,7 +933,25 @@ fn run_sync_job(
             true,
             false,
         )
-        .or_else(|err| map_azdo_error(&runtime_target, err))?;
+        .or_else(|err| map_azdo_error(&runtime_target, err));
+        match result {
+            Ok(_) => {
+                let _ = update_target_success(cache_path, &target_key, now);
+            }
+            Err(err) => {
+                had_failure = true;
+                let _ = update_target_failure(cache_path, &target_key, now);
+                warn!(
+                    provider = %runtime_target.provider,
+                    scope = ?runtime_target.scope,
+                    error = %err,
+                    "target sync failed"
+                );
+            }
+        }
+    }
+    if had_failure {
+        anyhow::bail!("one or more targets failed");
     }
     Ok(())
 }

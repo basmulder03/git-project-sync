@@ -19,3 +19,4 @@
 12) Remove a tracked upstream ref and re-run sync: verify it logs orphaned local branches.
 13) Run `sync` twice without `--refresh` and confirm it uses cached repo inventory; then run with `--refresh` to force a fresh provider listing.
 14) Verify archived/disabled repos are skipped by default; run `sync --include-archived` to include them.
+15) Trigger a failing target in daemon mode and confirm a backoff skip is logged on subsequent runs until the backoff window expires.

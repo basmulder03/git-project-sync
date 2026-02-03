@@ -92,11 +92,11 @@
 - [x] Skip archived/disabled repos by default; add `--include-archived`
 - [x] Add tests for metadata parsing and skip behavior
 
-## Milestone 25 — Robust Daemon Operation
+## Milestone 25 — Robust Daemon Operation (completed)
 
-- [ ] Add backoff strategy for repeated provider failures in daemon mode
-- [ ] Track per-target last-success timestamps in cache for monitoring
-- [ ] Add tests for backoff timing and last-success update logic
+- [x] Add backoff strategy for repeated provider failures in daemon mode
+- [x] Track per-target last-success timestamps in cache for monitoring
+- [x] Add tests for backoff timing and last-success update logic
 
 ## Notes / Decisions
 

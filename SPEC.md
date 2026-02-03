@@ -26,6 +26,7 @@
 - Token stored in OS keychain.
 - Audit logs stored as JSONL under OS data directory with size-based rotation.
 - Repo list cache has a short TTL; `--refresh` bypasses it.
+- Daemon applies per-target backoff on repeated failures and tracks last-success timestamps.
 - Auto-sync staggered over 7 days using stable hash bucketing.
 - Background daemon runs periodically; also provide run-once. Daemon syncs only the current day bucket.
 

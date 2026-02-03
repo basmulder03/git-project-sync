@@ -35,6 +35,7 @@ pub fn sync_repo(
 
     ensure_origin_remote(&repo, remote_url)?;
     fetch_origin(&repo, auth)?;
+    detect_orphaned_branches(&repo)?;
     fast_forward_default_branch(&repo, default_branch)
 }
 
@@ -93,9 +94,13 @@ fn fast_forward_default_branch(
     let local_ref = format!("refs/heads/{default_branch}");
     let remote_ref = format!("refs/remotes/origin/{default_branch}");
 
-    let remote_oid = repo
-        .refname_to_id(&remote_ref)
-        .with_context(|| format!("missing remote ref {remote_ref}"))?;
+    let remote_oid = match repo.refname_to_id(&remote_ref) {
+        Ok(oid) => oid,
+        Err(_) => {
+            warn!(remote_ref = %remote_ref, "default branch missing on remote; skipping");
+            return Ok(SyncOutcome::Diverged);
+        }
+    };
 
     let local_oid = match repo.refname_to_id(&local_ref) {
         Ok(oid) => oid,
@@ -142,6 +147,33 @@ fn fast_forward_default_branch(
         }
     }
     Ok(SyncOutcome::FastForwarded)
+}
+
+fn detect_orphaned_branches(repo: &Repository) -> anyhow::Result<Vec<String>> {
+    let mut orphaned = Vec::new();
+    let branches = repo.branches(Some(git2::BranchType::Local))?;
+    for branch in branches {
+        let (branch, _) = branch?;
+        let name = branch.name()?.unwrap_or("").to_string();
+        if name.is_empty() {
+            continue;
+        }
+        if let Ok(upstream) = branch.upstream() {
+            if let Ok(upstream_name) = upstream.name() {
+                if let Some(upstream_name) = upstream_name {
+                    if repo.find_reference(upstream_name).is_err() {
+                        warn!(
+                            branch = %name,
+                            upstream = %upstream_name,
+                            "local branch upstream missing on remote"
+                        );
+                        orphaned.push(name);
+                    }
+                }
+            }
+        }
+    }
+    Ok(orphaned)
 }
 
 fn create_local_branch(repo: &Repository, default_branch: &str, target: Oid) -> anyhow::Result<()> {
@@ -213,11 +245,11 @@ mod tests {
     }
 
     #[test]
-    fn missing_remote_ref_is_error() {
+    fn missing_remote_ref_is_skipped() {
         let tmp = TempDir::new().unwrap();
         let repo = Repository::init(tmp.path()).unwrap();
-        let err = fast_forward_default_branch(&repo, "main").unwrap_err();
-        assert!(err.to_string().contains("missing remote ref"));
+        let outcome = fast_forward_default_branch(&repo, "main").unwrap();
+        assert_eq!(outcome, SyncOutcome::Diverged);
     }
 
     #[test]
@@ -290,6 +322,30 @@ mod tests {
         assert!(repo.find_reference("refs/heads/develop").is_ok());
         let head = repo.head().unwrap();
         assert_eq!(head.shorthand(), Some("main"));
+    }
+
+    #[test]
+    fn detects_orphaned_local_branch() {
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::init(tmp.path()).unwrap();
+
+        let base = commit_file(&repo, "base.txt", "base", &[], Some("refs/heads/main"));
+        repo.set_head("refs/heads/main").unwrap();
+        let base_commit = repo.find_commit(base).unwrap();
+        repo.reference(
+            "refs/remotes/origin/main",
+            base_commit.id(),
+            true,
+            "remote main",
+        )
+        .unwrap();
+
+        let mut main = repo.find_branch("main", git2::BranchType::Local).unwrap();
+        main.set_upstream(Some("origin/main")).unwrap();
+
+        repo.find_reference("refs/remotes/origin/main").unwrap().delete().unwrap();
+        let orphaned = detect_orphaned_branches(&repo).unwrap();
+        assert_eq!(orphaned, vec!["main".to_string()]);
     }
 
     fn commit_file(

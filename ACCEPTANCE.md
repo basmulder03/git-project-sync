@@ -15,3 +15,5 @@
 8) For an existing repo with a missing or mismatched `origin` URL, rerun sync and verify origin is reset to the expected remote URL.
 9) Run any command (e.g., `sync`) and verify a new JSONL audit entry is appended under the OS data directory `audit/` folder, including failures when commands error.
 10) Run `health --provider <provider> --scope <scope>` and verify a success/failure message plus a new audit entry.
+11) Remove the remote default branch and re-run sync: verify it logs and skips without modifying the local branch.
+12) Remove a tracked upstream ref and re-run sync: verify it logs orphaned local branches.

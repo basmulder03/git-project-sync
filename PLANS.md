@@ -74,11 +74,11 @@
 - [x] Improve CLI error messages for missing scopes or invalid hosts with provider hints
 - [x] Add tests for auth failures and scope validation across providers
 
-## Milestone 22 — Sync Safety Edge Cases
+## Milestone 22 — Sync Safety Edge Cases (completed)
 
-- [ ] Handle missing default branch on remote (log and skip, no local changes)
-- [ ] Detect and log orphaned local branches after remote deletion
-- [ ] Add tests for missing default branch and orphaned branch detection
+- [x] Handle missing default branch on remote (log and skip, no local changes)
+- [x] Detect and log orphaned local branches after remote deletion
+- [x] Add tests for missing default branch and orphaned branch detection
 
 ## Milestone 23 — Repo Inventory Caching + Incremental Sync
 

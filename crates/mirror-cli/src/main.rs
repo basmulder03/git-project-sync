@@ -16,6 +16,7 @@ use reqwest::StatusCode;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use tracing_subscriber::EnvFilter;
+mod tui;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -38,6 +39,8 @@ enum Commands {
     Daemon(DaemonArgs),
     #[command(about = "Install or uninstall background service helpers (placeholder)")]
     Service(ServiceArgs),
+    #[command(about = "Launch terminal UI")]
+    Tui,
 }
 
 #[derive(Parser)]
@@ -213,6 +216,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Sync(args) => handle_sync(args),
         Commands::Daemon(args) => handle_daemon(args),
         Commands::Service(args) => handle_service(args),
+        Commands::Tui => tui::run_tui(),
     }
 }
 

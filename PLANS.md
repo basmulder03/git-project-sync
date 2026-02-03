@@ -42,12 +42,12 @@
 - [x] Add provider scope examples and mirror folder layout
 - [x] Add daemon/service usage and troubleshooting notes
 
-## Milestone 17 — Terminal GUI: Config & Targets
+## Milestone 17 — Terminal GUI: Config & Targets (completed)
 
-- [ ] Add a TUI for config initialization and root selection
-- [ ] Add a TUI for managing targets (add/list/remove) with scope validation
-- [ ] Add a TUI for token setup per provider/host/scope
-- [ ] Add tests for TUI state transitions and validation logic
+- [x] Add a TUI for config initialization and root selection
+- [x] Add a TUI for managing targets (add/list/remove) with scope validation
+- [x] Add a TUI for token setup per provider/host/scope
+- [x] Add tests for TUI state transitions and validation logic
 
 ## Milestone 18 — Audit Logging & Operational Telemetry
 

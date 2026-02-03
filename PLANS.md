@@ -128,6 +128,20 @@
 - [x] Prototype one provider flow (feature-flagged)
 - [x] Document security implications and fallback to PATs
 
+## Milestone 31 — AzDO OAuth Flow Completion (planned)
+
+- [ ] Extend AzDO provider with OAuth device-code flow endpoints and token exchange helpers
+- [ ] Add CLI command for AzDO OAuth login with clear scope/permission prompts
+- [ ] Persist AzDO OAuth tokens in keyring; add refresh/expiry handling
+- [ ] Add tests for device flow happy path and expiry/refresh behavior (mocked)
+
+## Milestone 32 — PAT Management Screens (planned)
+
+- [ ] Add TUI screens for PAT listing (per provider/host/scope) with last-verified status
+- [ ] Add TUI flow for setting/updating PATs with validation and guidance links
+- [ ] Add TUI flow to validate PATs against required scopes and show results
+- [ ] Add tests for PAT TUI state transitions and validation outcomes
+
 ## Notes / Decisions
 
 - Focus: architecture tidy (per user request).

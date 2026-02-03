@@ -11,6 +11,8 @@
 - If local exists:
   - If working tree clean: fetch and fast-forward default branch only.
   - If dirty or default branch diverged: do not modify working tree; log.
+  - If origin remote missing or mismatched: create/update origin to expected URL before fetch.
+  - If default branch name changes: create missing local branch and log.
 - If remote repo deleted:
   - Ask user: remove / archive / skip
   - Archive moves repo to archive root preserving provider/scope/repo layout.

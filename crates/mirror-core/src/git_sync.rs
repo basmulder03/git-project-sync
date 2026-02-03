@@ -33,7 +33,8 @@ pub fn sync_repo(
         return Ok(SyncOutcome::Dirty);
     }
 
-    fetch_origin(&repo, remote_url, auth)?;
+    ensure_origin_remote(&repo, remote_url)?;
+    fetch_origin(&repo, auth)?;
     fast_forward_default_branch(&repo, default_branch)
 }
 
@@ -57,17 +58,25 @@ fn is_working_tree_clean(repo: &Repository) -> anyhow::Result<bool> {
     Ok(statuses.is_empty())
 }
 
-fn fetch_origin(
-    repo: &Repository,
-    remote_url: &str,
-    auth: Option<&RepoAuth>,
-) -> anyhow::Result<()> {
-    let mut remote = match repo.find_remote("origin") {
-        Ok(remote) => remote,
-        Err(_) => repo
-            .remote("origin", remote_url)
-            .context("create origin remote")?,
-    };
+fn ensure_origin_remote(repo: &Repository, remote_url: &str) -> anyhow::Result<()> {
+    match repo.find_remote("origin") {
+        Ok(remote) => {
+            let current = remote.url().unwrap_or_default();
+            if current != remote_url {
+                repo.remote_set_url("origin", remote_url)
+                    .context("update origin remote url")?;
+            }
+        }
+        Err(_) => {
+            repo.remote("origin", remote_url)
+                .context("create origin remote")?;
+        }
+    }
+    Ok(())
+}
+
+fn fetch_origin(repo: &Repository, auth: Option<&RepoAuth>) -> anyhow::Result<()> {
+    let mut remote = repo.find_remote("origin").context("find origin remote")?;
     let mut fo = FetchOptions::new();
     fo.remote_callbacks(remote_callbacks(auth));
     info!("fetching origin");
@@ -91,6 +100,10 @@ fn fast_forward_default_branch(
     let local_oid = match repo.refname_to_id(&local_ref) {
         Ok(oid) => oid,
         Err(_) => {
+            warn!(
+                default_branch = %default_branch,
+                "default branch missing locally; creating local branch"
+            );
             create_local_branch(repo, default_branch, remote_oid)?;
             return Ok(SyncOutcome::FastForwarded);
         }
@@ -115,6 +128,18 @@ fn fast_forward_default_branch(
     update_branch_ref(repo, &local_ref, remote_oid)?;
     if is_head_on_default(repo, default_branch)? {
         checkout_head(repo)?;
+    } else if let Ok(head) = repo.head() {
+        if head.is_branch() {
+            if let Some(name) = head.shorthand() {
+                if name != default_branch {
+                    warn!(
+                        current = %name,
+                        new_default = %default_branch,
+                        "default branch differs from current HEAD"
+                    );
+                }
+            }
+        }
     }
     Ok(SyncOutcome::FastForwarded)
 }
@@ -224,6 +249,47 @@ mod tests {
 
         let outcome = fast_forward_default_branch(&repo, "main").unwrap();
         assert_eq!(outcome, SyncOutcome::Diverged);
+    }
+
+    #[test]
+    fn ensure_origin_updates_url() {
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::init(tmp.path()).unwrap();
+        repo.remote("origin", "https://example.com/old.git").unwrap();
+        ensure_origin_remote(&repo, "https://example.com/new.git").unwrap();
+        let remote = repo.find_remote("origin").unwrap();
+        assert_eq!(remote.url(), Some("https://example.com/new.git"));
+    }
+
+    #[test]
+    fn default_branch_change_creates_new_branch() {
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::init(tmp.path()).unwrap();
+
+        let base = commit_file(&repo, "base.txt", "base", &[], Some("refs/heads/main"));
+        repo.set_head("refs/heads/main").unwrap();
+        let base_commit = repo.find_commit(base).unwrap();
+
+        let remote = commit_file(
+            &repo,
+            "remote.txt",
+            "remote",
+            &[&base_commit],
+            Some("refs/remotes/origin/develop"),
+        );
+        repo.reference(
+            "refs/remotes/origin/develop",
+            remote,
+            true,
+            "remote develop",
+        )
+        .unwrap();
+
+        let outcome = fast_forward_default_branch(&repo, "develop").unwrap();
+        assert_eq!(outcome, SyncOutcome::FastForwarded);
+        assert!(repo.find_reference("refs/heads/develop").is_ok());
+        let head = repo.head().unwrap();
+        assert_eq!(head.shorthand(), Some("main"));
     }
 
     fn commit_file(

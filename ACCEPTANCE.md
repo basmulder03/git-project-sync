@@ -12,3 +12,4 @@
    - Linux: `service install` creates user systemd unit and enables it; `service uninstall` disables and removes it.
    - macOS: `service install` writes LaunchAgent and loads it; `service uninstall` unloads and removes it.
    - Windows: `service install` creates and starts the service; `service uninstall` stops and deletes it.
+8) For an existing repo with a missing or mismatched `origin` URL, rerun sync and verify origin is reset to the expected remote URL.

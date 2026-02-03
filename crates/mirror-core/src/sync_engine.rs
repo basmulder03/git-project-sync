@@ -19,6 +19,9 @@ pub struct SyncSummary {
     pub dirty: u32,
     pub diverged: u32,
     pub failed: u32,
+    pub missing_archived: u32,
+    pub missing_removed: u32,
+    pub missing_skipped: u32,
 }
 
 impl SyncSummary {
@@ -30,6 +33,12 @@ impl SyncSummary {
             SyncOutcome::Dirty => self.dirty += 1,
             SyncOutcome::Diverged => self.diverged += 1,
         }
+    }
+
+    fn record_missing(&mut self, missing: MissingSummary) {
+        self.missing_archived += missing.archived;
+        self.missing_removed += missing.removed;
+        self.missing_skipped += missing.skipped;
     }
 }
 
@@ -78,13 +87,14 @@ pub fn run_sync_filtered(
     let mut repos = provider.list_repos(target).context("list repos")?;
     if detect_missing {
         let current_ids: HashSet<String> = repos.iter().map(|repo| repo.id.clone()).collect();
-        handle_missing_repos(
+        let missing_summary = handle_missing_repos(
             &mut cache,
             root,
             &current_ids,
             missing_policy,
             missing_decider,
         )?;
+        summary.record_missing(missing_summary);
     }
     if let Some(filter) = repo_filter {
         repos.retain(|repo| filter(repo));
@@ -149,19 +159,27 @@ pub fn run_sync_filtered(
     Ok(summary)
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+struct MissingSummary {
+    archived: u32,
+    removed: u32,
+    skipped: u32,
+}
+
 fn handle_missing_repos(
     cache: &mut RepoCache,
     root: &Path,
     current_repo_ids: &HashSet<String>,
     policy: MissingRemotePolicy,
     decider: Option<&dyn Fn(&crate::cache::RepoCacheEntry) -> anyhow::Result<DeletedRepoAction>>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<MissingSummary> {
     let missing = detect_deleted_repos(cache, current_repo_ids);
     if missing.is_empty() {
-        return Ok(());
+        return Ok(MissingSummary::default());
     }
 
     let mut remove_ids: Vec<String> = Vec::new();
+    let mut summary = MissingSummary::default();
     for repo in missing {
         let action = resolve_action(repo.entry, policy, decider)?;
         match action {
@@ -180,6 +198,7 @@ fn handle_missing_repos(
                     "archived missing repo"
                 );
                 remove_ids.push(repo.repo_id.to_string());
+                summary.archived += 1;
             }
             DeletedRepoAction::Remove => {
                 remove_repo(
@@ -195,6 +214,7 @@ fn handle_missing_repos(
                     "removed missing repo"
                 );
                 remove_ids.push(repo.repo_id.to_string());
+                summary.removed += 1;
             }
             DeletedRepoAction::Skip => {
                 warn!(
@@ -203,6 +223,7 @@ fn handle_missing_repos(
                     repo_id = %repo.repo_id,
                     "skipped missing repo"
                 );
+                summary.skipped += 1;
             }
         }
     }
@@ -211,7 +232,7 @@ fn handle_missing_repos(
         cache.repos.remove(&repo_id);
     }
 
-    Ok(())
+    Ok(summary)
 }
 
 fn resolve_action(

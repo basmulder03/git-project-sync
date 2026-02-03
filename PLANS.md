@@ -28,12 +28,12 @@
 - [x] Normalize default branch handling across providers (explicit fallbacks if API omits)
 - [x] Add tests for GitHub/GitLab listing + pagination + scope validation
 
-## Milestone 15 — Sync Safety & Robustness
+## Milestone 15 — Sync Safety & Robustness (completed)
 
-- [ ] Handle missing origin remote explicitly (create or repair remote to expected URL)
-- [ ] Handle default-branch rename detection (if remote default changes)
-- [ ] Improve logging + summary for skipped repos (dirty, diverged, missing-remote)
-- [ ] Add tests for missing origin, default-branch change, and logging outcomes
+- [x] Handle missing origin remote explicitly (create or repair remote to expected URL)
+- [x] Handle default-branch rename detection (if remote default changes)
+- [x] Improve logging + summary for skipped repos (dirty, diverged, missing-remote)
+- [x] Add tests for missing origin, default-branch change, and logging outcomes
 
 ## Milestone 16 — Documentation & README
 

@@ -418,13 +418,16 @@ fn handle_sync(args: SyncArgs) -> anyhow::Result<()> {
 
     if target_count > 1 {
         println!(
-            "Total: cloned={} fast_forwarded={} up_to_date={} dirty={} diverged={} failed={} ",
+            "Total: cloned={} fast_forwarded={} up_to_date={} dirty={} diverged={} failed={} missing_archived={} missing_removed={} missing_skipped={}",
             total.cloned,
             total.fast_forwarded,
             total.up_to_date,
             total.dirty,
             total.diverged,
-            total.failed
+            total.failed,
+            total.missing_archived,
+            total.missing_removed,
+            total.missing_skipped
         );
     }
 
@@ -559,14 +562,17 @@ fn prompt_action(entry: &RepoCacheEntry) -> anyhow::Result<DeletedRepoAction> {
 
 fn print_summary(target: &TargetConfig, summary: SyncSummary) {
     println!(
-        "Target {}: cloned={} fast_forwarded={} up_to_date={} dirty={} diverged={} failed={}",
+        "Target {}: cloned={} fast_forwarded={} up_to_date={} dirty={} diverged={} failed={} missing_archived={} missing_removed={} missing_skipped={}",
         target.id,
         summary.cloned,
         summary.fast_forwarded,
         summary.up_to_date,
         summary.dirty,
         summary.diverged,
-        summary.failed
+        summary.failed,
+        summary.missing_archived,
+        summary.missing_removed,
+        summary.missing_skipped
     );
 }
 
@@ -577,6 +583,9 @@ fn accumulate_summary(total: &mut SyncSummary, summary: SyncSummary) {
     total.dirty += summary.dirty;
     total.diverged += summary.diverged;
     total.failed += summary.failed;
+    total.missing_archived += summary.missing_archived;
+    total.missing_removed += summary.missing_removed;
+    total.missing_skipped += summary.missing_skipped;
 }
 
 fn map_azdo_error(

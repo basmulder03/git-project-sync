@@ -98,11 +98,11 @@
 - [x] Track per-target last-success timestamps in cache for monitoring
 - [x] Add tests for backoff timing and last-success update logic
 
-## Milestone 26 — Provider Feature Depth (Webhooks + Limits)
+## Milestone 26 — Provider Feature Depth (Webhooks + Limits) (completed)
 
-- [ ] Add optional webhook registration per provider (where supported)
-- [ ] Add rate-limit awareness and retries (provider-specific backoff headers)
-- [ ] Add tests for rate-limit parsing and retry decisions (mocked)
+- [x] Add optional webhook registration per provider (where supported)
+- [x] Add rate-limit awareness and retries (provider-specific backoff headers)
+- [x] Add tests for rate-limit parsing and retry decisions (mocked)
 
 ## Milestone 27 — Sync Integrity Enhancements
 

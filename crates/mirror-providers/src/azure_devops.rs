@@ -9,6 +9,7 @@ use reqwest::blocking::Client;
 use reqwest::header::HeaderMap;
 use serde::Deserialize;
 use tracing::info;
+use crate::http::send_with_retry;
 
 pub struct AzureDevOpsProvider {
     client: Client,
@@ -84,14 +85,14 @@ impl RepoProvider for AzureDevOpsProvider {
         loop {
             let url = Self::build_repos_url(&host, org, project, continuation.as_deref())?;
             info!(org, project = ?project, "listing Azure DevOps repos");
-            let response = self
-                .client
-                .get(url)
-                .basic_auth("", Some(auth.token.as_str()))
-                .send()
-                .context("call Azure DevOps list repos")?
-                .error_for_status()
-                .context("Azure DevOps list repos status")?;
+            let builder = self
+            .client
+            .get(url)
+            .basic_auth("", Some(auth.token.as_str()));
+        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
+            .context("call Azure DevOps list repos")?
+            .error_for_status()
+            .context("Azure DevOps list repos status")?;
             let next = Self::continuation_token(response.headers());
             let payload: ReposResponse = response.json().context("decode repos response")?;
 
@@ -163,16 +164,25 @@ impl RepoProvider for AzureDevOpsProvider {
         let pat = auth::get_pat(&account)?;
 
         let url = Self::build_repos_url(&host, org, project, None)?;
-        let response = self
+        let builder = self
             .client
             .get(url)
-            .basic_auth("", Some(pat.as_str()))
-            .send()
+            .basic_auth("", Some(pat.as_str()));
+        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
             .context("call Azure DevOps health check")?
             .error_for_status()
             .context("Azure DevOps health check status")?;
         let _payload: ReposResponse = response.json().context("decode health response")?;
         Ok(())
+    }
+
+    fn register_webhook(
+        &self,
+        _target: &ProviderTarget,
+        _url: &str,
+        _secret: Option<&str>,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("Azure DevOps webhooks not supported yet");
     }
 }
 

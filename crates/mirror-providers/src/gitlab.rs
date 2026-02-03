@@ -8,6 +8,7 @@ use reqwest::blocking::Client;
 use reqwest::header::HeaderMap;
 use serde::Deserialize;
 use tracing::info;
+use crate::http::send_with_retry;
 
 pub struct GitLabProvider {
     client: Client,
@@ -69,11 +70,11 @@ impl RepoProvider for GitLabProvider {
             let url =
                 format!("{host}/groups/{group}/projects?per_page=100&page={page}");
             info!(group, page, "listing GitLab repos");
-            let response = self
+            let builder = self
                 .client
                 .get(url)
-                .header("PRIVATE-TOKEN", token.as_str())
-                .send()
+                .header("PRIVATE-TOKEN", token.as_str());
+            let response = send_with_retry(|| builder.try_clone().expect("clone request"))
                 .context("call GitLab list repos")?
                 .error_for_status()
                 .context("GitLab list repos status")?;
@@ -137,15 +138,47 @@ impl RepoProvider for GitLabProvider {
         let token = auth::get_pat(&account)?;
 
         let url = format!("{host}/groups/{group}/projects?per_page=1&page=1");
-        let response = self
+        let builder = self
             .client
             .get(url)
-            .header("PRIVATE-TOKEN", token.as_str())
-            .send()
+            .header("PRIVATE-TOKEN", token.as_str());
+        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
             .context("call GitLab health check")?
             .error_for_status()
             .context("GitLab health check status")?;
         let _payload: Vec<ProjectItem> = response.json().context("decode health response")?;
+        Ok(())
+    }
+
+    fn register_webhook(
+        &self,
+        target: &ProviderTarget,
+        url: &str,
+        secret: Option<&str>,
+    ) -> anyhow::Result<()> {
+        if target.provider != ProviderKind::GitLab {
+            anyhow::bail!("invalid provider target for GitLab");
+        }
+        let spec = GitLabSpec;
+        let host = host_or_default(target.host.as_deref(), &spec);
+        let group = Self::parse_scope(&target.scope)?;
+        let account = spec.account_key(&host, &target.scope)?;
+        let token = auth::get_pat(&account)?;
+
+        let endpoint = format!("{host}/groups/{group}/hooks");
+        let mut builder = self
+            .client
+            .post(endpoint)
+            .header("PRIVATE-TOKEN", token.as_str())
+            .form(&[("url", url), ("push_events", "true")]);
+        if let Some(secret) = secret {
+            builder = builder.form(&[("token", secret)]);
+        }
+        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
+            .context("call GitLab webhook register")?
+            .error_for_status()
+            .context("GitLab webhook register status")?;
+        let _ = response.text();
         Ok(())
     }
 }

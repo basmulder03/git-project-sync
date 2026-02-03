@@ -47,3 +47,4 @@
 - service install/uninstall (systemd user service, launchd agent, Windows service)
 - health check per target (validate auth + scope)
 - `--include-archived` to sync archived/disabled repos (skipped by default)
+- `webhook register` to configure provider webhooks where supported

@@ -8,6 +8,8 @@ use reqwest::blocking::Client;
 use reqwest::header::HeaderMap;
 use serde::Deserialize;
 use tracing::info;
+use crate::http::send_with_retry;
+use serde_json::json;
 
 pub struct GitHubProvider {
     client: Client,
@@ -85,12 +87,12 @@ impl RepoProvider for GitHubProvider {
         loop {
             let url = format!("{host}/orgs/{org}/repos?per_page=100&page={page}");
             info!(org, page, "listing GitHub repos");
-            let response = self
+            let builder = self
                 .client
                 .get(url)
                 .header("User-Agent", "git-project-sync")
-                .bearer_auth(token.as_str())
-                .send()
+                .bearer_auth(token.as_str());
+            let response = send_with_retry(|| builder.try_clone().expect("clone request"))
                 .context("call GitHub list repos")?
                 .error_for_status()
                 .context("GitHub list repos status")?;
@@ -153,16 +155,60 @@ impl RepoProvider for GitHubProvider {
         let token = auth::get_pat(&account)?;
 
         let url = format!("{host}/orgs/{org}/repos?per_page=1&page=1");
-        let response = self
+        let builder = self
             .client
             .get(url)
             .header("User-Agent", "git-project-sync")
-            .bearer_auth(token.as_str())
-            .send()
+            .bearer_auth(token.as_str());
+        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
             .context("call GitHub health check")?
             .error_for_status()
             .context("GitHub health check status")?;
         let _payload: Vec<RepoItem> = response.json().context("decode health response")?;
+        Ok(())
+    }
+
+    fn register_webhook(
+        &self,
+        target: &ProviderTarget,
+        url: &str,
+        secret: Option<&str>,
+    ) -> anyhow::Result<()> {
+        if target.provider != ProviderKind::GitHub {
+            anyhow::bail!("invalid provider target for GitHub");
+        }
+        let spec = GitHubSpec;
+        let host = host_or_default(target.host.as_deref(), &spec);
+        let org = Self::parse_scope(&target.scope)?;
+        let account = spec.account_key(&host, &target.scope)?;
+        let token = auth::get_pat(&account)?;
+
+        let mut config = json!({
+            "url": url,
+            "content_type": "json",
+        });
+        if let Some(secret) = secret {
+            config["secret"] = json!(secret);
+        }
+        let body = json!({
+            "name": "web",
+            "active": true,
+            "events": ["push"],
+            "config": config,
+        });
+
+        let endpoint = format!("{host}/orgs/{org}/hooks");
+        let builder = self
+            .client
+            .post(endpoint)
+            .header("User-Agent", "git-project-sync")
+            .bearer_auth(token.as_str())
+            .json(&body);
+        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
+            .context("call GitHub webhook register")?
+            .error_for_status()
+            .context("GitHub webhook register status")?;
+        let _ = response.text();
         Ok(())
     }
 }

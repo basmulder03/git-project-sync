@@ -1,4 +1,5 @@
 use crate::model::{ProviderKind, ProviderScope, ProviderTarget, RemoteRepo};
+use anyhow::bail;
 
 pub trait RepoProvider {
     fn kind(&self) -> ProviderKind;
@@ -9,6 +10,14 @@ pub trait RepoProvider {
     }
     fn auth_for_target(&self, _target: &ProviderTarget) -> anyhow::Result<Option<crate::model::RepoAuth>> {
         Ok(None)
+    }
+    fn register_webhook(
+        &self,
+        _target: &ProviderTarget,
+        _url: &str,
+        _secret: Option<&str>,
+    ) -> anyhow::Result<()> {
+        bail!("webhook registration not supported for this provider");
     }
 
     fn get_repo(

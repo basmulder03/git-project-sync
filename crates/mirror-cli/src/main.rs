@@ -45,6 +45,8 @@ enum Commands {
     Service(ServiceArgs),
     #[command(about = "Validate provider auth and scope")]
     Health(HealthArgs),
+    #[command(about = "Manage webhooks")]
+    Webhook(WebhookArgs),
     #[command(about = "Launch terminal UI")]
     Tui,
 }
@@ -172,6 +174,32 @@ struct ServiceArgs {
 }
 
 #[derive(Parser)]
+struct WebhookArgs {
+    #[command(subcommand)]
+    command: WebhookCommands,
+}
+
+#[derive(clap::Subcommand)]
+enum WebhookCommands {
+    #[command(about = "Register a webhook for a provider target")]
+    Register(WebhookRegisterArgs),
+}
+
+#[derive(Parser)]
+struct WebhookRegisterArgs {
+    #[arg(long, value_enum)]
+    provider: ProviderKindValue,
+    #[arg(long, required = true)]
+    scope: Vec<String>,
+    #[arg(long)]
+    host: Option<String>,
+    #[arg(long)]
+    url: String,
+    #[arg(long)]
+    secret: Option<String>,
+}
+
+#[derive(Parser)]
 struct HealthArgs {
     #[arg(long)]
     target_id: Option<String>,
@@ -242,6 +270,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Daemon(args) => handle_daemon(args, &audit),
         Commands::Service(args) => handle_service(args, &audit),
         Commands::Health(args) => handle_health(args, &audit),
+        Commands::Webhook(args) => handle_webhook(args, &audit),
         Commands::Tui => tui::run_tui(&audit),
     };
 
@@ -871,6 +900,64 @@ fn handle_health(args: HealthArgs, audit: &AuditLogger) -> anyhow::Result<()> {
         );
     }
 
+    result
+}
+
+fn handle_webhook(args: WebhookArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    match args.command {
+        WebhookCommands::Register(args) => handle_webhook_register(args, audit),
+    }
+}
+
+fn handle_webhook_register(args: WebhookRegisterArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = (|| {
+        let provider: ProviderKind = args.provider.into();
+        let spec = spec_for(provider.clone());
+        let scope = spec.parse_scope(args.scope)?;
+        let host = args.host.as_ref().map(|value| value.trim_end_matches('/').to_string());
+        let runtime_target = ProviderTarget {
+            provider: provider.clone(),
+            scope: scope.clone(),
+            host: host.clone(),
+        };
+
+        let registry = ProviderRegistry::new();
+        let adapter = registry.provider(provider.clone())?;
+        adapter
+            .register_webhook(&runtime_target, &args.url, args.secret.as_deref())
+            .or_else(|err| map_provider_error(&runtime_target, err))?;
+
+        println!(
+            "Webhook registered for {} {}",
+            provider.as_prefix(),
+            scope.segments().join("/")
+        );
+        let audit_id = audit.record_with_context(
+            "webhook.register",
+            AuditStatus::Ok,
+            Some("webhook.register"),
+            AuditContext {
+                provider: Some(provider.as_prefix().to_string()),
+                scope: Some(scope.segments().join("/")),
+                repo_id: None,
+                path: None,
+            },
+            None,
+            None,
+        )?;
+        println!("Audit ID: {audit_id}");
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "webhook.register",
+            AuditStatus::Failed,
+            Some("webhook.register"),
+            None,
+            Some(&err.to_string()),
+        );
+    }
     result
 }
 

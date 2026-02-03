@@ -98,6 +98,36 @@
 - [x] Track per-target last-success timestamps in cache for monitoring
 - [x] Add tests for backoff timing and last-success update logic
 
+## Milestone 26 — Provider Feature Depth (Webhooks + Limits)
+
+- [ ] Add optional webhook registration per provider (where supported)
+- [ ] Add rate-limit awareness and retries (provider-specific backoff headers)
+- [ ] Add tests for rate-limit parsing and retry decisions (mocked)
+
+## Milestone 27 — Sync Integrity Enhancements
+
+- [ ] Add optional verify pass (compare remote HEAD OIDs vs local) in clean repos
+- [ ] Detect and log ref mismatches beyond default branch (no auto-fix)
+- [ ] Add tests for verify logic and mismatch logging
+
+## Milestone 28 — Cache/State Management Hardening
+
+- [ ] Introduce cache schema versioning and migration path
+- [ ] Add cache prune command to remove stale target entries
+- [ ] Add tests for cache migrations and prune behavior
+
+## Milestone 29 — Token Provisioning Helpers
+
+- [ ] Add CLI helpers to guide users through PAT creation (provider-specific URLs and scopes)
+- [ ] Add validation checks to confirm required scopes are present (where API allows)
+- [ ] Add tests for scope guidance and validation logic (mocked)
+
+## Milestone 30 — OAuth / Device Flow Exploration
+
+- [ ] Research provider-supported OAuth/device flows as PAT alternatives
+- [ ] Prototype one provider flow (feature-flagged)
+- [ ] Document security implications and fallback to PATs
+
 ## Notes / Decisions
 
 - Focus: architecture tidy (per user request).

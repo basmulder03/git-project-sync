@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 pub fn repo_path(
     root: &Path,
-    provider: ProviderKind,
+    provider: &ProviderKind,
     scope: &ProviderScope,
     repo: &str,
 ) -> PathBuf {
@@ -26,7 +26,7 @@ mod tests {
         let scope = ProviderScope::new(vec!["org".into(), "project".into()]).unwrap();
         let path = repo_path(
             Path::new("D:\\root"),
-            ProviderKind::AzureDevOps,
+            &ProviderKind::AzureDevOps,
             &scope,
             "repo",
         );

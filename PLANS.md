@@ -26,10 +26,10 @@
 
 ## Milestone 4 — Cache + deleted remote handling
 
-- [ ] Cache seen repo IDs + metadata
-- [ ] Detect deleted remote repos
-- [ ] Prompt archive/remove/skip (CLI + interactive)
-- [ ] Implement archive move
+- [x] Cache seen repo IDs + metadata
+- [x] Detect deleted remote repos
+- [x] Prompt archive/remove/skip (CLI + interactive)
+- [x] Implement archive move
 
 ## Milestone 5 — Scheduler + daemon
 
@@ -46,3 +46,4 @@
 
 - Token storage: keyring; fallback disabled unless explicitly configured.
 - Git implementation: start with git2; shelling out to git can be added later if needed.
+- Missing-remote CLI uses newline-delimited repo ids as the "current" provider set.

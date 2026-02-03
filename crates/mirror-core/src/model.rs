@@ -1,6 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ProviderScope {
     segments: Vec<String>,
 }
@@ -18,7 +19,7 @@ impl ProviderScope {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum ProviderKind {
     AzureDevOps,
     GitHub,
@@ -41,14 +42,14 @@ impl fmt::Display for ProviderKind {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ProviderTarget {
     pub provider: ProviderKind,
     pub scope: ProviderScope,
     pub host: Option<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RemoteRepo {
     pub id: String,
     pub name: String,
@@ -59,7 +60,7 @@ pub struct RemoteRepo {
     pub auth: Option<RepoAuth>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RepoAuth {
     pub username: String,
     pub token: String,

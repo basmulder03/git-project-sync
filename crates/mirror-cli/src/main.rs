@@ -7,6 +7,7 @@ use mirror_core::config::{
 };
 use mirror_core::deleted::{DeletedRepoAction, MissingRemotePolicy};
 use mirror_core::model::{ProviderKind, ProviderTarget};
+use mirror_core::scheduler::{bucket_for_repo_id, current_day_bucket};
 use mirror_core::sync_engine::{SyncSummary, run_sync_filtered};
 use mirror_providers::auth;
 use mirror_providers::spec::{host_or_default, spec_for};
@@ -392,6 +393,7 @@ fn handle_sync(args: SyncArgs) -> anyhow::Result<()> {
                 policy,
                 decider,
                 Some(filter),
+                false,
             )?
         } else {
             run_sync_filtered(
@@ -402,6 +404,7 @@ fn handle_sync(args: SyncArgs) -> anyhow::Result<()> {
                 policy,
                 decider,
                 None,
+                true,
             )?
         };
 
@@ -470,12 +473,16 @@ fn run_sync_job(
         .as_ref()
         .context("config missing root; run config init")?;
     let registry = ProviderRegistry::new();
+    let day_bucket = current_day_bucket();
     for target in config.targets {
         let provider = registry.provider(target.provider)?;
         let runtime_target = ProviderTarget {
             provider: target.provider,
             scope: target.scope.clone(),
             host: target.host.clone(),
+        };
+        let bucketed = |repo: &mirror_core::model::RemoteRepo| {
+            bucket_for_repo_id(&repo.id) == day_bucket
         };
         let _ = run_sync_filtered(
             provider.as_ref(),
@@ -484,7 +491,8 @@ fn run_sync_job(
             cache_path,
             policy,
             None,
-            None,
+            Some(&bucketed),
+            true,
         )?;
     }
     Ok(())

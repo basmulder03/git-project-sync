@@ -3,6 +3,7 @@
 ## Core behavior
 
 - Target = provider + scope (scope varies by provider).
+- Scope shapes: Azure DevOps <org>/<project>; GitHub <org-or-user>; GitLab <group>/<subgroup>/... (one or more segments).
 
 - Root folder configured. Each provider and scope gets its own directory; each repo under it.
 - For every configured target, list remote repos.
@@ -20,7 +21,7 @@
 - Cache repo inventory and last sync timestamps in AppData equivalents (non-sensitive).
 - Token stored in OS keychain.
 - Auto-sync staggered over 7 days using stable hash bucketing.
-- Background daemon runs periodically; also provide run-once.
+- Background daemon runs periodically; also provide run-once. Daemon syncs only the current day bucket.
 
 ## Providers
 
@@ -35,4 +36,4 @@
 - token set per provider/host
 - target add/list/remove
 - sync all / sync target / sync repo
-- non-interactive mode and missing-remote policy flags
+- non-interactive mode and missing-remote policy flags (archive/remove/skip)

@@ -49,6 +49,7 @@ pub fn run_sync(
         missing_policy,
         missing_decider,
         None,
+        true,
     )
 }
 
@@ -60,6 +61,7 @@ pub fn run_sync_filtered(
     missing_policy: MissingRemotePolicy,
     missing_decider: Option<&dyn Fn(&crate::cache::RepoCacheEntry) -> anyhow::Result<DeletedRepoAction>>,
     repo_filter: Option<&dyn Fn(&RemoteRepo) -> bool>,
+    detect_missing: bool,
 ) -> anyhow::Result<SyncSummary> {
     provider
         .validate_auth(target)
@@ -74,7 +76,7 @@ pub fn run_sync_filtered(
     );
 
     let mut repos = provider.list_repos(target).context("list repos")?;
-    if repo_filter.is_none() {
+    if detect_missing {
         let current_ids: HashSet<String> = repos.iter().map(|repo| repo.id.clone()).collect();
         handle_missing_repos(
             &mut cache,

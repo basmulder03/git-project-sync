@@ -20,6 +20,7 @@ Build a Rust tool that mirrors repositories from multiple Git providers (Azure D
   - Store tokens securely (OS keychain via `keyring`).
 - Scheduler:
   - Auto-update staggered across 7 days (hash-bucket by repo ID).
+  - Daemon syncs only the current day bucket.
 - CLI:
   - Manual refresh for provider/target/project/repo.
   - `--non-interactive` and policy flags for missing remotes.
@@ -42,7 +43,7 @@ Default local mirror layout MUST include provider prefix to avoid collisions:
 <root>/
   azure-devops/<org>/<project>/<repo>/
   github/<org>/<repo>/
-  gitlab/<group>/<repo>/
+  gitlab/<group>/<subgroup>/.../<repo>/
   _archive/...
 
 ## Engineering conventions

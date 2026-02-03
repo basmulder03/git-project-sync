@@ -72,3 +72,4 @@
 - Token storage: keyring; fallback disabled unless explicitly configured.
 - Git implementation: start with git2; shelling out to git can be added later if needed.
 - Missing-remote CLI uses newline-delimited repo ids as the "current" provider set.
+- When only 1-2 milestones remain unchecked, add new milestones to keep the plan rolling forward.

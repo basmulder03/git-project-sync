@@ -142,6 +142,20 @@
 - [ ] Add TUI flow to validate PATs against required scopes and show results
 - [ ] Add tests for PAT TUI state transitions and validation outcomes
 
+## Milestone 33 — OAuth GA Hardening (planned)
+
+- [ ] Add provider capability gating (feature flags by provider + host)
+- [ ] Implement robust token refresh + revocation handling across supported providers
+- [ ] Add audit logging for OAuth events (device start, approval, token refresh, revoke)
+- [ ] Add tests for refresh/revoke failure handling and audit entries
+
+## Milestone 34 — OAuth GA UX + Docs (planned)
+
+- [ ] Update CLI/TUI copy for OAuth GA (warnings, fallbacks, retries, timeouts)
+- [ ] Add troubleshooting docs for OAuth flows (common errors + recovery steps)
+- [ ] Add acceptance criteria updates for OAuth GA
+- [ ] Add end-to-end manual test checklist for OAuth login flows
+
 ## Notes / Decisions
 
 - Focus: architecture tidy (per user request).

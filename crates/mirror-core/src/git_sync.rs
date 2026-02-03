@@ -173,7 +173,8 @@ fn remote_callbacks(auth: Option<&RepoAuth>) -> RemoteCallbacks<'static> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use git2::Repository;
+    use git2::{Commit, Repository, Signature};
+    use std::path::Path;
     use tempfile::TempDir;
 
     #[test]
@@ -184,5 +185,55 @@ mod tests {
 
         std::fs::write(tmp.path().join("file.txt"), "data").unwrap();
         assert!(!is_working_tree_clean(&repo).unwrap());
+    }
+
+    #[test]
+    fn missing_remote_ref_is_error() {
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::init(tmp.path()).unwrap();
+        let err = fast_forward_default_branch(&repo, "main").unwrap_err();
+        assert!(err.to_string().contains("missing remote ref"));
+    }
+
+    #[test]
+    fn diverged_default_branch_returns_diverged() {
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::init(tmp.path()).unwrap();
+
+        let base = commit_file(&repo, "base.txt", "base", &[]);
+        let base_commit = repo.find_commit(base).unwrap();
+
+        let local = commit_file(&repo, "local.txt", "local", &[&base_commit]);
+        let remote = commit_file(&repo, "remote.txt", "remote", &[&base_commit]);
+
+        repo.reference("refs/heads/main", local, true, "local main")
+            .unwrap();
+        repo.reference(
+            "refs/remotes/origin/main",
+            remote,
+            true,
+            "remote main",
+        )
+        .unwrap();
+
+        let outcome = fast_forward_default_branch(&repo, "main").unwrap();
+        assert_eq!(outcome, SyncOutcome::Diverged);
+    }
+
+    fn commit_file(
+        repo: &Repository,
+        name: &str,
+        contents: &str,
+        parents: &[&Commit<'_>],
+    ) -> Oid {
+        let workdir = repo.workdir().unwrap();
+        std::fs::write(workdir.join(name), contents).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(name)).unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = Signature::now("tester", "tester@example.com").unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "commit", &tree, parents)
+            .unwrap()
     }
 }

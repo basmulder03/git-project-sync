@@ -3,7 +3,7 @@
 ## Milestone 0 — Repo scaffolding
 
 - [x] Create Rust workspace + crates
- - [x] Add basic CI commands (fmt, clippy, test)
+- [x] Add basic CI commands (fmt, clippy, test)
 
 ## Milestone 1 — Core contracts (provider-agnostic)
 
@@ -39,33 +39,39 @@
 
 ## Milestone 6 — More providers
 
-- [ ] GitHub adapter
-- [ ] GitLab adapter
+- [x] GitHub adapter
+- [x] GitLab adapter
 
 ## Milestone 7 — Core sync pipeline
 
-- [ ] Wire provider listing + cache update + git sync into a core engine loop
-- [ ] Integrate missing-remote policy handling into the engine
-- [ ] Record last sync timestamps in cache
+- [x] Wire provider listing + cache update + git sync into a core engine loop
+- [x] Integrate missing-remote policy handling into the engine
+- [x] Record last sync timestamps in cache
 
 ## Milestone 8 — CLI wiring
 
-- [ ] Add config model + load/save (AppData path)
-- [ ] Add commands: init/configure root, add target, set token
-- [ ] Add sync commands: sync all / sync target / sync repo
-- [ ] Add non-interactive policy flags for missing remotes on sync
+- [x] Add config model + load/save (AppData path)
+- [x] Add commands: init/configure root, add target, set token
+- [x] Add sync commands: sync all / sync target / sync repo
+- [x] Add non-interactive policy flags for missing remotes on sync
 
 ## Milestone 9 — Background integration
 
-- [ ] Connect daemon runner to core sync pipeline
-- [ ] Add run-once CLI using real sync job (not placeholder)
-- [ ] Design for service install/uninstall (systemd/launchd/Windows)
+- [x] Connect daemon runner to core sync pipeline
+- [x] Add run-once CLI using real sync job (not placeholder)
+- [x] Design for service install/uninstall (systemd/launchd/Windows)
 
 ## Milestone 10 — Hardening
 
-- [ ] Add structured logging fields (provider, scope, repo_id, path) across sync flows
-- [ ] Add more unit tests for edge cases (diverged branch, missing remote ref)
-- [ ] Improve errors and user-facing messages
+- [x] Add structured logging fields (provider, scope, repo_id, path) across sync flows
+- [x] Add more unit tests for edge cases (diverged branch, missing remote ref)
+- [x] Improve errors and user-facing messages
+
+## Milestone 11 — Service Install Helpers
+
+- [ ] Implement systemd user service install/uninstall
+- [ ] Implement launchd agent install/uninstall
+- [ ] Implement Windows service install/uninstall
 
 ## Notes / Decisions
 

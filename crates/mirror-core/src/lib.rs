@@ -1,7 +1,9 @@
 pub mod archive;
 pub mod cache;
+pub mod daemon;
 pub mod deleted;
 pub mod git_sync;
+pub mod lockfile;
 pub mod model;
 pub mod paths;
 pub mod scheduler;

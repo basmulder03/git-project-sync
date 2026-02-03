@@ -20,6 +20,8 @@ struct Cli {
 enum Commands {
     #[command(about = "Handle missing-remote repos using cache and a current repo id list")]
     MissingRemote(MissingRemoteArgs),
+    #[command(about = "Run the daemon loop (placeholder sync job)")]
+    Daemon(DaemonArgs),
 }
 
 #[derive(Parser)]
@@ -37,6 +39,16 @@ struct MissingRemoteArgs {
     non_interactive: bool,
     #[arg(long, value_enum, default_value = "prompt")]
     missing_remote: MissingRemotePolicyValue,
+}
+
+#[derive(Parser)]
+struct DaemonArgs {
+    #[arg(long)]
+    lock: PathBuf,
+    #[arg(long, default_value = "3600")]
+    interval_seconds: u64,
+    #[arg(long)]
+    run_once: bool,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -66,6 +78,7 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::MissingRemote(args) => handle_missing_remote(args),
+        Commands::Daemon(args) => handle_daemon(args),
     }
 }
 
@@ -156,4 +169,17 @@ fn load_current_ids(path: &Path) -> anyhow::Result<HashSet<String>> {
         .map(str::to_string)
         .collect::<HashSet<_>>();
     Ok(ids)
+}
+
+fn handle_daemon(args: DaemonArgs) -> anyhow::Result<()> {
+    let interval = std::time::Duration::from_secs(args.interval_seconds);
+    let job = || {
+        println!("daemon tick");
+        Ok(())
+    };
+    if args.run_once {
+        mirror_core::daemon::run_once_with_lock(&args.lock, job)?;
+        return Ok(());
+    }
+    mirror_core::daemon::run_daemon(&args.lock, interval, job)
 }

@@ -33,9 +33,9 @@
 
 ## Milestone 5 — Scheduler + daemon
 
-- [ ] Stagger buckets (hash(repo_id) % 7)
-- [ ] run-once + daemon loop
-- [ ] Lock file to prevent concurrent runs
+- [x] Stagger buckets (hash(repo_id) % 7)
+- [x] run-once + daemon loop
+- [x] Lock file to prevent concurrent runs
 
 ## Milestone 6 — More providers
 

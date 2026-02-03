@@ -139,6 +139,18 @@ impl RepoProvider for AzureDevOpsProvider {
         Ok(())
     }
 
+    fn auth_for_target(&self, target: &ProviderTarget) -> anyhow::Result<Option<RepoAuth>> {
+        let spec = AzureDevOpsSpec;
+        let host = host_or_default(target.host.as_deref(), &spec);
+        let _ = Self::parse_scope(&target.scope)?;
+        let account = spec.account_key(&host, &target.scope)?;
+        let pat = auth::get_pat(&account)?;
+        Ok(Some(RepoAuth {
+            username: "pat".to_string(),
+            token: pat,
+        }))
+    }
+
     fn health_check(&self, target: &ProviderTarget) -> anyhow::Result<()> {
         if target.provider != ProviderKind::AzureDevOps {
             anyhow::bail!("invalid provider target for Azure DevOps");

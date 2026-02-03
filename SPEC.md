@@ -25,6 +25,7 @@
 - Cache repo inventory and last sync timestamps in AppData equivalents (non-sensitive).
 - Token stored in OS keychain.
 - Audit logs stored as JSONL under OS data directory with size-based rotation.
+- Repo list cache has a short TTL; `--refresh` bypasses it.
 - Auto-sync staggered over 7 days using stable hash bucketing.
 - Background daemon runs periodically; also provide run-once. Daemon syncs only the current day bucket.
 

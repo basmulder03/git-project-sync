@@ -1,5 +1,6 @@
 use crate::archive::{archive_repo, remove_repo};
-use crate::cache::RepoCache;
+use crate::cache::{RepoCache, RepoInventoryEntry, RepoInventoryRepo};
+use crate::config::target_id;
 use crate::deleted::{DeletedRepoAction, MissingRemotePolicy, detect_deleted_repos};
 use crate::git_sync::{SyncOutcome, sync_repo};
 use crate::paths::repo_path;
@@ -59,6 +60,7 @@ pub fn run_sync(
         missing_decider,
         None,
         true,
+        false,
     )
 }
 
@@ -71,6 +73,7 @@ pub fn run_sync_filtered(
     missing_decider: Option<&dyn Fn(&crate::cache::RepoCacheEntry) -> anyhow::Result<DeletedRepoAction>>,
     repo_filter: Option<&dyn Fn(&RemoteRepo) -> bool>,
     detect_missing: bool,
+    refresh: bool,
 ) -> anyhow::Result<SyncSummary> {
     provider
         .validate_auth(target)
@@ -84,8 +87,8 @@ pub fn run_sync_filtered(
         "starting sync for target"
     );
 
-    let mut repos = provider.list_repos(target).context("list repos")?;
-    if detect_missing {
+    let (mut repos, used_cache) = load_repos_with_cache(provider, target, &mut cache, refresh)?;
+    if detect_missing && !used_cache {
         let current_ids: HashSet<String> = repos.iter().map(|repo| repo.id.clone()).collect();
         let missing_summary = handle_missing_repos(
             &mut cache,
@@ -157,6 +160,65 @@ pub fn run_sync_filtered(
 
     cache.save(cache_path).context("save cache")?;
     Ok(summary)
+}
+
+fn load_repos_with_cache(
+    provider: &dyn RepoProvider,
+    target: &ProviderTarget,
+    cache: &mut RepoCache,
+    refresh: bool,
+) -> anyhow::Result<(Vec<RemoteRepo>, bool)> {
+    let target_key = target_id(
+        target.provider.clone(),
+        target.host.as_deref(),
+        &target.scope,
+    );
+    let now = current_timestamp_secs();
+    if !refresh {
+        if let Some(entry) = cache.repo_inventory.get(&target_key) {
+            if cache_is_valid(entry, now) {
+                let auth = provider.auth_for_target(target)?;
+                let repos = entry
+                    .repos
+                    .iter()
+                    .cloned()
+                    .map(|repo| RemoteRepo {
+                        id: repo.id,
+                        name: repo.name,
+                        clone_url: repo.clone_url,
+                        default_branch: repo.default_branch,
+                        provider: repo.provider,
+                        scope: repo.scope,
+                        auth: auth.clone(),
+                    })
+                    .collect();
+                return Ok((repos, true));
+            }
+        }
+    }
+
+    let repos = provider.list_repos(target).context("list repos")?;
+    let inventory = RepoInventoryEntry {
+        fetched_at: now,
+        repos: repos
+            .iter()
+            .map(|repo| RepoInventoryRepo {
+                id: repo.id.clone(),
+                name: repo.name.clone(),
+                clone_url: repo.clone_url.clone(),
+                default_branch: repo.default_branch.clone(),
+                provider: repo.provider.clone(),
+                scope: repo.scope.clone(),
+            })
+            .collect(),
+    };
+    cache.repo_inventory.insert(target_key, inventory);
+    Ok((repos, false))
+}
+
+fn cache_is_valid(entry: &RepoInventoryEntry, now: u64) -> bool {
+    const TTL_SECS: u64 = 15 * 60;
+    now.saturating_sub(entry.fetched_at) <= TTL_SECS
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -263,4 +325,26 @@ fn current_timestamp() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
     since_epoch.as_secs().to_string()
+}
+
+fn current_timestamp_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_is_valid_within_ttl() {
+        let entry = RepoInventoryEntry {
+            fetched_at: 100,
+            repos: Vec::new(),
+        };
+        assert!(cache_is_valid(&entry, 100 + 60));
+        assert!(!cache_is_valid(&entry, 100 + 16 * 60));
+    }
 }

@@ -8,6 +8,8 @@ use std::path::Path;
 pub struct RepoCache {
     pub last_sync: HashMap<String, String>,
     pub repos: HashMap<String, RepoCacheEntry>,
+    #[serde(default)]
+    pub repo_inventory: HashMap<String, RepoInventoryEntry>,
 }
 
 impl RepoCache {
@@ -57,6 +59,22 @@ pub struct RepoCacheEntry {
     pub path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RepoInventoryEntry {
+    pub fetched_at: u64,
+    pub repos: Vec<RepoInventoryRepo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RepoInventoryRepo {
+    pub id: String,
+    pub name: String,
+    pub clone_url: String,
+    pub default_branch: String,
+    pub provider: ProviderKind,
+    pub scope: ProviderScope,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -70,6 +88,20 @@ mod tests {
         cache
             .last_sync
             .insert("repo-1".into(), "2025-01-01T00:00:00Z".into());
+        cache.repo_inventory.insert(
+            "target-1".into(),
+            RepoInventoryEntry {
+                fetched_at: 1,
+                repos: vec![RepoInventoryRepo {
+                    id: "repo-1".into(),
+                    name: "Repo One".into(),
+                    clone_url: "https://example.com/repo.git".into(),
+                    default_branch: "main".into(),
+                    provider: ProviderKind::AzureDevOps,
+                    scope: ProviderScope::new(vec!["org".into(), "project".into()]).unwrap(),
+                }],
+            },
+        );
         cache.record_repo(
             "repo-1".into(),
             "Repo One".into(),

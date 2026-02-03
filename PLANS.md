@@ -80,11 +80,11 @@
 - [x] Detect and log orphaned local branches after remote deletion
 - [x] Add tests for missing default branch and orphaned branch detection
 
-## Milestone 23 — Repo Inventory Caching + Incremental Sync
+## Milestone 23 — Repo Inventory Caching + Incremental Sync (completed)
 
-- [ ] Cache remote repo lists per target with TTL to reduce API calls
-- [ ] Add `--refresh` to bypass repo list cache per target/provider
-- [ ] Add tests for cache read/write and TTL invalidation
+- [x] Cache remote repo lists per target with TTL to reduce API calls
+- [x] Add `--refresh` to bypass repo list cache per target/provider
+- [x] Add tests for cache read/write and TTL invalidation
 
 ## Milestone 24 — Provider Feature Parity (Metadata)
 

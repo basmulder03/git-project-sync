@@ -133,6 +133,8 @@ struct SyncArgs {
     #[arg(long)]
     repo: Option<String>,
     #[arg(long)]
+    refresh: bool,
+    #[arg(long)]
     non_interactive: bool,
     #[arg(long, value_enum, default_value = "prompt")]
     missing_remote: MissingRemotePolicyValue,
@@ -567,30 +569,32 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
             });
 
             let summary = if let Some(filter) = repo_filter.as_ref() {
-                run_sync_filtered(
-                    provider.as_ref(),
-                    &runtime_target,
-                    root,
-                    &cache_path,
-                    policy,
-                    decider,
-                    Some(filter),
-                    false,
-                )
-                .or_else(|err| map_azdo_error(&runtime_target, err))?
-            } else {
-                run_sync_filtered(
-                    provider.as_ref(),
-                    &runtime_target,
-                    root,
-                    &cache_path,
-                    policy,
-                    decider,
-                    None,
-                    true,
-                )
-                .or_else(|err| map_azdo_error(&runtime_target, err))?
-            };
+            run_sync_filtered(
+                provider.as_ref(),
+                &runtime_target,
+                root,
+                &cache_path,
+                policy,
+                decider,
+                Some(filter),
+                false,
+                args.refresh,
+            )
+            .or_else(|err| map_azdo_error(&runtime_target, err))?
+        } else {
+            run_sync_filtered(
+                provider.as_ref(),
+                &runtime_target,
+                root,
+                &cache_path,
+                policy,
+                decider,
+                None,
+                true,
+                args.refresh,
+            )
+            .or_else(|err| map_azdo_error(&runtime_target, err))?
+        };
 
             print_summary(&target, summary);
             let details = serde_json::json!({
@@ -896,6 +900,7 @@ fn run_sync_job(
             None,
             Some(&bucketed),
             true,
+            false,
         )
         .or_else(|err| map_azdo_error(&runtime_target, err))?;
     }

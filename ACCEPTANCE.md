@@ -17,3 +17,4 @@
 10) Run `health --provider <provider> --scope <scope>` and verify a success/failure message plus a new audit entry.
 11) Remove the remote default branch and re-run sync: verify it logs and skips without modifying the local branch.
 12) Remove a tracked upstream ref and re-run sync: verify it logs orphaned local branches.
+13) Run `sync` twice without `--refresh` and confirm it uses cached repo inventory; then run with `--refresh` to force a fresh provider listing.

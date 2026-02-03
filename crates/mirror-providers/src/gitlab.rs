@@ -113,6 +113,18 @@ impl RepoProvider for GitLabProvider {
         Ok(())
     }
 
+    fn auth_for_target(&self, target: &ProviderTarget) -> anyhow::Result<Option<RepoAuth>> {
+        let spec = GitLabSpec;
+        let host = host_or_default(target.host.as_deref(), &spec);
+        let _ = Self::parse_scope(&target.scope)?;
+        let account = spec.account_key(&host, &target.scope)?;
+        let token = auth::get_pat(&account)?;
+        Ok(Some(RepoAuth {
+            username: "pat".to_string(),
+            token,
+        }))
+    }
+
     fn health_check(&self, target: &ProviderTarget) -> anyhow::Result<()> {
         if target.provider != ProviderKind::GitLab {
             anyhow::bail!("invalid provider target for GitLab");

@@ -1,6 +1,6 @@
 # PLANS.md
 
-## Milestone 12 — Architecture cleanup (current session)
+## Milestone 12 — Architecture cleanup (completed)
 
 - [x] Add provider spec registry to centralize host/scope/account logic
 - [x] Refactor sync engine into plan/execute flow with summary reporting
@@ -23,3 +23,4 @@
 - Service install helpers: deferred to later milestone.
 - Token storage: keyring; fallback disabled unless explicitly configured.
 - Git implementation: git2; shelling out to git can be added later if needed.
+- Docs alignment: spec-first, concise edits only.

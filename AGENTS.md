@@ -2,7 +2,7 @@
 
 ## Goal
 
-Build a Rust tool that mirrors repositories from multiple Git providers (Azure DevOps, GitHub, GitLab, …) into a configured root folder, keeping local repos up to date safely, with caching + staggered auto-sync. Providers must be implemented via an adapter pattern so the core engine stays provider-agnostic.
+Build a Rust tool that mirrors repositories from multiple Git providers (Azure DevOps, GitHub, GitLab, …) into a configured root folder, keeping local repos up to date safely, with caching + staggered auto-sync. Providers must be implemented via an adapter pattern so the core engine stays provider-agnostic. A “target” is `provider + scope`.
 
 ## Non-negotiables
 

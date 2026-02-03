@@ -2,12 +2,14 @@
 
 ## Core behavior
 
+- Target = provider + scope (scope varies by provider).
+
 - Root folder configured. Each provider and scope gets its own directory; each repo under it.
-- For every configured target (provider + scope), list remote repos.
+- For every configured target, list remote repos.
 - If local repo missing: clone.
 - If local exists:
   - If working tree clean: fetch and fast-forward default branch only.
-  - If dirty or diverged: do not modify working tree; log.
+  - If dirty or default branch diverged: do not modify working tree; log.
 - If remote repo deleted:
   - Ask user: remove / archive / skip
   - Archive moves repo to archive root preserving provider/scope/repo layout.
@@ -15,7 +17,7 @@
 
 ## Caching & scheduling
 
-- Cache repo inventory and last sync timestamps in AppData (non-sensitive).
+- Cache repo inventory and last sync timestamps in AppData equivalents (non-sensitive).
 - Token stored in OS keychain.
 - Auto-sync staggered over 7 days using stable hash bucketing.
 - Background daemon runs periodically; also provide run-once.

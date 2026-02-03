@@ -15,12 +15,12 @@
 - [x] Implement launchd agent install/uninstall
 - [x] Implement Windows service install/uninstall
 
-## Milestone 13 — Azure DevOps Depth
+## Milestone 13 — Azure DevOps Depth (completed)
 
-- [ ] Implement AzDO pagination and continuation tokens for repo listing
-- [ ] Support project-scoped vs org-scoped listing (confirm and document scope behavior)
-- [ ] Add AzDO-specific error handling for auth failures (401/403) and not-found scopes
-- [ ] Add tests for AzDO pagination + scope parsing + auth failure mapping
+- [x] Implement AzDO pagination and continuation tokens for repo listing
+- [x] Support project-scoped vs org-scoped listing (confirm and document scope behavior)
+- [x] Add AzDO-specific error handling for auth failures (401/403) and not-found scopes
+- [x] Add tests for AzDO pagination + scope parsing + auth failure mapping
 
 ## Milestone 14 — Provider Parity (GitHub/GitLab)
 

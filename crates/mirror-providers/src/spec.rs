@@ -23,15 +23,16 @@ impl ProviderSpec for AzureDevOpsSpec {
     }
 
     fn parse_scope(&self, segments: Vec<String>) -> anyhow::Result<ProviderScope> {
-        if segments.len() != 2 {
-            anyhow::bail!("azure devops scope requires org and project segments");
+        if segments.len() != 1 && segments.len() != 2 {
+            anyhow::bail!("azure devops scope requires org or org/project segments");
         }
         ProviderScope::new(segments)
     }
 
     fn validate_scope(&self, scope: &ProviderScope) -> anyhow::Result<()> {
-        if scope.segments().len() != 2 {
-            anyhow::bail!("azure devops scope requires org and project segments");
+        let len = scope.segments().len();
+        if len != 1 && len != 2 {
+            anyhow::bail!("azure devops scope requires org or org/project segments");
         }
         Ok(())
     }
@@ -114,23 +115,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn azure_devops_scope_requires_two_segments() {
+    fn azure_devops_scope_allows_org_or_project() {
         let spec = AzureDevOpsSpec;
-        assert!(spec.parse_scope(vec![\"org\".into()]).is_err());
-        assert!(spec.parse_scope(vec![\"org\".into(), \"proj\".into()]).is_ok());
+        assert!(spec.parse_scope(vec!["org".into()]).is_ok());
+        assert!(spec.parse_scope(vec!["org".into(), "proj".into()]).is_ok());
+        assert!(spec.parse_scope(vec![]).is_err());
     }
 
     #[test]
     fn github_scope_requires_one_segment() {
         let spec = GitHubSpec;
         assert!(spec.parse_scope(vec![]).is_err());
-        assert!(spec.parse_scope(vec![\"org\".into()]).is_ok());
+        assert!(spec.parse_scope(vec!["org".into()]).is_ok());
     }
 
     #[test]
     fn gitlab_scope_requires_at_least_one_segment() {
         let spec = GitLabSpec;
         assert!(spec.parse_scope(vec![]).is_err());
-        assert!(spec.parse_scope(vec![\"group\".into(), \"sub\".into()]).is_ok());
+        assert!(spec.parse_scope(vec!["group".into(), "sub".into()]).is_ok());
     }
 }

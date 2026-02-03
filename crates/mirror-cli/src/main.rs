@@ -6,12 +6,13 @@ use mirror_core::config::{
     load_or_migrate, target_id,
 };
 use mirror_core::deleted::{DeletedRepoAction, MissingRemotePolicy};
-use mirror_core::model::{ProviderKind, ProviderTarget};
+use mirror_core::model::{ProviderKind, ProviderScope, ProviderTarget};
 use mirror_core::scheduler::{bucket_for_repo_id, current_day_bucket};
 use mirror_core::sync_engine::{SyncSummary, run_sync_filtered};
 use mirror_providers::auth;
 use mirror_providers::spec::{host_or_default, spec_for};
 use mirror_providers::ProviderRegistry;
+use reqwest::StatusCode;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use tracing_subscriber::EnvFilter;
@@ -246,11 +247,11 @@ fn handle_add_target(args: AddTargetArgs) -> anyhow::Result<()> {
     let config_path = default_config_path()?;
     let (mut config, migrated) = load_or_migrate(&config_path)?;
     let provider: ProviderKind = args.provider.into();
-    let spec = spec_for(provider);
+    let spec = spec_for(provider.clone());
     let scope = spec.parse_scope(args.scope)?;
 
     let host = args.host.as_ref().map(|value| value.trim_end_matches('/').to_string());
-    let id = target_id(provider, host.as_deref(), &scope);
+    let id = target_id(provider.clone(), host.as_deref(), &scope);
 
     if config.targets.iter().any(|target| target.id == id) {
         println!("Target already exists: {id}");
@@ -371,9 +372,10 @@ fn handle_sync(args: SyncArgs) -> anyhow::Result<()> {
 
     let target_count = targets.len();
     for target in targets {
-        let provider = registry.provider(target.provider)?;
+        let provider_kind = target.provider.clone();
+        let provider = registry.provider(provider_kind.clone())?;
         let runtime_target = ProviderTarget {
-            provider: target.provider,
+            provider: provider_kind,
             scope: target.scope.clone(),
             host: target.host.clone(),
         };
@@ -394,7 +396,8 @@ fn handle_sync(args: SyncArgs) -> anyhow::Result<()> {
                 decider,
                 Some(filter),
                 false,
-            )?
+            )
+            .or_else(|err| map_azdo_error(&runtime_target, err))?
         } else {
             run_sync_filtered(
                 provider.as_ref(),
@@ -405,7 +408,8 @@ fn handle_sync(args: SyncArgs) -> anyhow::Result<()> {
                 decider,
                 None,
                 true,
-            )?
+            )
+            .or_else(|err| map_azdo_error(&runtime_target, err))?
         };
 
         print_summary(&target, summary);
@@ -478,9 +482,10 @@ fn run_sync_job(
     let registry = ProviderRegistry::new();
     let day_bucket = current_day_bucket();
     for target in config.targets {
-        let provider = registry.provider(target.provider)?;
+        let provider_kind = target.provider.clone();
+        let provider = registry.provider(provider_kind.clone())?;
         let runtime_target = ProviderTarget {
-            provider: target.provider,
+            provider: provider_kind,
             scope: target.scope.clone(),
             host: target.host.clone(),
         };
@@ -496,7 +501,8 @@ fn run_sync_job(
             None,
             Some(&bucketed),
             true,
-        )?;
+        )
+        .or_else(|err| map_azdo_error(&runtime_target, err))?;
     }
     Ok(())
 }
@@ -516,14 +522,14 @@ fn select_targets(
 
     let provider_kind = provider.map(ProviderKind::from);
 
-    if let Some(provider_kind) = provider_kind {
-        targets.retain(|target| target.provider == provider_kind);
+    if let Some(provider_kind) = provider_kind.as_ref() {
+        targets.retain(|target| target.provider == *provider_kind);
     } else if !scope.is_empty() {
         anyhow::bail!("--scope requires --provider when selecting targets");
     }
 
     if !scope.is_empty() {
-        let provider_kind = provider_kind.context("provider required")?;
+        let provider_kind = provider_kind.clone().context("provider required")?;
         let spec = spec_for(provider_kind);
         let scope = spec.parse_scope(scope.to_vec())?;
         targets.retain(|target| target.scope == scope);
@@ -571,4 +577,68 @@ fn accumulate_summary(total: &mut SyncSummary, summary: SyncSummary) {
     total.dirty += summary.dirty;
     total.diverged += summary.diverged;
     total.failed += summary.failed;
+}
+
+fn map_azdo_error(
+    target: &ProviderTarget,
+    err: anyhow::Error,
+) -> anyhow::Result<SyncSummary> {
+    if target.provider == ProviderKind::AzureDevOps {
+        if let Some(reqwest_err) = err.downcast_ref::<reqwest::Error>() {
+            if let Some(status) = reqwest_err.status() {
+                if let Some(message) = azdo_message_for_status(target, status) {
+                    return Err(anyhow::anyhow!(message));
+                }
+            }
+        }
+    }
+    Err(err)
+}
+
+fn azdo_message_for_status(
+    target: &ProviderTarget,
+    status: StatusCode,
+) -> Option<String> {
+    let scope = target.scope.segments().join("/");
+    match status {
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => Some(format!(
+            "Azure DevOps authentication failed for scope {scope} (HTTP {status}). Check your PAT.",
+        )),
+        StatusCode::NOT_FOUND => Some(format!(
+            "Azure DevOps scope not found: {scope} (HTTP {status}). Check org/project.",
+        )),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn azdo_message_for_auth_errors() {
+        let scope = ProviderScope::new(vec!["org".into()]).unwrap();
+        let target = ProviderTarget {
+            provider: ProviderKind::AzureDevOps,
+            scope,
+            host: None,
+        };
+        let message = azdo_message_for_status(&target, StatusCode::UNAUTHORIZED).unwrap();
+        assert!(message.contains("authentication failed"));
+        let message = azdo_message_for_status(&target, StatusCode::FORBIDDEN).unwrap();
+        assert!(message.contains("authentication failed"));
+    }
+
+    #[test]
+    fn azdo_message_for_not_found() {
+        let scope = ProviderScope::new(vec!["org".into(), "proj".into()]).unwrap();
+        let target = ProviderTarget {
+            provider: ProviderKind::AzureDevOps,
+            scope,
+            host: None,
+        };
+        let message = azdo_message_for_status(&target, StatusCode::NOT_FOUND).unwrap();
+        assert!(message.contains("scope not found"));
+        assert!(message.contains("org/proj"));
+    }
 }

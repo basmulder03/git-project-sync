@@ -3,7 +3,7 @@
 ## Core behavior
 
 - Target = provider + scope (scope varies by provider).
-- Scope shapes: Azure DevOps <org>/<project>; GitHub <org-or-user>; GitLab <group>/<subgroup>/... (one or more segments).
+- Scope shapes: Azure DevOps <org> or <org>/<project>; GitHub <org-or-user>; GitLab <group>/<subgroup>/... (one or more segments).
 
 - Root folder configured. Each provider and scope gets its own directory; each repo under it.
 - For every configured target, list remote repos.

@@ -1288,6 +1288,7 @@ dependencies = [
  "clap",
  "mirror-core",
  "mirror-providers",
+ "reqwest",
  "tracing",
  "tracing-subscriber",
 ]

@@ -3,7 +3,7 @@
 ## Manual test
 
 1) Configure root (`config init --root <path>`)
-2) Add AzDO target (`target add --provider azure-devops --scope <org> <project>`)
+2) Add AzDO target (`target add --provider azure-devops --scope <org> <project>`) or org-wide (`target add --provider azure-devops --scope <org>`)
 3) Store PAT in keyring (`token set --provider azure-devops --scope <org> <project> --token <pat>`)
 4) Run sync. Interactive: `sync`. Non-interactive: `sync --non-interactive --missing-remote <archive|remove|skip>`. Clones missing repos into <root>/azure-devops/<org>/<project>/<repo>. Re-run sync: if clean fast-forward only; if dirty skip modifying working tree; if default branch diverged skip modifying working tree.
 5) Delete a remote repo and run sync. Interactive: prompt to remove / archive / skip. Non-interactive: honors missing-remote policy. Archive moves repo under <root>/_archive/azure-devops/<org>/<project>/<repo>.

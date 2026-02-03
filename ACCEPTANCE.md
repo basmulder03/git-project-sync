@@ -13,3 +13,4 @@
    - macOS: `service install` writes LaunchAgent and loads it; `service uninstall` unloads and removes it.
    - Windows: `service install` creates and starts the service; `service uninstall` stops and deletes it.
 8) For an existing repo with a missing or mismatched `origin` URL, rerun sync and verify origin is reset to the expected remote URL.
+9) Run any command (e.g., `sync`) and verify a new JSONL audit entry is appended under the OS data directory `audit/` folder, including failures when commands error.

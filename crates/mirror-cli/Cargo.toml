@@ -11,5 +11,6 @@ mirror-providers = { path = "../mirror-providers" }
 reqwest = { version = "0.12", default-features = false }
 ratatui = "0.27"
 crossterm = "0.27"
+serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

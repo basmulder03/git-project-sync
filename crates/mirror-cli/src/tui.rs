@@ -4,6 +4,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use mirror_core::audit::{AuditContext, AuditLogger, AuditStatus};
 use mirror_core::config::{default_config_path, load_or_migrate, target_id, AppConfigV2, TargetConfig};
 use mirror_core::model::{ProviderKind, ProviderScope};
 use mirror_providers::auth;
@@ -19,24 +20,28 @@ use ratatui::{
 use std::io::{self, Stdout};
 use std::time::{Duration, Instant};
 
-pub fn run_tui() -> anyhow::Result<()> {
+pub fn run_tui(audit: &AuditLogger) -> anyhow::Result<()> {
     enable_raw_mode().context("enable raw mode")?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen).context("enter alternate screen")?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend).context("create terminal")?;
 
-    let result = run_app(&mut terminal);
+    let _ = audit.record("tui.start", AuditStatus::Ok, Some("tui"), None, None)?;
+    let result = run_app(&mut terminal, audit);
 
     disable_raw_mode().ok();
     execute!(terminal.backend_mut(), LeaveAlternateScreen).ok();
     terminal.show_cursor().ok();
 
+    if result.is_ok() {
+        let _ = audit.record("tui.exit", AuditStatus::Ok, Some("tui"), None, None);
+    }
     result
 }
 
-fn run_app(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> anyhow::Result<()> {
-    let mut app = TuiApp::load()?;
+fn run_app(terminal: &mut Terminal<CrosstermBackend<Stdout>>, audit: &AuditLogger) -> anyhow::Result<()> {
+    let mut app = TuiApp::load(audit.clone())?;
     let mut last_tick = Instant::now();
     let tick_rate = Duration::from_millis(200);
 
@@ -124,10 +129,11 @@ struct TuiApp {
     input_index: usize,
     input_fields: Vec<InputField>,
     provider_index: usize,
+    audit: AuditLogger,
 }
 
 impl TuiApp {
-    fn load() -> anyhow::Result<Self> {
+    fn load(audit: AuditLogger) -> anyhow::Result<Self> {
         let config_path = default_config_path()?;
         let (config, migrated) = load_or_migrate(&config_path)?;
         if migrated {
@@ -142,6 +148,7 @@ impl TuiApp {
             input_index: 0,
             input_fields: Vec::new(),
             provider_index: 0,
+            audit,
         })
     }
 
@@ -339,7 +346,14 @@ impl TuiApp {
                     }
                     self.config.root = Some(path.into());
                     self.config.save(&self.config_path)?;
-                    self.message = "Root saved.".to_string();
+                    let audit_id = self.audit.record(
+                        "tui.config.root",
+                        AuditStatus::Ok,
+                        Some("tui"),
+                        None,
+                        None,
+                    )?;
+                    self.message = format!("Root saved. Audit ID: {audit_id}");
                     self.view = View::Message;
                 }
             }
@@ -393,6 +407,21 @@ impl TuiApp {
                 if self.config.targets.iter().any(|t| t.id == id) {
                     self.message = "Target already exists.".to_string();
                     self.view = View::Message;
+                    let audit_id = self.audit.record_with_context(
+                        "tui.target.add",
+                        AuditStatus::Skipped,
+                        Some("tui"),
+                        AuditContext {
+                            provider: Some(provider.as_prefix().to_string()),
+                            scope: Some(scope.segments().join("/")),
+                            repo_id: None,
+                            path: None,
+                        },
+                        None,
+                        Some("target already exists"),
+                    )?;
+                    self.message = format!("Target already exists. Audit ID: {audit_id}");
+                    self.view = View::Message;
                     return Ok(false);
                 }
                 self.config.targets.push(TargetConfig {
@@ -403,7 +432,20 @@ impl TuiApp {
                     labels,
                 });
                 self.config.save(&self.config_path)?;
-                self.message = "Target added.".to_string();
+                let audit_id = self.audit.record_with_context(
+                    "tui.target.add",
+                    AuditStatus::Ok,
+                    Some("tui"),
+                    AuditContext {
+                        provider: Some(provider.as_prefix().to_string()),
+                        scope: Some(scope.segments().join("/")),
+                        repo_id: Some(self.config.targets.last().unwrap().id.clone()),
+                        path: None,
+                    },
+                    None,
+                    None,
+                )?;
+                self.message = format!("Target added. Audit ID: {audit_id}");
                 self.view = View::Message;
             }
             _ => self.handle_text_input(key),
@@ -425,10 +467,24 @@ impl TuiApp {
                 self.config.targets.retain(|t| t.id != id);
                 let after = self.config.targets.len();
                 if before == after {
-                    self.message = "No target found with that id.".to_string();
+                    let audit_id = self.audit.record(
+                        "tui.target.remove",
+                        AuditStatus::Skipped,
+                        Some("tui"),
+                        None,
+                        Some("target not found"),
+                    )?;
+                    self.message = format!("No target found. Audit ID: {audit_id}");
                 } else {
                     self.config.save(&self.config_path)?;
-                    self.message = "Target removed.".to_string();
+                    let audit_id = self.audit.record(
+                        "tui.target.remove",
+                        AuditStatus::Ok,
+                        Some("tui"),
+                        None,
+                        None,
+                    )?;
+                    self.message = format!("Target removed. Audit ID: {audit_id}");
                 }
                 self.view = View::Message;
             }
@@ -461,7 +517,20 @@ impl TuiApp {
                     return Ok(false);
                 }
                 auth::set_pat(&account, &token)?;
-                self.message = format!("Token stored for {account}");
+                let audit_id = self.audit.record_with_context(
+                    "tui.token.set",
+                    AuditStatus::Ok,
+                    Some("tui"),
+                    AuditContext {
+                        provider: Some(provider.as_prefix().to_string()),
+                        scope: Some(scope.segments().join("/")),
+                        repo_id: None,
+                        path: None,
+                    },
+                    None,
+                    None,
+                )?;
+                self.message = format!("Token stored for {account}. Audit ID: {audit_id}");
                 self.view = View::Message;
             }
             _ => self.handle_text_input(key),

@@ -49,12 +49,12 @@
 - [x] Add a TUI for token setup per provider/host/scope
 - [x] Add tests for TUI state transitions and validation logic
 
-## Milestone 18 — Audit Logging & Operational Telemetry
+## Milestone 18 — Audit Logging & Operational Telemetry (completed)
 
-- [ ] Add structured audit log entries for startup, commands, sync runs, and errors
-- [ ] Persist audit logs to OS app data directory with rotation policy
-- [ ] Include audit IDs in CLI/TUI output for traceability
-- [ ] Add tests for audit log schema and write/rotation behavior
+- [x] Add structured audit log entries for startup, commands, sync runs, and errors
+- [x] Persist audit logs to OS app data directory with rotation policy
+- [x] Include audit IDs in CLI/TUI output for traceability
+- [x] Add tests for audit log schema and write/rotation behavior
 
 ## Milestone 19 — Terminal GUI: Service Installer
 

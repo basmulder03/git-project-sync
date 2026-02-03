@@ -6,6 +6,7 @@ use mirror_core::config::{
     load_or_migrate, target_id,
 };
 use mirror_core::deleted::{DeletedRepoAction, MissingRemotePolicy};
+use mirror_core::audit::{AuditContext, AuditLogger, AuditStatus};
 use mirror_core::model::{ProviderKind, ProviderScope, ProviderTarget};
 use mirror_core::scheduler::{bucket_for_repo_id, current_day_bucket};
 use mirror_core::sync_engine::{SyncSummary, run_sync_filtered};
@@ -208,269 +209,545 @@ fn main() -> anyhow::Result<()> {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
+    let audit = AuditLogger::new()?;
+    let _ = audit.record("app.start", AuditStatus::Ok, None, None, None)?;
+
     let cli = Cli::parse();
-    match cli.command {
-        Commands::Config(args) => handle_config(args),
-        Commands::Target(args) => handle_target(args),
-        Commands::Token(args) => handle_token(args),
-        Commands::Sync(args) => handle_sync(args),
-        Commands::Daemon(args) => handle_daemon(args),
-        Commands::Service(args) => handle_service(args),
-        Commands::Tui => tui::run_tui(),
-    }
-}
-
-fn handle_config(args: ConfigArgs) -> anyhow::Result<()> {
-    match args.command {
-        ConfigCommands::Init(args) => handle_init(args),
-    }
-}
-
-fn handle_init(args: InitArgs) -> anyhow::Result<()> {
-    let config_path = default_config_path()?;
-    let (mut config, migrated) = load_or_migrate(&config_path)?;
-    config.root = Some(args.root);
-    config.save(&config_path)?;
-    if migrated {
-        println!("Config migrated and saved to {}", config_path.display());
-    } else {
-        println!("Config saved to {}", config_path.display());
-    }
-    Ok(())
-}
-
-fn handle_target(args: TargetArgs) -> anyhow::Result<()> {
-    match args.command {
-        TargetCommands::Add(args) => handle_add_target(args),
-        TargetCommands::List => handle_list_targets(),
-        TargetCommands::Remove(args) => handle_remove_target(args),
-    }
-}
-
-fn handle_add_target(args: AddTargetArgs) -> anyhow::Result<()> {
-    let config_path = default_config_path()?;
-    let (mut config, migrated) = load_or_migrate(&config_path)?;
-    let provider: ProviderKind = args.provider.into();
-    let spec = spec_for(provider.clone());
-    let scope = spec.parse_scope(args.scope)?;
-
-    let host = args.host.as_ref().map(|value| value.trim_end_matches('/').to_string());
-    let id = target_id(provider.clone(), host.as_deref(), &scope);
-
-    if config.targets.iter().any(|target| target.id == id) {
-        println!("Target already exists: {id}");
-        return Ok(());
-    }
-
-    let target = TargetConfig {
-        id,
-        provider,
-        scope,
-        host,
-        labels: args.label,
+    let result = match cli.command {
+        Commands::Config(args) => handle_config(args, &audit),
+        Commands::Target(args) => handle_target(args, &audit),
+        Commands::Token(args) => handle_token(args, &audit),
+        Commands::Sync(args) => handle_sync(args, &audit),
+        Commands::Daemon(args) => handle_daemon(args, &audit),
+        Commands::Service(args) => handle_service(args, &audit),
+        Commands::Tui => tui::run_tui(&audit),
     };
 
-    config.targets.push(target);
-    config.save(&config_path)?;
-    if migrated {
-        println!("Config migrated and target added to {}", config_path.display());
-    } else {
-        println!("Target added to {}", config_path.display());
-    }
-    Ok(())
-}
-
-fn handle_list_targets() -> anyhow::Result<()> {
-    let config_path = default_config_path()?;
-    let (config, migrated) = load_or_migrate(&config_path)?;
-    if migrated {
-        config.save(&config_path)?;
-    }
-
-    if config.targets.is_empty() {
-        println!("No targets configured.");
-        return Ok(());
-    }
-
-    for target in config.targets {
-        let host = target.host.clone().unwrap_or_else(|| "(default)".to_string());
-        println!(
-            "{} | {} | {} | {}",
-            target.id,
-            target.provider.as_prefix(),
-            target.scope.segments().join("/"),
-            host
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "app.error",
+            AuditStatus::Failed,
+            None,
+            None,
+            Some(&err.to_string()),
         );
     }
-    Ok(())
+
+    result
 }
 
-fn handle_remove_target(args: RemoveTargetArgs) -> anyhow::Result<()> {
-    let config_path = default_config_path()?;
-    let (mut config, migrated) = load_or_migrate(&config_path)?;
-    let before = config.targets.len();
-    config.targets.retain(|target| target.id != args.id);
-    let after = config.targets.len();
-    if before == after {
-        println!("No target found with id {}", args.id);
-        return Ok(());
-    }
-    config.save(&config_path)?;
-    if migrated {
-        println!("Config migrated and target removed from {}", config_path.display());
-    } else {
-        println!("Target removed from {}", config_path.display());
-    }
-    Ok(())
-}
-
-fn handle_token(args: TokenArgs) -> anyhow::Result<()> {
+fn handle_config(args: ConfigArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     match args.command {
-        TokenCommands::Set(args) => handle_set_token(args),
+        ConfigCommands::Init(args) => handle_init(args, audit),
     }
 }
 
-fn handle_set_token(args: SetTokenArgs) -> anyhow::Result<()> {
-    let provider: ProviderKind = args.provider.into();
-    let spec = spec_for(provider);
-    let scope = spec.parse_scope(args.scope)?;
-    let host = host_or_default(args.host.as_deref(), spec.as_ref());
-    let account = spec.account_key(&host, &scope)?;
-    auth::set_pat(&account, &args.token)?;
-    println!("Token stored for {account}");
-    Ok(())
-}
-
-fn handle_sync(args: SyncArgs) -> anyhow::Result<()> {
-    if args.non_interactive && args.missing_remote == MissingRemotePolicyValue::Prompt {
-        anyhow::bail!("non-interactive mode requires --missing-remote policy");
-    }
-
-    let config_path = args.config.unwrap_or(default_config_path()?);
-    let cache_path = args.cache.unwrap_or(default_cache_path()?);
-    let (config, migrated) = load_or_migrate(&config_path)?;
-    if migrated {
+fn handle_init(args: InitArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result = (|| {
+        let config_path = default_config_path()?;
+        let (mut config, migrated) = load_or_migrate(&config_path)?;
+        config.root = Some(args.root);
         config.save(&config_path)?;
-    }
-    let root = config
-        .root
-        .as_ref()
-        .context("config missing root; run config init")?;
-
-    let targets = select_targets(&config, args.target_id.as_deref(), args.provider, &args.scope)?;
-    if targets.is_empty() {
-        println!("No matching targets found.");
-        return Ok(());
-    }
-
-    let policy: MissingRemotePolicy = args.missing_remote.into();
-    let decider = if policy == MissingRemotePolicy::Prompt {
-        Some(&prompt_action as &dyn Fn(&RepoCacheEntry) -> anyhow::Result<DeletedRepoAction>)
-    } else {
-        None
-    };
-
-    let registry = ProviderRegistry::new();
-    let repo_name = args.repo.clone();
-    let mut total = SyncSummary::default();
-
-    let target_count = targets.len();
-    for target in targets {
-        let provider_kind = target.provider.clone();
-        let provider = registry.provider(provider_kind.clone())?;
-        let runtime_target = ProviderTarget {
-            provider: provider_kind,
-            scope: target.scope.clone(),
-            host: target.host.clone(),
-        };
-        let repo_filter = repo_name.as_ref().map(|repo| {
-            let repo = repo.clone();
-            move |remote: &mirror_core::model::RemoteRepo| {
-                remote.name == repo || remote.id == repo
-            }
-        });
-
-        let summary = if let Some(filter) = repo_filter.as_ref() {
-            run_sync_filtered(
-                provider.as_ref(),
-                &runtime_target,
-                root,
-                &cache_path,
-                policy,
-                decider,
-                Some(filter),
-                false,
-            )
-            .or_else(|err| map_azdo_error(&runtime_target, err))?
+        if migrated {
+            println!("Config migrated and saved to {}", config_path.display());
         } else {
-            run_sync_filtered(
-                provider.as_ref(),
-                &runtime_target,
-                root,
-                &cache_path,
-                policy,
-                decider,
+            println!("Config saved to {}", config_path.display());
+        }
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "config.init",
+            AuditStatus::Failed,
+            Some("config.init"),
+            None,
+            Some(&err.to_string()),
+        );
+    } else {
+        let audit_id = audit.record(
+            "config.init",
+            AuditStatus::Ok,
+            Some("config.init"),
+            None,
+            None,
+        )?;
+        println!("Audit ID: {audit_id}");
+    }
+    result
+}
+
+fn handle_target(args: TargetArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    match args.command {
+        TargetCommands::Add(args) => handle_add_target(args, audit),
+        TargetCommands::List => handle_list_targets(audit),
+        TargetCommands::Remove(args) => handle_remove_target(args, audit),
+    }
+}
+
+fn handle_add_target(args: AddTargetArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result = (|| {
+        let config_path = default_config_path()?;
+        let (mut config, migrated) = load_or_migrate(&config_path)?;
+        let provider: ProviderKind = args.provider.into();
+        let spec = spec_for(provider.clone());
+        let scope = spec.parse_scope(args.scope)?;
+
+        let host = args.host.as_ref().map(|value| value.trim_end_matches('/').to_string());
+        let id = target_id(provider.clone(), host.as_deref(), &scope);
+
+        if config.targets.iter().any(|target| target.id == id) {
+            println!("Target already exists: {id}");
+            let audit_id = audit.record_with_context(
+                "target.add",
+                AuditStatus::Skipped,
+                Some("target.add"),
+                AuditContext {
+                    provider: Some(provider.as_prefix().to_string()),
+                    scope: Some(scope.segments().join("/")),
+                    repo_id: None,
+                    path: None,
+                },
                 None,
-                true,
-            )
-            .or_else(|err| map_azdo_error(&runtime_target, err))?
+                Some("target already exists"),
+            )?;
+            println!("Audit ID: {audit_id}");
+            return Ok(());
+        }
+
+        let target = TargetConfig {
+            id,
+            provider: provider.clone(),
+            scope: scope.clone(),
+            host,
+            labels: args.label,
         };
 
-        print_summary(&target, summary);
-        accumulate_summary(&mut total, summary);
-    }
+        config.targets.push(target);
+        config.save(&config_path)?;
+        if migrated {
+            println!("Config migrated and target added to {}", config_path.display());
+        } else {
+            println!("Target added to {}", config_path.display());
+        }
+        let audit_id = audit.record_with_context(
+            "target.add",
+            AuditStatus::Ok,
+            Some("target.add"),
+            AuditContext {
+                provider: Some(provider.as_prefix().to_string()),
+                scope: Some(scope.segments().join("/")),
+                repo_id: Some(id),
+                path: None,
+            },
+            None,
+            None,
+        )?;
+        println!("Audit ID: {audit_id}");
+        Ok(())
+    })();
 
-    if target_count > 1 {
-        println!(
-            "Total: cloned={} fast_forwarded={} up_to_date={} dirty={} diverged={} failed={} missing_archived={} missing_removed={} missing_skipped={}",
-            total.cloned,
-            total.fast_forwarded,
-            total.up_to_date,
-            total.dirty,
-            total.diverged,
-            total.failed,
-            total.missing_archived,
-            total.missing_removed,
-            total.missing_skipped
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "target.add",
+            AuditStatus::Failed,
+            Some("target.add"),
+            None,
+            Some(&err.to_string()),
         );
     }
-
-    Ok(())
+    result
 }
 
-fn handle_daemon(args: DaemonArgs) -> anyhow::Result<()> {
-    let interval = std::time::Duration::from_secs(args.interval_seconds);
-    let lock_path = match args.lock {
-        Some(path) => path,
-        None => default_lock_path()?,
-    };
-    if args.missing_remote == MissingRemotePolicyValue::Prompt {
-        anyhow::bail!("daemon mode requires --missing-remote policy");
+fn handle_list_targets(audit: &AuditLogger) -> anyhow::Result<()> {
+    let result = (|| {
+        let config_path = default_config_path()?;
+        let (config, migrated) = load_or_migrate(&config_path)?;
+        if migrated {
+            config.save(&config_path)?;
+        }
+
+        if config.targets.is_empty() {
+            println!("No targets configured.");
+            return Ok(());
+        }
+
+        for target in config.targets {
+            let host = target.host.clone().unwrap_or_else(|| "(default)".to_string());
+            println!(
+                "{} | {} | {} | {}",
+                target.id,
+                target.provider.as_prefix(),
+                target.scope.segments().join("/"),
+                host
+            );
+        }
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "target.list",
+            AuditStatus::Failed,
+            Some("target.list"),
+            None,
+            Some(&err.to_string()),
+        );
+    } else {
+        let audit_id =
+            audit.record("target.list", AuditStatus::Ok, Some("target.list"), None, None)?;
+        println!("Audit ID: {audit_id}");
     }
-    let config_path = args.config.unwrap_or(default_config_path()?);
-    let cache_path = args.cache.unwrap_or(default_cache_path()?);
-    let policy: MissingRemotePolicy = args.missing_remote.into();
-    let job = || run_sync_job(&config_path, &cache_path, policy);
-    if args.run_once {
-        mirror_core::daemon::run_once_with_lock(&lock_path, job)?;
-        return Ok(());
-    }
-    mirror_core::daemon::run_daemon(&lock_path, interval, job)
+    result
 }
 
-fn handle_service(args: ServiceArgs) -> anyhow::Result<()> {
-    let exe = std::env::current_exe().context("resolve current executable")?;
-    match args.action {
-        ServiceAction::Install => {
-            mirror_core::service::install_service(&exe)?;
-            println!("Service installed for {}", exe.display());
+fn handle_remove_target(args: RemoveTargetArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result = (|| {
+        let config_path = default_config_path()?;
+        let (mut config, migrated) = load_or_migrate(&config_path)?;
+        let before = config.targets.len();
+        config.targets.retain(|target| target.id != args.id);
+        let after = config.targets.len();
+        if before == after {
+            println!("No target found with id {}", args.id);
+            let audit_id = audit.record(
+                "target.remove",
+                AuditStatus::Skipped,
+                Some("target.remove"),
+                None,
+                Some("target not found"),
+            )?;
+            println!("Audit ID: {audit_id}");
+            return Ok(());
         }
-        ServiceAction::Uninstall => {
-            mirror_core::service::uninstall_service()?;
-            println!("Service uninstalled.");
+        config.save(&config_path)?;
+        if migrated {
+            println!("Config migrated and target removed from {}", config_path.display());
+        } else {
+            println!("Target removed from {}", config_path.display());
         }
+        let audit_id = audit.record(
+            "target.remove",
+            AuditStatus::Ok,
+            Some("target.remove"),
+            None,
+            None,
+        )?;
+        println!("Audit ID: {audit_id}");
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "target.remove",
+            AuditStatus::Failed,
+            Some("target.remove"),
+            None,
+            Some(&err.to_string()),
+        );
     }
-    Ok(())
+    result
+}
+
+fn handle_token(args: TokenArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    match args.command {
+        TokenCommands::Set(args) => handle_set_token(args, audit),
+    }
+}
+
+fn handle_set_token(args: SetTokenArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result = (|| {
+        let provider: ProviderKind = args.provider.into();
+        let spec = spec_for(provider.clone());
+        let scope = spec.parse_scope(args.scope)?;
+        let host = host_or_default(args.host.as_deref(), spec.as_ref());
+        let account = spec.account_key(&host, &scope)?;
+        auth::set_pat(&account, &args.token)?;
+        println!("Token stored for {account}");
+        let audit_id = audit.record_with_context(
+            "token.set",
+            AuditStatus::Ok,
+            Some("token.set"),
+            AuditContext {
+                provider: Some(provider.as_prefix().to_string()),
+                scope: Some(scope.segments().join("/")),
+                repo_id: None,
+                path: None,
+            },
+            None,
+            None,
+        )?;
+        println!("Audit ID: {audit_id}");
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "token.set",
+            AuditStatus::Failed,
+            Some("token.set"),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+    result
+}
+
+fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result = (|| {
+        if args.non_interactive && args.missing_remote == MissingRemotePolicyValue::Prompt {
+            anyhow::bail!("non-interactive mode requires --missing-remote policy");
+        }
+
+        let config_path = args.config.unwrap_or(default_config_path()?);
+        let cache_path = args.cache.unwrap_or(default_cache_path()?);
+        let (config, migrated) = load_or_migrate(&config_path)?;
+        if migrated {
+            config.save(&config_path)?;
+        }
+        let root = config
+            .root
+            .as_ref()
+            .context("config missing root; run config init")?;
+
+        let targets = select_targets(&config, args.target_id.as_deref(), args.provider, &args.scope)?;
+        if targets.is_empty() {
+            println!("No matching targets found.");
+            let audit_id = audit.record(
+                "sync.run",
+                AuditStatus::Skipped,
+                Some("sync"),
+                None,
+                Some("no matching targets"),
+            )?;
+            println!("Audit ID: {audit_id}");
+            return Ok(());
+        }
+
+        let policy: MissingRemotePolicy = args.missing_remote.into();
+        let decider = if policy == MissingRemotePolicy::Prompt {
+            Some(&prompt_action as &dyn Fn(&RepoCacheEntry) -> anyhow::Result<DeletedRepoAction>)
+        } else {
+            None
+        };
+
+        let registry = ProviderRegistry::new();
+        let repo_name = args.repo.clone();
+        let mut total = SyncSummary::default();
+
+        let target_count = targets.len();
+        for target in targets {
+            let provider_kind = target.provider.clone();
+            let provider = registry.provider(provider_kind.clone())?;
+            let runtime_target = ProviderTarget {
+                provider: provider_kind,
+                scope: target.scope.clone(),
+                host: target.host.clone(),
+            };
+            let repo_filter = repo_name.as_ref().map(|repo| {
+                let repo = repo.clone();
+                move |remote: &mirror_core::model::RemoteRepo| {
+                    remote.name == repo || remote.id == repo
+                }
+            });
+
+            let summary = if let Some(filter) = repo_filter.as_ref() {
+                run_sync_filtered(
+                    provider.as_ref(),
+                    &runtime_target,
+                    root,
+                    &cache_path,
+                    policy,
+                    decider,
+                    Some(filter),
+                    false,
+                )
+                .or_else(|err| map_azdo_error(&runtime_target, err))?
+            } else {
+                run_sync_filtered(
+                    provider.as_ref(),
+                    &runtime_target,
+                    root,
+                    &cache_path,
+                    policy,
+                    decider,
+                    None,
+                    true,
+                )
+                .or_else(|err| map_azdo_error(&runtime_target, err))?
+            };
+
+            print_summary(&target, summary);
+            let details = serde_json::json!({
+                "cloned": summary.cloned,
+                "fast_forwarded": summary.fast_forwarded,
+                "up_to_date": summary.up_to_date,
+                "dirty": summary.dirty,
+                "diverged": summary.diverged,
+                "failed": summary.failed,
+                "missing_archived": summary.missing_archived,
+                "missing_removed": summary.missing_removed,
+                "missing_skipped": summary.missing_skipped,
+            });
+            let context = AuditContext {
+                provider: Some(target.provider.as_prefix().to_string()),
+                scope: Some(target.scope.segments().join("/")),
+                repo_id: Some(target.id.clone()),
+                path: None,
+            };
+            let audit_id = audit.record_with_context(
+                "sync.target",
+                AuditStatus::Ok,
+                Some("sync"),
+                context,
+                Some(details),
+                None,
+            )?;
+            println!("Audit ID: {audit_id}");
+            accumulate_summary(&mut total, summary);
+        }
+
+        if target_count > 1 {
+            println!(
+                "Total: cloned={} fast_forwarded={} up_to_date={} dirty={} diverged={} failed={} missing_archived={} missing_removed={} missing_skipped={}",
+                total.cloned,
+                total.fast_forwarded,
+                total.up_to_date,
+                total.dirty,
+                total.diverged,
+                total.failed,
+                total.missing_archived,
+                total.missing_removed,
+                total.missing_skipped
+            );
+        }
+
+        let totals = serde_json::json!({
+            "targets": target_count,
+            "cloned": total.cloned,
+            "fast_forwarded": total.fast_forwarded,
+            "up_to_date": total.up_to_date,
+            "dirty": total.dirty,
+            "diverged": total.diverged,
+            "failed": total.failed,
+            "missing_archived": total.missing_archived,
+            "missing_removed": total.missing_removed,
+            "missing_skipped": total.missing_skipped,
+        });
+        let audit_id =
+            audit.record("sync.run", AuditStatus::Ok, Some("sync"), Some(totals), None)?;
+        println!("Audit ID: {audit_id}");
+
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "sync.run",
+            AuditStatus::Failed,
+            Some("sync"),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+    result
+}
+
+fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result = (|| {
+        let interval = std::time::Duration::from_secs(args.interval_seconds);
+        let lock_path = match args.lock {
+            Some(path) => path,
+            None => default_lock_path()?,
+        };
+        if args.missing_remote == MissingRemotePolicyValue::Prompt {
+            anyhow::bail!("daemon mode requires --missing-remote policy");
+        }
+        let config_path = args.config.unwrap_or(default_config_path()?);
+        let cache_path = args.cache.unwrap_or(default_cache_path()?);
+        let policy: MissingRemotePolicy = args.missing_remote.into();
+        let audit_id = audit.record(
+            "daemon.start",
+            AuditStatus::Ok,
+            Some("daemon"),
+            None,
+            None,
+        )?;
+        println!("Audit ID: {audit_id}");
+        let job = || run_sync_job(&config_path, &cache_path, policy);
+        if args.run_once {
+            mirror_core::daemon::run_once_with_lock(&lock_path, job)?;
+            let audit_id = audit.record(
+                "daemon.run_once",
+                AuditStatus::Ok,
+                Some("daemon"),
+                None,
+                None,
+            )?;
+            println!("Audit ID: {audit_id}");
+            return Ok(());
+        }
+        mirror_core::daemon::run_daemon(&lock_path, interval, job)
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "daemon.start",
+            AuditStatus::Failed,
+            Some("daemon"),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+    result
+}
+
+fn handle_service(args: ServiceArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result = (|| {
+        let exe = std::env::current_exe().context("resolve current executable")?;
+        match args.action {
+            ServiceAction::Install => {
+                mirror_core::service::install_service(&exe)?;
+                println!("Service installed for {}", exe.display());
+                let audit_id = audit.record(
+                    "service.install",
+                    AuditStatus::Ok,
+                    Some("service.install"),
+                    None,
+                    None,
+                )?;
+                println!("Audit ID: {audit_id}");
+            }
+            ServiceAction::Uninstall => {
+                mirror_core::service::uninstall_service()?;
+                println!("Service uninstalled.");
+                let audit_id = audit.record(
+                    "service.uninstall",
+                    AuditStatus::Ok,
+                    Some("service.uninstall"),
+                    None,
+                    None,
+                )?;
+                println!("Audit ID: {audit_id}");
+            }
+        }
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let action = match args.action {
+            ServiceAction::Install => "service.install",
+            ServiceAction::Uninstall => "service.uninstall",
+        };
+        let _ = audit.record(
+            action,
+            AuditStatus::Failed,
+            Some(action),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+    result
 }
 
 fn run_sync_job(

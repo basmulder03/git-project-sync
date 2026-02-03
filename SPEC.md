@@ -51,3 +51,5 @@
 - `sync --verify` to compare local refs with upstreams without modifying non-default branches
 - `cache prune` to remove cached entries for deleted targets
 - `token guide` and `token validate` to help create and validate PATs
+- `oauth device` (experimental) for GitHub device flow
+  - Experimental; tokens still stored in keyring. Use PATs if device flow is unavailable.

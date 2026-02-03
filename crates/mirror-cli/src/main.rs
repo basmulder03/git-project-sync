@@ -13,10 +13,12 @@ use mirror_core::model::{ProviderKind, ProviderScope, ProviderTarget};
 use mirror_core::scheduler::{bucket_for_repo_id, current_day_bucket};
 use mirror_core::sync_engine::{SyncSummary, run_sync_filtered};
 use mirror_providers::auth;
-use mirror_providers::spec::{host_or_default, spec_for};
+use mirror_providers::spec::{host_or_default, pat_help, spec_for};
 use mirror_providers::ProviderRegistry;
 use tracing::warn;
 use reqwest::StatusCode;
+use reqwest::blocking::Client;
+use serde::Deserialize;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use tracing_subscriber::EnvFilter;
@@ -47,6 +49,8 @@ enum Commands {
     Health(HealthArgs),
     #[command(about = "Manage webhooks")]
     Webhook(WebhookArgs),
+    #[command(about = "OAuth helpers (experimental)")]
+    Oauth(OauthArgs),
     #[command(about = "Manage cache")]
     Cache(CacheArgs),
     #[command(about = "Launch terminal UI")]
@@ -248,6 +252,32 @@ struct CachePruneArgs {
 }
 
 #[derive(Parser)]
+struct OauthArgs {
+    #[command(subcommand)]
+    command: OauthCommands,
+}
+
+#[derive(clap::Subcommand)]
+enum OauthCommands {
+    #[command(about = "Start GitHub device flow")]
+    Device(DeviceFlowArgs),
+}
+
+#[derive(Parser)]
+struct DeviceFlowArgs {
+    #[arg(long, value_enum)]
+    provider: ProviderKindValue,
+    #[arg(long, required = true)]
+    scope: Vec<String>,
+    #[arg(long)]
+    host: Option<String>,
+    #[arg(long)]
+    client_id: String,
+    #[arg(long)]
+    experimental: bool,
+}
+
+#[derive(Parser)]
 struct HealthArgs {
     #[arg(long)]
     target_id: Option<String>,
@@ -319,6 +349,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Service(args) => handle_service(args, &audit),
         Commands::Health(args) => handle_health(args, &audit),
         Commands::Webhook(args) => handle_webhook(args, &audit),
+        Commands::Oauth(args) => handle_oauth(args, &audit),
         Commands::Cache(args) => handle_cache(args, &audit),
         Commands::Tui => tui::run_tui(&audit),
     };
@@ -1155,6 +1186,148 @@ fn handle_cache(args: CacheArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     }
 }
 
+fn handle_oauth(args: OauthArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    match args.command {
+        OauthCommands::Device(args) => handle_device_flow(args, audit),
+    }
+}
+
+fn handle_device_flow(args: DeviceFlowArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = (|| {
+        if !args.experimental && std::env::var("GIT_PROJECT_SYNC_EXPERIMENTAL").is_err() {
+            anyhow::bail!("device flow is experimental; pass --experimental or set GIT_PROJECT_SYNC_EXPERIMENTAL=1");
+        }
+        let provider: ProviderKind = args.provider.into();
+        if provider != ProviderKind::GitHub {
+            anyhow::bail!("device flow is only supported for GitHub right now");
+        }
+        let spec = spec_for(provider.clone());
+        let scope = spec.parse_scope(args.scope)?;
+        let host = host_or_default(args.host.as_deref(), spec.as_ref());
+        let base = github_oauth_base(&host);
+
+        let help = pat_help(provider.clone());
+        let scope_string = help.scopes.join(" ");
+        let client = Client::new();
+        let device_resp: DeviceCodeResponse = client
+            .post(format!("{base}/login/device/code"))
+            .header("Accept", "application/json")
+            .form(&[
+                ("client_id", args.client_id.as_str()),
+                ("scope", scope_string.as_str()),
+            ])
+            .send()?
+            .error_for_status()?
+            .json()?;
+
+        println!("Open: {}", device_resp.verification_uri);
+        println!("Code: {}", device_resp.user_code);
+        println!("Expires in: {}s", device_resp.expires_in);
+        println!("Polling for authorization...");
+
+        let mut interval = device_resp.interval.unwrap_or(5);
+        let token = poll_device_token(&client, &base, &args.client_id, &device_resp.device_code, &mut interval)?;
+
+        let account = spec.account_key(&host, &scope)?;
+        auth::set_pat(&account, &token)?;
+        println!("Token stored for {account}");
+
+        let audit_id = audit.record_with_context(
+            "oauth.device",
+            AuditStatus::Ok,
+            Some("oauth.device"),
+            AuditContext {
+                provider: Some(provider.as_prefix().to_string()),
+                scope: Some(scope.segments().join("/")),
+                repo_id: None,
+                path: None,
+            },
+            None,
+            None,
+        )?;
+        println!("Audit ID: {audit_id}");
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "oauth.device",
+            AuditStatus::Failed,
+            Some("oauth.device"),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+    result
+}
+
+#[derive(Deserialize)]
+struct DeviceCodeResponse {
+    device_code: String,
+    user_code: String,
+    verification_uri: String,
+    expires_in: u64,
+    interval: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct DeviceTokenResponse {
+    access_token: Option<String>,
+    error: Option<String>,
+    error_description: Option<String>,
+}
+
+fn poll_device_token(
+    client: &Client,
+    base: &str,
+    client_id: &str,
+    device_code: &str,
+    interval: &mut u64,
+) -> anyhow::Result<String> {
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(*interval));
+        let response: DeviceTokenResponse = client
+            .post(format!("{base}/login/oauth/access_token"))
+            .header("Accept", "application/json")
+            .form(&[
+                ("client_id", client_id),
+                ("device_code", device_code),
+                ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
+            ])
+            .send()?
+            .error_for_status()?
+            .json()?;
+        if let Some(token) = response.access_token {
+            return Ok(token);
+        }
+        match response.error.as_deref() {
+            Some("authorization_pending") => continue,
+            Some("slow_down") => {
+                *interval += 5;
+            }
+            Some("expired_token") => anyhow::bail!("device code expired"),
+            Some("access_denied") => anyhow::bail!("access denied"),
+            Some(other) => anyhow::bail!(
+                "device flow failed: {}",
+                response.error_description.unwrap_or_else(|| other.to_string())
+            ),
+            None => anyhow::bail!("device flow failed without error"),
+        }
+    }
+}
+
+fn github_oauth_base(host: &str) -> String {
+    if host.contains("github.com") {
+        "https://github.com".to_string()
+    } else if let Some(stripped) = host.strip_suffix("/api/v3") {
+        stripped.to_string()
+    } else if let Some(stripped) = host.strip_suffix("/api") {
+        stripped.to_string()
+    } else {
+        host.trim_end_matches('/').to_string()
+    }
+}
+
 fn handle_cache_prune(args: CachePruneArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     let result: anyhow::Result<()> = (|| {
         let config_path = args.config.unwrap_or(default_config_path()?);
@@ -1478,5 +1651,11 @@ mod tests {
         assert!(message.contains("GitLab authentication failed"));
         let message = gitlab_status_message(scope, StatusCode::NOT_FOUND).unwrap();
         assert!(message.contains("scope not found"));
+    }
+
+    #[test]
+    fn github_oauth_base_for_enterprise() {
+        let host = "https://github.example.com/api/v3";
+        assert_eq!(github_oauth_base(host), "https://github.example.com");
     }
 }

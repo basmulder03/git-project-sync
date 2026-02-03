@@ -25,3 +25,4 @@
 18) Run `cache prune` and confirm it removes cache entries for targets no longer in config.
 19) Run `token guide --provider <provider> --scope <scope>` and verify URL + scopes are printed.
 20) Run `token validate --provider <provider> --scope <scope>` and verify missing scopes are reported or validation is skipped when unsupported.
+21) Run `oauth device --provider github --scope <scope> --client-id <id> --experimental` and verify device flow prompts are displayed; store token on success.

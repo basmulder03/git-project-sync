@@ -122,11 +122,11 @@
 - [x] Add validation checks to confirm required scopes are present (where API allows)
 - [x] Add tests for scope guidance and validation logic (mocked)
 
-## Milestone 30 — OAuth / Device Flow Exploration
+## Milestone 30 — OAuth / Device Flow Exploration (completed)
 
-- [ ] Research provider-supported OAuth/device flows as PAT alternatives
-- [ ] Prototype one provider flow (feature-flagged)
-- [ ] Document security implications and fallback to PATs
+- [x] Research provider-supported OAuth/device flows as PAT alternatives
+- [x] Prototype one provider flow (feature-flagged)
+- [x] Document security implications and fallback to PATs
 
 ## Notes / Decisions
 

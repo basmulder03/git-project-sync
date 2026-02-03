@@ -448,12 +448,15 @@ fn handle_daemon(args: DaemonArgs) -> anyhow::Result<()> {
 }
 
 fn handle_service(args: ServiceArgs) -> anyhow::Result<()> {
+    let exe = std::env::current_exe().context("resolve current executable")?;
     match args.action {
         ServiceAction::Install => {
-            println!("Service install not implemented yet.");
+            mirror_core::service::install_service(&exe)?;
+            println!("Service installed for {}", exe.display());
         }
         ServiceAction::Uninstall => {
-            println!("Service uninstall not implemented yet.");
+            mirror_core::service::uninstall_service()?;
+            println!("Service uninstalled.");
         }
     }
     Ok(())

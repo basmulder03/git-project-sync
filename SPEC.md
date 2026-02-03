@@ -37,3 +37,4 @@
 - target add/list/remove
 - sync all / sync target / sync repo
 - non-interactive mode and missing-remote policy flags (archive/remove/skip)
+- service install/uninstall (systemd user service, launchd agent, Windows service)

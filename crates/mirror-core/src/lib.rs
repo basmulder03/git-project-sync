@@ -9,4 +9,5 @@ pub mod model;
 pub mod provider;
 pub mod paths;
 pub mod scheduler;
+pub mod service;
 pub mod sync_engine;

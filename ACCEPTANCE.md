@@ -8,3 +8,7 @@
 4) Run sync. Interactive: `sync`. Non-interactive: `sync --non-interactive --missing-remote <archive|remove|skip>`. Clones missing repos into <root>/azure-devops/<org>/<project>/<repo>. Re-run sync: if clean fast-forward only; if dirty skip modifying working tree; if default branch diverged skip modifying working tree.
 5) Delete a remote repo and run sync. Interactive: prompt to remove / archive / skip. Non-interactive: honors missing-remote policy. Archive moves repo under <root>/_archive/azure-devops/<org>/<project>/<repo>.
 6) Daemon run (`daemon --run-once --missing-remote <archive|remove|skip>`): syncs only repos in today’s 7-day bucket.
+7) Service install/uninstall:
+   - Linux: `service install` creates user systemd unit and enables it; `service uninstall` disables and removes it.
+   - macOS: `service install` writes LaunchAgent and loads it; `service uninstall` unloads and removes it.
+   - Windows: `service install` creates and starts the service; `service uninstall` stops and deletes it.

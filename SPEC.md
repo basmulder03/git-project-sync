@@ -50,3 +50,4 @@
 - `webhook register` to configure provider webhooks where supported
 - `sync --verify` to compare local refs with upstreams without modifying non-default branches
 - `cache prune` to remove cached entries for deleted targets
+- `token guide` and `token validate` to help create and validate PATs

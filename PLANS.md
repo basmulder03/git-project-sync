@@ -116,11 +116,11 @@
 - [x] Add cache prune command to remove stale target entries
 - [x] Add tests for cache migrations and prune behavior
 
-## Milestone 29 — Token Provisioning Helpers
+## Milestone 29 — Token Provisioning Helpers (completed)
 
-- [ ] Add CLI helpers to guide users through PAT creation (provider-specific URLs and scopes)
-- [ ] Add validation checks to confirm required scopes are present (where API allows)
-- [ ] Add tests for scope guidance and validation logic (mocked)
+- [x] Add CLI helpers to guide users through PAT creation (provider-specific URLs and scopes)
+- [x] Add validation checks to confirm required scopes are present (where API allows)
+- [x] Add tests for scope guidance and validation logic (mocked)
 
 ## Milestone 30 — OAuth / Device Flow Exploration
 

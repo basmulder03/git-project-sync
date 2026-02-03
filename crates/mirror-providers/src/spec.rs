@@ -5,6 +5,28 @@ pub struct AzureDevOpsSpec;
 pub struct GitHubSpec;
 pub struct GitLabSpec;
 
+pub struct PatHelp {
+    pub url: &'static str,
+    pub scopes: &'static [&'static str],
+}
+
+pub fn pat_help(kind: ProviderKind) -> PatHelp {
+    match kind {
+        ProviderKind::AzureDevOps => PatHelp {
+            url: "https://dev.azure.com/<org>/_usersSettings/tokens",
+            scopes: &["Code (Read)"],
+        },
+        ProviderKind::GitHub => PatHelp {
+            url: "https://github.com/settings/tokens",
+            scopes: &["repo", "read:org"],
+        },
+        ProviderKind::GitLab => PatHelp {
+            url: "https://gitlab.com/-/profile/personal_access_tokens",
+            scopes: &["read_api", "read_repository"],
+        },
+    }
+}
+
 pub fn spec_for(kind: ProviderKind) -> Box<dyn ProviderSpec> {
     match kind {
         ProviderKind::AzureDevOps => Box::new(AzureDevOpsSpec),
@@ -134,5 +156,13 @@ mod tests {
         let spec = GitLabSpec;
         assert!(spec.parse_scope(vec![]).is_err());
         assert!(spec.parse_scope(vec!["group".into(), "sub".into()]).is_ok());
+    }
+
+    #[test]
+    fn pat_help_contains_scopes() {
+        let github = pat_help(ProviderKind::GitHub);
+        assert!(github.scopes.contains(&"repo"));
+        let azdo = pat_help(ProviderKind::AzureDevOps);
+        assert!(azdo.url.contains("dev.azure.com"));
     }
 }

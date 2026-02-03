@@ -211,6 +211,34 @@ impl RepoProvider for GitHubProvider {
         let _ = response.text();
         Ok(())
     }
+
+    fn token_scopes(&self, target: &ProviderTarget) -> anyhow::Result<Option<Vec<String>>> {
+        if target.provider != ProviderKind::GitHub {
+            anyhow::bail!("invalid provider target for GitHub");
+        }
+        let spec = GitHubSpec;
+        let host = host_or_default(target.host.as_deref(), &spec);
+        let _org = Self::parse_scope(&target.scope)?;
+        let account = spec.account_key(&host, &target.scope)?;
+        let token = auth::get_pat(&account)?;
+
+        let url = format!("{host}/user");
+        let builder = self
+            .client
+            .get(url)
+            .header("User-Agent", "git-project-sync")
+            .bearer_auth(token.as_str());
+        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
+            .context("call GitHub token scopes")?
+            .error_for_status()
+            .context("GitHub token scopes status")?;
+        if let Some(header) = response.headers().get("x-oauth-scopes") {
+            if let Ok(value) = header.to_str() {
+                return Ok(Some(parse_scopes_header(value)));
+            }
+        }
+        Ok(None)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -220,6 +248,15 @@ struct RepoItem {
     clone_url: String,
     default_branch: Option<String>,
     archived: Option<bool>,
+}
+
+fn parse_scopes_header(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(|scope| scope.trim())
+        .filter(|scope| !scope.is_empty())
+        .map(|scope| scope.to_string())
+        .collect()
 }
 
 #[cfg(test)]
@@ -257,5 +294,11 @@ mod tests {
         });
         let repo: RepoItem = serde_json::from_value(value).unwrap();
         assert_eq!(repo.archived, Some(true));
+    }
+
+    #[test]
+    fn parse_scopes_header_splits() {
+        let scopes = parse_scopes_header("repo, read:org, ");
+        assert_eq!(scopes, vec!["repo".to_string(), "read:org".to_string()]);
     }
 }

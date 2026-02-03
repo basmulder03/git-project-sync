@@ -115,6 +115,10 @@ struct TokenArgs {
 enum TokenCommands {
     #[command(about = "Store an auth token for a provider target")]
     Set(SetTokenArgs),
+    #[command(about = "Show PAT guidance for a provider")]
+    Guide(GuideTokenArgs),
+    #[command(about = "Validate token scopes when supported")]
+    Validate(ValidateTokenArgs),
 }
 
 #[derive(Parser)]
@@ -127,6 +131,26 @@ struct SetTokenArgs {
     host: Option<String>,
     #[arg(long)]
     token: String,
+}
+
+#[derive(Parser)]
+struct GuideTokenArgs {
+    #[arg(long, value_enum)]
+    provider: ProviderKindValue,
+    #[arg(long, required = true)]
+    scope: Vec<String>,
+    #[arg(long)]
+    host: Option<String>,
+}
+
+#[derive(Parser)]
+struct ValidateTokenArgs {
+    #[arg(long, value_enum)]
+    provider: ProviderKindValue,
+    #[arg(long, required = true)]
+    scope: Vec<String>,
+    #[arg(long)]
+    host: Option<String>,
 }
 
 #[derive(Parser)]
@@ -528,6 +552,8 @@ fn handle_remove_target(args: RemoveTargetArgs, audit: &AuditLogger) -> anyhow::
 fn handle_token(args: TokenArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     match args.command {
         TokenCommands::Set(args) => handle_set_token(args, audit),
+        TokenCommands::Guide(args) => handle_guide_token(args, audit),
+        TokenCommands::Validate(args) => handle_validate_token(args, audit),
     }
 }
 
@@ -562,6 +588,141 @@ fn handle_set_token(args: SetTokenArgs, audit: &AuditLogger) -> anyhow::Result<(
             "token.set",
             AuditStatus::Failed,
             Some("token.set"),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+    result
+}
+
+fn handle_guide_token(args: GuideTokenArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = (|| {
+        let provider: ProviderKind = args.provider.into();
+        let spec = spec_for(provider.clone());
+        let scope = spec.parse_scope(args.scope)?;
+        let help = mirror_providers::spec::pat_help(provider.clone());
+        println!("Provider: {}", provider.as_prefix());
+        println!("Scope: {}", scope.segments().join("/"));
+        println!("Create PAT at: {}", help.url);
+        println!("Required scopes:");
+        for scope in help.scopes {
+            println!("  - {scope}");
+        }
+        let audit_id = audit.record_with_context(
+            "token.guide",
+            AuditStatus::Ok,
+            Some("token.guide"),
+            AuditContext {
+                provider: Some(provider.as_prefix().to_string()),
+                scope: Some(scope.segments().join("/")),
+                repo_id: None,
+                path: None,
+            },
+            None,
+            None,
+        )?;
+        println!("Audit ID: {audit_id}");
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "token.guide",
+            AuditStatus::Failed,
+            Some("token.guide"),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+    result
+}
+
+fn handle_validate_token(args: ValidateTokenArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = (|| {
+        let provider: ProviderKind = args.provider.into();
+        let spec = spec_for(provider.clone());
+        let scope = spec.parse_scope(args.scope)?;
+        let host = args.host.as_ref().map(|value| value.trim_end_matches('/').to_string());
+        let runtime_target = ProviderTarget {
+            provider: provider.clone(),
+            scope: scope.clone(),
+            host,
+        };
+        let registry = ProviderRegistry::new();
+        let adapter = registry.provider(provider.clone())?;
+        let scopes = adapter.token_scopes(&runtime_target)?;
+        let help = mirror_providers::spec::pat_help(provider.clone());
+        match scopes {
+            Some(scopes) => {
+                let missing: Vec<&str> = help
+                    .scopes
+                    .iter()
+                    .copied()
+                    .filter(|required| !scopes.iter().any(|s| s == required))
+                    .collect();
+                if missing.is_empty() {
+                    println!("Token scopes valid for {}", provider.as_prefix());
+                    let audit_id = audit.record_with_context(
+                        "token.validate",
+                        AuditStatus::Ok,
+                        Some("token.validate"),
+                        AuditContext {
+                            provider: Some(provider.as_prefix().to_string()),
+                            scope: Some(scope.segments().join("/")),
+                            repo_id: None,
+                            path: None,
+                        },
+                        None,
+                        None,
+                    )?;
+                    println!("Audit ID: {audit_id}");
+                } else {
+                    println!("Missing scopes:");
+                    for scope in missing {
+                        println!("  - {scope}");
+                    }
+                    let audit_id = audit.record_with_context(
+                        "token.validate",
+                        AuditStatus::Failed,
+                        Some("token.validate"),
+                        AuditContext {
+                            provider: Some(provider.as_prefix().to_string()),
+                            scope: Some(scope.segments().join("/")),
+                            repo_id: None,
+                            path: None,
+                        },
+                        None,
+                        Some("missing scopes"),
+                    )?;
+                    println!("Audit ID: {audit_id}");
+                }
+            }
+            None => {
+                println!("Scope validation not supported for {}", provider.as_prefix());
+                let audit_id = audit.record_with_context(
+                    "token.validate",
+                    AuditStatus::Skipped,
+                    Some("token.validate"),
+                    AuditContext {
+                        provider: Some(provider.as_prefix().to_string()),
+                        scope: Some(scope.segments().join("/")),
+                        repo_id: None,
+                        path: None,
+                    },
+                    None,
+                    Some("validation not supported"),
+                )?;
+                println!("Audit ID: {audit_id}");
+            }
+        }
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "token.validate",
+            AuditStatus::Failed,
+            Some("token.validate"),
             None,
             Some(&err.to_string()),
         );

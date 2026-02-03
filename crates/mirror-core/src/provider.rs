@@ -11,6 +11,9 @@ pub trait RepoProvider {
     fn auth_for_target(&self, _target: &ProviderTarget) -> anyhow::Result<Option<crate::model::RepoAuth>> {
         Ok(None)
     }
+    fn token_scopes(&self, _target: &ProviderTarget) -> anyhow::Result<Option<Vec<String>>> {
+        Ok(None)
+    }
     fn register_webhook(
         &self,
         _target: &ProviderTarget,

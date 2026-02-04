@@ -32,3 +32,6 @@
 25) Trigger an OAuth error (expired code or access denied) and confirm troubleshooting guidance in README/SPEC aligns with the CLI error.
 26) Open the TUI: verify Config and Token screens show guidance text and validation feedback when submitting empty/invalid values.
 27) Run `tray` and verify the system tray icon shows actions for dashboard and sync; open dashboard and confirm core stats render.
+28) Run `install` and confirm the daemon service is installed; verify delayed start when `--delayed-start` is provided.
+29) Run `install --tui` and confirm the installer screen runs the same flow.
+30) Run `install --path add` and confirm PATH registration message is shown.

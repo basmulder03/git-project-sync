@@ -150,6 +150,25 @@ mirror-cli service install
 mirror-cli service uninstall
 ```
 
+## Install Flow
+
+Run the guided installer:
+
+```bash
+mirror-cli install
+```
+
+Use the TUI installer:
+
+```bash
+mirror-cli install --tui
+```
+
+Optional flags:
+
+- `--delayed-start <seconds>`: delay startup on boot (OS-native where supported)
+- `--path <add|skip>`: opt-in PATH registration
+
 Notes:
 
 - Linux: installs a systemd user service

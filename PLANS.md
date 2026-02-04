@@ -169,6 +169,13 @@
 - [x] Add TUI dashboard view with core stats and per-target toggle
 - [x] Update docs and acceptance checks for tray/dashboard
 
+## Milestone 37 — Installer Flow + PATH Registration (completed)
+
+- [x] Add CLI install command with optional TUI flow
+- [x] Support delayed startup on service install (OS-native)
+- [x] Add opt-in PATH registration per OS
+- [x] Update docs and acceptance checks
+
 ## Notes / Decisions
 
 - Focus: architecture tidy (per user request).

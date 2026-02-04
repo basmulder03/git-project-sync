@@ -13,6 +13,7 @@ use mirror_core::model::{ProviderKind, ProviderScope, ProviderTarget};
 use mirror_core::scheduler::{bucket_for_repo_id, current_day_bucket};
 use mirror_core::sync_engine::{SyncSummary, run_sync_filtered};
 use mirror_providers::auth;
+use crate::install::{InstallOptions, PathChoice};
 use mirror_providers::azure_devops::{AZDO_DEFAULT_OAUTH_SCOPE, AzureDevOpsProvider};
 use mirror_providers::spec::{host_or_default, pat_help, spec_for};
 use mirror_providers::ProviderRegistry;
@@ -24,6 +25,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use tracing_subscriber::EnvFilter;
 mod tray;
+mod install;
 mod tui;
 
 #[derive(Parser)]
@@ -59,6 +61,8 @@ enum Commands {
     Tui(TuiArgs),
     #[command(about = "Run system tray UI")]
     Tray,
+    #[command(about = "Install daemon and optionally register PATH")]
+    Install(InstallArgs),
 }
 
 #[derive(Parser)]
@@ -311,6 +315,35 @@ struct HealthArgs {
 struct TuiArgs {
     #[arg(long)]
     dashboard: bool,
+    #[arg(long)]
+    install: bool,
+}
+
+#[derive(Parser)]
+struct InstallArgs {
+    #[arg(long)]
+    tui: bool,
+    #[arg(long)]
+    delayed_start: Option<u64>,
+    #[arg(long, value_enum)]
+    path: Option<PathChoiceValue>,
+    #[arg(long)]
+    non_interactive: bool,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum PathChoiceValue {
+    Add,
+    Skip,
+}
+
+impl From<PathChoiceValue> for PathChoice {
+    fn from(value: PathChoiceValue) -> Self {
+        match value {
+            PathChoiceValue::Add => PathChoice::Add,
+            PathChoiceValue::Skip => PathChoice::Skip,
+        }
+    }
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -376,8 +409,18 @@ fn main() -> anyhow::Result<()> {
         Commands::Webhook(args) => handle_webhook(args, &audit),
         Commands::Oauth(args) => handle_oauth(args, &audit),
         Commands::Cache(args) => handle_cache(args, &audit),
-        Commands::Tui(args) => tui::run_tui(&audit, args.dashboard),
+        Commands::Tui(args) => {
+            let start_view = if args.install {
+                tui::StartView::Install
+            } else if args.dashboard {
+                tui::StartView::Dashboard
+            } else {
+                tui::StartView::Main
+            };
+            tui::run_tui(&audit, start_view)
+        }
         Commands::Tray => tray::run_tray(&audit),
+        Commands::Install(args) => handle_install(args, &audit),
     };
 
     if let Err(err) = &result {
@@ -1599,6 +1642,83 @@ fn handle_cache_prune(args: CachePruneArgs, audit: &AuditLogger) -> anyhow::Resu
     }
 
     result
+}
+
+fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = (|| {
+        if args.tui {
+            return tui::run_tui(audit, tui::StartView::Install);
+        }
+        let delayed_start = if args.non_interactive {
+            args.delayed_start
+        } else {
+            args.delayed_start.or_else(|| prompt_delay_seconds()?)
+        };
+        let path_choice = match args.path {
+            Some(choice) => choice.into(),
+            None => {
+                if args.non_interactive {
+                    PathChoice::Skip
+                } else {
+                    prompt_path_choice()?
+                }
+            }
+        };
+        let exec = std::env::current_exe().context("resolve current executable")?;
+        let report = install::perform_install(
+            &exec,
+            InstallOptions {
+                delayed_start,
+                path_choice,
+            },
+        )?;
+        println!("{}", report.service);
+        println!("{}", report.path);
+        let audit_id = audit.record(
+            "install.run",
+            AuditStatus::Ok,
+            Some("install"),
+            None,
+            None,
+        )?;
+        println!("Audit ID: {audit_id}");
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "install.run",
+            AuditStatus::Failed,
+            Some("install"),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+    result
+}
+
+fn prompt_delay_seconds() -> anyhow::Result<Option<u64>> {
+    println!("Delayed start on boot? Enter seconds or leave empty:");
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let value = input.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    let seconds: u64 = value.parse().context("invalid delay seconds")?;
+    Ok(Some(seconds))
+}
+
+fn prompt_path_choice() -> anyhow::Result<PathChoice> {
+    println!("Add mirror-cli to PATH? (y/n):");
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let choice = input.trim().to_lowercase();
+    Ok(if choice == "y" || choice == "yes" {
+        PathChoice::Add
+    } else {
+        PathChoice::Skip
+    })
 }
 
 fn run_sync_job(

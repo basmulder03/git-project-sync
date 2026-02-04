@@ -57,6 +57,7 @@
 - `oauth revoke` to remove stored OAuth tokens for a provider scope
 - `tray` to run the system tray UI (quick actions + dashboard)
 - `tui --dashboard` to open the status dashboard directly
+- `install` to run guided installation (service + optional PATH)
 
 ## OAuth troubleshooting
 

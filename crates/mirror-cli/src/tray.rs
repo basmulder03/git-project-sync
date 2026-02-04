@@ -80,7 +80,7 @@ pub fn run_tray(audit: &AuditLogger) -> anyhow::Result<()> {
                         if let Some(exe) = current_exe.as_ref() {
                             let _ = Command::new(exe).arg("tui").arg("--dashboard").spawn();
                         } else {
-                            let _ = tui::run_tui(audit.as_ref(), true);
+                            let _ = tui::run_tui(audit.as_ref(), tui::StartView::Dashboard);
                         }
                     } else if event.id == open_tui_id {
                         let _ = audit.record_with_context(
@@ -94,7 +94,7 @@ pub fn run_tray(audit: &AuditLogger) -> anyhow::Result<()> {
                         if let Some(exe) = current_exe.as_ref() {
                             let _ = Command::new(exe).arg("tui").spawn();
                         } else {
-                            let _ = tui::run_tui(audit.as_ref(), false);
+                            let _ = tui::run_tui(audit.as_ref(), tui::StartView::Main);
                         }
                     } else if event.id == sync_now_id {
                         let _ = audit.record_with_context(

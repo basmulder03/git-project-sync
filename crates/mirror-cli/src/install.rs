@@ -1,0 +1,90 @@
+use anyhow::Context;
+use directories::BaseDirs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PathChoice {
+    Add,
+    Skip,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct InstallOptions {
+    pub delayed_start: Option<u64>,
+    pub path_choice: PathChoice,
+}
+
+#[derive(Clone, Debug)]
+pub struct InstallReport {
+    pub service: String,
+    pub path: String,
+}
+
+pub fn perform_install(exec_path: &Path, options: InstallOptions) -> anyhow::Result<InstallReport> {
+    mirror_core::service::install_service_with_delay(exec_path, options.delayed_start)?;
+    let service = match options.delayed_start {
+        Some(delay) if delay > 0 => format!("Service installed with delayed start ({delay}s)"),
+        _ => "Service installed".to_string(),
+    };
+    let path = match options.path_choice {
+        PathChoice::Add => register_path(exec_path)?,
+        PathChoice::Skip => "PATH update skipped".to_string(),
+    };
+    Ok(InstallReport { service, path })
+}
+
+pub fn register_path(exec_path: &Path) -> anyhow::Result<String> {
+    let dir = exec_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("executable path has no parent"))?;
+    if cfg!(target_os = "windows") {
+        return add_path_windows(dir);
+    }
+    add_path_unix(dir)
+}
+
+fn add_path_unix(dir: &Path) -> anyhow::Result<String> {
+    let base = BaseDirs::new().context("resolve base dirs")?;
+    let user_bin = base.home_dir().join(".local").join("bin");
+    std::fs::create_dir_all(&user_bin).context("create user bin dir")?;
+    let target = user_bin.join("mirror-cli");
+    if target.exists() {
+        return Ok(format!("PATH entry already exists at {}", target.display()));
+    }
+    std::os::unix::fs::symlink(dir.join("mirror-cli"), &target)
+        .context("create symlink for mirror-cli")?;
+    Ok(format!("Symlinked mirror-cli to {}", target.display()))
+}
+
+fn add_path_windows(dir: &Path) -> anyhow::Result<String> {
+    let current = std::env::var("PATH").unwrap_or_default();
+    let dir_str = dir.to_string_lossy().to_string();
+    if current.split(';').any(|p| p.eq_ignore_ascii_case(&dir_str)) {
+        return Ok("PATH already contains mirror-cli directory".to_string());
+    }
+    let updated = build_path_update(&current, &dir_str);
+    Command::new("setx")
+        .args(["PATH", &updated])
+        .status()
+        .context("update PATH with setx")?;
+    Ok("Updated user PATH (restart shell to apply)".to_string())
+}
+
+fn build_path_update(current: &str, add: &str) -> String {
+    if current.trim().is_empty() {
+        return add.to_string();
+    }
+    format!("{current};{add}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_path_update_appends() {
+        let updated = build_path_update("C:\\bin", "C:\\new");
+        assert_eq!(updated, "C:\\bin;C:\\new");
+    }
+}

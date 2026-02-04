@@ -172,6 +172,25 @@ OS behavior:
 - macOS: installs a LaunchAgent.
 - Windows: installs a Windows service.
 
+## Installer Flow
+
+The installer sets up the daemon and optionally registers PATH.
+
+```bash
+mirror-cli install
+```
+
+Interactive TUI installer:
+
+```bash
+mirror-cli install --tui
+```
+
+Options:
+
+- `--delayed-start <seconds>`: delayed startup on boot (OS-native).
+- `--path <add|skip>`: opt-in PATH registration.
+
 ## Tray + Dashboard
 
 System tray UI:
@@ -212,6 +231,7 @@ Common issues:
 - OAuth not enabled: add host to `GIT_PROJECT_SYNC_OAUTH_ALLOW`.
 - Device code expired: re-run `oauth device` and complete authorization sooner.
 - OAuth refresh failed: revoke token and re-run device flow.
+- PATH not updated: rerun `mirror-cli install --path add` or update PATH manually.
 
 ## Safety Guarantees
 

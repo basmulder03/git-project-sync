@@ -24,7 +24,14 @@ use std::io::{self, Stdout};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
-pub fn run_tui(audit: &AuditLogger, start_dashboard: bool) -> anyhow::Result<()> {
+#[derive(Clone, Copy, Debug)]
+pub enum StartView {
+    Main,
+    Dashboard,
+    Install,
+}
+
+pub fn run_tui(audit: &AuditLogger, start_view: StartView) -> anyhow::Result<()> {
     enable_raw_mode().context("enable raw mode")?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen).context("enter alternate screen")?;
@@ -32,7 +39,7 @@ pub fn run_tui(audit: &AuditLogger, start_dashboard: bool) -> anyhow::Result<()>
     let mut terminal = Terminal::new(backend).context("create terminal")?;
 
     let _ = audit.record("tui.start", AuditStatus::Ok, Some("tui"), None, None)?;
-    let result = run_app(&mut terminal, audit, start_dashboard);
+    let result = run_app(&mut terminal, audit, start_view);
 
     disable_raw_mode().ok();
     execute!(terminal.backend_mut(), LeaveAlternateScreen).ok();
@@ -47,9 +54,9 @@ pub fn run_tui(audit: &AuditLogger, start_dashboard: bool) -> anyhow::Result<()>
 fn run_app(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     audit: &AuditLogger,
-    start_dashboard: bool,
+    start_view: StartView,
 ) -> anyhow::Result<()> {
-    let mut app = TuiApp::load(audit.clone(), start_dashboard)?;
+    let mut app = TuiApp::load(audit.clone(), start_view)?;
     let mut last_tick = Instant::now();
     let tick_rate = Duration::from_millis(200);
 
@@ -80,6 +87,7 @@ fn run_app(
 enum View {
     Main,
     Dashboard,
+    Install,
     ConfigRoot,
     Targets,
     TargetAdd,
@@ -152,16 +160,21 @@ struct TuiApp {
 }
 
 impl TuiApp {
-    fn load(audit: AuditLogger, start_dashboard: bool) -> anyhow::Result<Self> {
+    fn load(audit: AuditLogger, start_view: StartView) -> anyhow::Result<Self> {
         let config_path = default_config_path()?;
         let (config, migrated) = load_or_migrate(&config_path)?;
         if migrated {
             config.save(&config_path)?;
         }
+        let view = match start_view {
+            StartView::Dashboard => View::Dashboard,
+            StartView::Install => View::Install,
+            StartView::Main => View::Main,
+        };
         Ok(Self {
             config_path,
             config,
-            view: if start_dashboard { View::Dashboard } else { View::Main },
+            view,
             menu_index: 0,
             message: String::new(),
             input_index: 0,
@@ -190,6 +203,7 @@ impl TuiApp {
         match self.view {
             View::Main => self.draw_main(frame, layout[1]),
             View::Dashboard => self.draw_dashboard(frame, layout[1]),
+            View::Install => self.draw_install(frame, layout[1]),
             View::ConfigRoot => self.draw_config_root(frame, layout[1]),
             View::Targets => self.draw_targets(frame, layout[1]),
             View::TargetAdd => self.draw_form(frame, layout[1], "Add Target"),
@@ -212,6 +226,7 @@ impl TuiApp {
         match self.view {
             View::Main => "Up/Down: navigate | Enter: select | q: quit".to_string(),
             View::Dashboard => "t: toggle targets | Esc: back".to_string(),
+            View::Install => "Tab: next | Enter: run install | Esc: back".to_string(),
             View::ConfigRoot => "Enter: save | Esc: back".to_string(),
             View::Targets => "a: add | d: remove | Esc: back".to_string(),
             View::TargetAdd | View::TargetRemove | View::TokenSet | View::TokenValidate => {
@@ -228,6 +243,7 @@ impl TuiApp {
     fn draw_main(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         let items = vec![
             "Dashboard",
+            "Installer",
             "Config",
             "Targets",
             "Tokens",
@@ -287,6 +303,29 @@ impl TuiApp {
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .block(Block::default().borders(Borders::ALL).title("Dashboard"));
+        frame.render_widget(widget, area);
+    }
+
+    fn draw_install(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let mut lines = vec![
+            Line::from(Span::raw("Context: Install daemon and optionally register PATH")),
+            Line::from(Span::raw("")),
+        ];
+        for (idx, field) in self.input_fields.iter().enumerate() {
+            let label = if idx == self.input_index {
+                format!("> {}: {}", field.label, field.display_value())
+            } else {
+                format!("  {}: {}", field.label, field.display_value())
+            };
+            lines.push(Line::from(Span::raw(label)));
+        }
+        if let Some(message) = self.validation_message.as_deref() {
+            lines.push(Line::from(Span::raw("")));
+            lines.push(Line::from(Span::raw(format!("Validation: {message}"))));
+        }
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(Block::default().borders(Borders::ALL).title("Installer"));
         frame.render_widget(widget, area);
     }
 
@@ -561,6 +600,7 @@ impl TuiApp {
         match self.view {
             View::Main => self.handle_main(key),
             View::Dashboard => self.handle_dashboard(key),
+            View::Install => self.handle_install(key),
             View::ConfigRoot => self.handle_config_root(key),
             View::Targets => self.handle_targets(key),
             View::TargetAdd => self.handle_target_add(key),
@@ -578,10 +618,10 @@ impl TuiApp {
     fn handle_main(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
         match key.code {
             KeyCode::Char('q') => return Ok(true),
-            KeyCode::Down => self.menu_index = (self.menu_index + 1) % 7,
+            KeyCode::Down => self.menu_index = (self.menu_index + 1) % 8,
             KeyCode::Up => {
                 if self.menu_index == 0 {
-                    self.menu_index = 6;
+                    self.menu_index = 7;
                 } else {
                     self.menu_index -= 1;
                 }
@@ -589,20 +629,77 @@ impl TuiApp {
             KeyCode::Enter => match self.menu_index {
                 0 => self.view = View::Dashboard,
                 1 => {
+                    self.view = View::Install;
+                    self.input_fields = vec![
+                        InputField::new("Delayed start seconds (optional)"),
+                        InputField::new("Add CLI to PATH? (y/n)"),
+                    ];
+                    self.input_index = 0;
+                }
+                2 => {
                     self.view = View::ConfigRoot;
                     self.input_fields = vec![InputField::new("Root path")];
                     self.input_index = 0;
                 }
-                2 => self.view = View::Targets,
-                3 => {
+                3 => self.view = View::Targets,
+                4 => {
                     self.view = View::TokenMenu;
                     self.token_menu_index = 0;
                 }
-                4 => self.view = View::Service,
-                5 => self.view = View::AuditLog,
+                5 => self.view = View::Service,
+                6 => self.view = View::AuditLog,
                 _ => return Ok(true),
             },
             _ => {}
+        }
+        Ok(false)
+    }
+
+    fn handle_install(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
+        match key.code {
+            KeyCode::Esc => self.view = View::Main,
+            KeyCode::Tab => self.input_index = (self.input_index + 1) % self.input_fields.len(),
+            KeyCode::Enter => {
+                let delay_raw = self.input_fields[0].value.trim();
+                let delayed_start = if delay_raw.is_empty() {
+                    None
+                } else {
+                    match delay_raw.parse::<u64>() {
+                        Ok(value) => Some(value),
+                        Err(_) => {
+                            self.validation_message = Some("Delayed start must be a number.".to_string());
+                            return Ok(false);
+                        }
+                    }
+                };
+                let path_raw = self.input_fields[1].value.trim().to_lowercase();
+                let path_choice = if path_raw == "y" || path_raw == "yes" {
+                    crate::install::PathChoice::Add
+                } else {
+                    crate::install::PathChoice::Skip
+                };
+                let exec = std::env::current_exe().context("resolve current executable")?;
+                let report = crate::install::perform_install(
+                    &exec,
+                    crate::install::InstallOptions {
+                        delayed_start,
+                        path_choice,
+                    },
+                )?;
+                let audit_id = self.audit.record(
+                    "tui.install",
+                    AuditStatus::Ok,
+                    Some("tui"),
+                    None,
+                    None,
+                )?;
+                self.message = format!(
+                    "{}. {}. Audit ID: {audit_id}",
+                    report.service, report.path
+                );
+                self.view = View::Message;
+            }
+            _ => self.handle_text_input(key),
         }
         Ok(false)
     }
@@ -1515,6 +1612,7 @@ mod tests {
             audit_filter: AuditFilter::All,
             validation_message: None,
             show_target_stats: false,
+            install_step: 0,
         };
         assert!(app.form_hint().is_some());
     }

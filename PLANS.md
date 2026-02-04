@@ -7,6 +7,7 @@
 - [x] Add install manifest for detection/reporting
 - [x] Update CLI/TUI messaging for install location
 - [x] Update docs + acceptance notes for replace/update behavior
+- [x] Use Windows Task Scheduler instead of Windows Service (fix 1053)
 
 ## Milestone 44 — Sync Status UX (in progress)
 

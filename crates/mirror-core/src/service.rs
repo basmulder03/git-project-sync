@@ -1,4 +1,4 @@
-use anyhow::{Context, bail};
+use anyhow::Context;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use directories::BaseDirs;
 #[cfg(target_os = "macos")]
@@ -11,18 +11,6 @@ use std::path::Path;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-#[cfg(target_os = "windows")]
-use std::ffi::OsString;
-#[cfg(target_os = "windows")]
-use windows_service::service::{
-    ServiceAccess, ServiceErrorControl, ServiceInfo, ServiceStartType, ServiceType,
-};
-#[cfg(target_os = "windows")]
-use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
-#[cfg(target_os = "windows")]
-use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_SET_VALUE};
-#[cfg(target_os = "windows")]
-use winreg::RegKey;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const SERVICE_NAME: &str = "git-project-sync";
@@ -365,86 +353,73 @@ Otherwise, check your home directory permissions.",
 
 #[cfg(target_os = "windows")]
 fn install_windows(exec_path: &Path, delay_seconds: Option<u64>) -> anyhow::Result<()> {
-    let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CREATE_SERVICE)
-        .with_context(|| {
-            "opening the Windows Service Manager failed. \
-Run this command from an Administrator PowerShell and try again."
-        })?;
-    let service_info = ServiceInfo {
-        name: OsString::from(SERVICE_NAME),
-        display_name: OsString::from("git-project-sync"),
-        service_type: ServiceType::OWN_PROCESS,
-        start_type: ServiceStartType::AutoStart,
-        error_control: ServiceErrorControl::Normal,
-        executable_path: exec_path.to_path_buf(),
-        launch_arguments: vec![
-            OsString::from("daemon"),
-            OsString::from("--missing-remote"),
-            OsString::from("skip"),
-        ],
-        dependencies: vec![],
-        account_name: None,
-        account_password: None,
-    };
-    let service = manager.create_service(&service_info, ServiceAccess::START)?;
-    if delay_seconds.unwrap_or(0) > 0 {
-        set_delayed_auto_start()?;
+    let task_name = SERVICE_NAME;
+    let exec = exec_path.to_string_lossy();
+    let task = format!("\"{}\" daemon --missing-remote skip", exec);
+    let mut args = vec![
+        "/Create".to_string(),
+        "/TN".to_string(),
+        task_name.to_string(),
+        "/TR".to_string(),
+        task,
+        "/SC".to_string(),
+        "ONSTART".to_string(),
+        "/RL".to_string(),
+        "HIGHEST".to_string(),
+        "/RU".to_string(),
+        "SYSTEM".to_string(),
+        "/F".to_string(),
+    ];
+    if let Some(delay) = delay_seconds.filter(|value| *value > 0) {
+        let delay_value = schtasks_delay(delay);
+        args.push("/DELAY".to_string());
+        args.push(delay_value);
     }
-    let empty_args: [OsString; 0] = [];
-    let _ = service.start(&empty_args);
+    run_schtasks(&args).with_context(|| {
+        "install scheduled task failed. \
+Run this command from an Administrator PowerShell and try again."
+    })?;
     Ok(())
 }
 
 #[cfg(target_os = "windows")]
 fn uninstall_windows() -> anyhow::Result<()> {
-    run_command(
-        "sc.exe",
-        &["stop", SERVICE_NAME],
-        "stop windows service",
-    )
-    .ok();
-    run_command(
-        "sc.exe",
-        &["delete", SERVICE_NAME],
-        "delete windows service",
-    )?;
+    let _ = run_schtasks(&[
+        "/End".to_string(),
+        "/TN".to_string(),
+        SERVICE_NAME.to_string(),
+    ]);
+    let _ = run_schtasks(&[
+        "/Delete".to_string(),
+        "/TN".to_string(),
+        SERVICE_NAME.to_string(),
+        "/F".to_string(),
+    ]);
     Ok(())
 }
 
 #[cfg(target_os = "windows")]
 fn windows_service_exists() -> anyhow::Result<bool> {
-    let manager =
-        ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)?;
-    match manager.open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS) {
-        Ok(_service) => Ok(true),
-        Err(_err) => Ok(false),
-    }
+    Ok(run_schtasks(&[
+        "/Query".to_string(),
+        "/TN".to_string(),
+        SERVICE_NAME.to_string(),
+    ])
+    .is_ok())
 }
 
 #[cfg(target_os = "windows")]
 fn windows_service_running() -> anyhow::Result<bool> {
-    let manager =
-        ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)?;
-    let service = match manager.open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS) {
-        Ok(service) => service,
-        Err(_err) => return Ok(false),
-    };
-    let status = service.query_status()?;
-    Ok(matches!(status.current_state, windows_service::service::ServiceState::Running))
-}
-
-#[cfg(target_os = "windows")]
-fn set_delayed_auto_start() -> anyhow::Result<()> {
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    let key = hklm
-        .open_subkey_with_flags(
-            format!("SYSTEM\\CurrentControlSet\\Services\\{SERVICE_NAME}"),
-            KEY_SET_VALUE,
-        )
-        .context("open service registry key for delayed auto start")?;
-    key.set_value("DelayedAutoStart", &1u32)
-        .context("set DelayedAutoStart registry value")?;
-    Ok(())
+    let output = run_schtasks_output(&[
+        "/Query".to_string(),
+        "/TN".to_string(),
+        SERVICE_NAME.to_string(),
+        "/FO".to_string(),
+        "LIST".to_string(),
+    ])?;
+    Ok(output
+        .lines()
+        .any(|line| line.trim_start().starts_with("Status:") && line.contains("Running")))
 }
 
 #[cfg(target_os = "linux")]
@@ -471,6 +446,43 @@ fn command_success(binary: &str, args: &[&str]) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(target_os = "windows")]
+fn run_schtasks(args: &[String]) -> anyhow::Result<()> {
+    let status = Command::new("schtasks")
+        .args(args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .context("run schtasks")?;
+    if !status.success() {
+        anyhow::bail!("schtasks failed with status {status}");
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn run_schtasks_output(args: &[String]) -> anyhow::Result<String> {
+    let output = Command::new("schtasks")
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .context("run schtasks")?;
+    if !output.status.success() {
+        anyhow::bail!("schtasks failed with status {}", output.status);
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn schtasks_delay(delay_seconds: u64) -> String {
+    let minutes = (delay_seconds + 59) / 60;
+    let hours = minutes / 60;
+    let mins = minutes % 60;
+    format!("{:04}:{:02}", hours, mins)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn run_command(binary: &str, args: &[&str], context_label: &str) -> anyhow::Result<()> {
     let status = Command::new(binary)
         .args(args)

@@ -10,6 +10,12 @@ Mirror repositories from multiple Git providers into a local root folder with sa
 - Staggered auto-sync across 7 days (daemon syncs the current day bucket)
 - Tokens stored in OS keychain; config/cache stored in OS AppData equivalents
 
+## Documentation
+
+- `docs/handbook.md` — Operator guide
+- `docs/architecture.md` — System architecture
+- `docs/decisions.md` — Architectural decisions
+
 ## Install
 
 Build the CLI with Cargo:

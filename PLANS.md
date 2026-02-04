@@ -156,6 +156,13 @@
 - [x] Add acceptance criteria updates for OAuth GA
 - [x] Add end-to-end manual test checklist for OAuth login flows
 
+## Milestone 35 — TUI Main-Flow Guided UX (completed)
+
+- [x] Add guided form hints + inline validation for Config Root, Targets, Tokens
+- [x] Normalize main menu labels and footer help text for consistency
+- [x] Apply minimal layout polish (headers, spacing, concise summaries)
+- [x] Add tests for guidance rendering and validation text
+
 ## Notes / Decisions
 
 - Focus: architecture tidy (per user request).

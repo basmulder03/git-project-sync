@@ -30,3 +30,4 @@
 23) Run `oauth revoke --provider <provider> --scope <scope>` and verify token is removed from keyring and audit entry is logged.
 24) Set `GIT_PROJECT_SYNC_OAUTH_ALLOW=github=github.com;azure-devops=dev.azure.com` and verify OAuth gating allows only listed hosts.
 25) Trigger an OAuth error (expired code or access denied) and confirm troubleshooting guidance in README/SPEC aligns with the CLI error.
+26) Open the TUI: verify Config and Token screens show guidance text and validation feedback when submitting empty/invalid values.

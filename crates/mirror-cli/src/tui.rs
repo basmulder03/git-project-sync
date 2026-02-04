@@ -140,6 +140,7 @@ struct TuiApp {
     token_validation: HashMap<String, TokenValidation>,
     audit: AuditLogger,
     audit_filter: AuditFilter,
+    validation_message: Option<String>,
 }
 
 impl TuiApp {
@@ -162,6 +163,7 @@ impl TuiApp {
             token_validation: HashMap::new(),
             audit,
             audit_filter: AuditFilter::All,
+            validation_message: None,
         })
     }
 
@@ -199,8 +201,8 @@ impl TuiApp {
     fn footer_text(&self) -> String {
         match self.view {
             View::Main => "Up/Down: navigate | Enter: select | q: quit".to_string(),
-            View::ConfigRoot => "Type path | Enter: save | Esc: back".to_string(),
-            View::Targets => "a: add | d: delete | Esc: back".to_string(),
+            View::ConfigRoot => "Enter: save | Esc: back".to_string(),
+            View::Targets => "a: add | d: remove | Esc: back".to_string(),
             View::TargetAdd | View::TargetRemove | View::TokenSet | View::TokenValidate => {
                 "Tab: next field | Enter: submit | Esc: back".to_string()
             }
@@ -214,11 +216,11 @@ impl TuiApp {
 
     fn draw_main(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         let items = vec![
-            "Config Root",
+            "Config",
             "Targets",
-            "Token Management",
-            "Service Installer",
-            "Audit Log Viewer",
+            "Tokens",
+            "Service",
+            "Audit Log",
             "Quit",
         ];
         let list_items: Vec<ListItem> = items
@@ -243,17 +245,19 @@ impl TuiApp {
             Ok(lines) => lines,
             Err(err) => vec![format!("Failed to read audit log: {err}")],
         };
-        let list_items: Vec<ListItem> = lines
-            .into_iter()
-            .map(|line| ListItem::new(Line::from(Span::raw(line))))
-            .collect();
+        let mut list_items: Vec<ListItem> = Vec::new();
+        list_items.push(ListItem::new(Line::from(Span::raw(
+            "Context: Audit log entries (newest first)",
+        ))));
+        list_items.push(ListItem::new(Line::from(Span::raw(""))));
+        list_items.extend(lines.into_iter().map(|line| ListItem::new(Line::from(Span::raw(line)))));
         let list = List::new(list_items)
             .block(Block::default().borders(Borders::ALL).title("Audit Log Viewer"));
         frame.render_widget(list, area);
     }
 
     fn draw_token_menu(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
-        let items = vec!["List Tokens", "Set/Update Token", "Validate Token", "Back"];
+        let items = vec!["List", "Set/Update", "Validate", "Back"];
         let list_items: Vec<ListItem> = items
             .iter()
             .enumerate()
@@ -273,6 +277,10 @@ impl TuiApp {
     fn draw_token_list(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         let entries = self.token_entries();
         let mut items: Vec<ListItem> = Vec::new();
+        items.push(ListItem::new(Line::from(Span::raw(
+            "Context: Tokens per configured target",
+        ))));
+        items.push(ListItem::new(Line::from(Span::raw(""))));
         if entries.is_empty() {
             items.push(ListItem::new(Line::from(Span::raw(
                 "No targets configured yet.",
@@ -309,6 +317,8 @@ impl TuiApp {
         let provider = provider_kind(self.provider_index);
         let help = pat_help(provider.clone());
         let mut lines = Vec::new();
+        lines.push(Line::from(Span::raw("Context: Set or update a token")));
+        lines.push(Line::from(Span::raw("")));
         lines.push(Line::from(Span::raw(format!(
             "Provider: {}",
             provider_label(self.provider_index)
@@ -318,6 +328,11 @@ impl TuiApp {
             "Required scopes: {}",
             help.scopes.join(", ")
         ))));
+        lines.push(Line::from(Span::raw("Tip: Scope uses space-separated segments.")));
+        if let Some(message) = self.validation_message.as_deref() {
+            lines.push(Line::from(Span::raw("")));
+            lines.push(Line::from(Span::raw(format!("Validation: {message}"))));
+        }
         lines.push(Line::from(Span::raw("")));
         for (idx, field) in self.input_fields.iter().enumerate() {
             let label = if idx == self.input_index {
@@ -337,6 +352,8 @@ impl TuiApp {
         let provider = provider_kind(self.provider_index);
         let help = pat_help(provider.clone());
         let mut lines = Vec::new();
+        lines.push(Line::from(Span::raw("Context: Validate required scopes")));
+        lines.push(Line::from(Span::raw("")));
         lines.push(Line::from(Span::raw(format!(
             "Provider: {}",
             provider_label(self.provider_index)
@@ -345,6 +362,11 @@ impl TuiApp {
             "Required scopes: {}",
             help.scopes.join(", ")
         ))));
+        lines.push(Line::from(Span::raw("Tip: Host optional; defaults to provider host.")));
+        if let Some(message) = self.validation_message.as_deref() {
+            lines.push(Line::from(Span::raw("")));
+            lines.push(Line::from(Span::raw(format!("Validation: {message}"))));
+        }
         lines.push(Line::from(Span::raw("")));
         for (idx, field) in self.input_fields.iter().enumerate() {
             let label = if idx == self.input_index {
@@ -388,14 +410,25 @@ impl TuiApp {
             .as_ref()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "<unset>".to_string());
-        let body = format!(
-            "Current root: {current}\n\nNew root:\n{}",
+        let mut lines = vec![
+            Line::from(Span::raw("Context: Select the mirror root folder")),
+            Line::from(Span::raw(format!("Current root: {current}"))),
+            Line::from(Span::raw("")),
+            Line::from(Span::raw("Tip: Use an absolute path (e.g. /path/to/mirrors)")),
+        ];
+        if let Some(message) = self.validation_message.as_deref() {
+            lines.push(Line::from(Span::raw("")));
+            lines.push(Line::from(Span::raw(format!("Validation: {message}"))));
+        }
+        lines.push(Line::from(Span::raw("")));
+        lines.push(Line::from(Span::raw("New root:")));
+        lines.push(Line::from(Span::raw(
             self.input_fields
                 .get(0)
                 .map(|f| f.display_value())
-                .unwrap_or_default()
-        );
-        let widget = Paragraph::new(body)
+                .unwrap_or_default(),
+        )));
+        let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .block(Block::default().borders(Borders::ALL).title("Config Root"));
         frame.render_widget(widget, area);
@@ -403,6 +436,13 @@ impl TuiApp {
 
     fn draw_targets(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         let mut items: Vec<ListItem> = Vec::new();
+        items.push(ListItem::new(Line::from(Span::raw(
+            "Context: Targets map to provider + scope",
+        ))));
+        items.push(ListItem::new(Line::from(Span::raw(
+            "Tip: Press a to add or d to remove",
+        ))));
+        items.push(ListItem::new(Line::from(Span::raw(""))));
         if self.config.targets.is_empty() {
             items.push(ListItem::new(Line::from(Span::raw(
                 "No targets configured.",
@@ -426,11 +466,23 @@ impl TuiApp {
 
     fn draw_form(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect, title: &str) {
         let mut lines = Vec::new();
+        if let Some(context) = self.form_context() {
+            lines.push(Line::from(Span::raw(context)));
+            lines.push(Line::from(Span::raw("")));
+        }
+        if let Some(hint) = self.form_hint() {
+            lines.push(Line::from(Span::raw(format!("Tip: {hint}"))));
+            lines.push(Line::from(Span::raw("")));
+        }
         if matches!(self.view, View::TargetAdd | View::TokenSet) {
             lines.push(Line::from(Span::raw(format!(
                 "Provider: {}",
                 provider_label(self.provider_index)
             ))));
+            lines.push(Line::from(Span::raw("")));
+        }
+        if let Some(message) = self.validation_message.as_deref() {
+            lines.push(Line::from(Span::raw(format!("Validation: {message}"))));
             lines.push(Line::from(Span::raw("")));
         }
         for (idx, field) in self.input_fields.iter().enumerate() {
@@ -509,12 +561,14 @@ impl TuiApp {
                 let value = self.input_fields.get(0).map(|f| f.value.trim().to_string());
                 if let Some(path) = value {
                     if path.is_empty() {
+                        self.validation_message = Some("Root path cannot be empty.".to_string());
                         self.message = "Root path cannot be empty.".to_string();
                         self.view = View::Message;
                         return Ok(false);
                     }
                     self.config.root = Some(path.into());
                     self.config.save(&self.config_path)?;
+                    self.validation_message = None;
                     let audit_id = self.audit.record(
                         "tui.config.root",
                         AuditStatus::Ok,
@@ -537,6 +591,7 @@ impl TuiApp {
         match key.code {
             KeyCode::Esc => self.view = View::Main,
             KeyCode::Char('a') => {
+                self.validation_message = None;
                 self.view = View::TargetAdd;
                 self.input_fields = vec![
                     InputField::new("Scope (space-separated)"),
@@ -547,6 +602,7 @@ impl TuiApp {
                 self.provider_index = 0;
             }
             KeyCode::Char('d') => {
+                self.validation_message = None;
                 self.view = View::TargetRemove;
                 self.input_fields = vec![InputField::new("Target id")];
                 self.input_index = 0;
@@ -568,13 +624,26 @@ impl TuiApp {
                 let provider = provider_kind(self.provider_index);
                 let spec = spec_for(provider.clone());
                 let scope_raw = self.input_fields[0].value.trim();
-                let scope = spec
-                    .parse_scope(scope_raw.split_whitespace().map(|s| s.to_string()).collect())
-                    .context("invalid scope")?;
+                let scope = match spec.parse_scope(
+                    scope_raw
+                        .split_whitespace()
+                        .map(|s| s.to_string())
+                        .collect(),
+                ) {
+                    Ok(scope) => {
+                        self.validation_message = None;
+                        scope
+                    }
+                    Err(err) => {
+                        self.validation_message = Some(format!("Scope invalid: {err}"));
+                        return Ok(false);
+                    }
+                };
                 let host = optional_text(&self.input_fields[1].value);
                 let labels = split_labels(&self.input_fields[2].value);
                 let id = target_id(provider.clone(), host.as_deref(), &scope);
                 if self.config.targets.iter().any(|t| t.id == id) {
+                    self.validation_message = Some("Target already exists.".to_string());
                     self.message = "Target already exists.".to_string();
                     self.view = View::Message;
                     let audit_id = self.audit.record_with_context(
@@ -603,6 +672,7 @@ impl TuiApp {
                     labels,
                 });
                 self.config.save(&self.config_path)?;
+                self.validation_message = None;
                 let audit_id = self.audit.record_with_context(
                     "tui.target.add",
                     AuditStatus::Ok,
@@ -630,6 +700,7 @@ impl TuiApp {
             KeyCode::Enter => {
                 let id = self.input_fields[0].value.trim().to_string();
                 if id.is_empty() {
+                    self.validation_message = Some("Target id is required.".to_string());
                     self.message = "Target id required.".to_string();
                     self.view = View::Message;
                     return Ok(false);
@@ -638,6 +709,7 @@ impl TuiApp {
                 self.config.targets.retain(|t| t.id != id);
                 let after = self.config.targets.len();
                 if before == after {
+                    self.validation_message = Some("Target not found.".to_string());
                     let audit_id = self.audit.record(
                         "tui.target.remove",
                         AuditStatus::Skipped,
@@ -648,6 +720,7 @@ impl TuiApp {
                     self.message = format!("No target found. Audit ID: {audit_id}");
                 } else {
                     self.config.save(&self.config_path)?;
+                    self.validation_message = None;
                     let audit_id = self.audit.record(
                         "tui.target.remove",
                         AuditStatus::Ok,
@@ -678,6 +751,7 @@ impl TuiApp {
             KeyCode::Enter => match self.token_menu_index {
                 0 => self.view = View::TokenList,
                 1 => {
+                    self.validation_message = None;
                     self.view = View::TokenSet;
                     self.input_fields = vec![
                         InputField::new("Scope (space-separated)"),
@@ -688,6 +762,7 @@ impl TuiApp {
                     self.provider_index = 0;
                 }
                 2 => {
+                    self.validation_message = None;
                     self.view = View::TokenValidate;
                     self.input_fields = vec![
                         InputField::new("Scope (space-separated)"),
@@ -723,13 +798,27 @@ impl TuiApp {
                 let provider = provider_kind(self.provider_index);
                 let spec = spec_for(provider.clone());
                 let scope_raw = self.input_fields[0].value.trim();
-                let scope = spec.parse_scope(scope_raw.split_whitespace().map(|s| s.to_string()).collect())
-                    .context("invalid scope")?;
+                let scope = match spec.parse_scope(
+                    scope_raw
+                        .split_whitespace()
+                        .map(|s| s.to_string())
+                        .collect(),
+                ) {
+                    Ok(scope) => {
+                        self.validation_message = None;
+                        scope
+                    }
+                    Err(err) => {
+                        self.validation_message = Some(format!("Scope invalid: {err}"));
+                        return Ok(false);
+                    }
+                };
                 let host = optional_text(&self.input_fields[1].value);
                 let host = host_or_default(host.as_deref(), spec.as_ref());
                 let account = spec.account_key(&host, &scope)?;
                 let token = self.input_fields[2].value.trim().to_string();
                 if token.is_empty() {
+                    self.validation_message = Some("Token cannot be empty.".to_string());
                     self.message = "Token cannot be empty.".to_string();
                     self.view = View::Message;
                     return Ok(false);
@@ -743,6 +832,7 @@ impl TuiApp {
                     }
                     Err(err) => format!("validation failed: {err}"),
                 };
+                self.validation_message = None;
                 let audit_id = self.audit.record_with_context(
                     "tui.token.set",
                     AuditStatus::Ok,
@@ -778,9 +868,21 @@ impl TuiApp {
                 let provider = provider_kind(self.provider_index);
                 let spec = spec_for(provider.clone());
                 let scope_raw = self.input_fields[0].value.trim();
-                let scope = spec
-                    .parse_scope(scope_raw.split_whitespace().map(|s| s.to_string()).collect())
-                    .context("invalid scope")?;
+                let scope = match spec.parse_scope(
+                    scope_raw
+                        .split_whitespace()
+                        .map(|s| s.to_string())
+                        .collect(),
+                ) {
+                    Ok(scope) => {
+                        self.validation_message = None;
+                        scope
+                    }
+                    Err(err) => {
+                        self.validation_message = Some(format!("Scope invalid: {err}"));
+                        return Ok(false);
+                    }
+                };
                 let host = optional_text(&self.input_fields[1].value);
                 let host = host_or_default(host.as_deref(), spec.as_ref());
                 let account = spec.account_key(&host, &scope)?;
@@ -789,6 +891,7 @@ impl TuiApp {
                     Ok(record) => {
                         self.token_validation.insert(account.clone(), record.clone());
                         let status = record.display();
+                        self.validation_message = None;
                         let audit_status = match record.status {
                             TokenValidationStatus::Ok => AuditStatus::Ok,
                             TokenValidationStatus::MissingScopes(_) => AuditStatus::Failed,
@@ -810,6 +913,7 @@ impl TuiApp {
                         self.message = format!("{status}. Audit ID: {audit_id}");
                     }
                     Err(err) => {
+                        self.validation_message = Some(format!("Validation failed: {err}"));
                         let _ = self.audit.record_with_context(
                             "tui.token.validate",
                             AuditStatus::Failed,
@@ -916,24 +1020,27 @@ impl TuiApp {
         Ok(false)
     }
 
-    fn handle_text_input(&mut self, key: KeyEvent) {
-        if self.input_fields.is_empty() {
-            return;
-        }
-        let field = &mut self.input_fields[self.input_index];
-        match key.code {
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                field.value.clear();
-            }
-            KeyCode::Backspace => {
-                field.pop();
-            }
-            KeyCode::Char(ch) => {
-                field.push(ch);
-            }
-            _ => {}
-        }
+fn handle_text_input(&mut self, key: KeyEvent) {
+    if self.input_fields.is_empty() {
+        return;
     }
+    let field = &mut self.input_fields[self.input_index];
+    match key.code {
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            field.value.clear();
+            self.validation_message = None;
+        }
+        KeyCode::Backspace => {
+            field.pop();
+            self.validation_message = None;
+        }
+        KeyCode::Char(ch) => {
+            field.push(ch);
+            self.validation_message = None;
+        }
+        _ => {}
+    }
+}
 
     fn audit_log_path(&self) -> std::path::PathBuf {
         let base_dir = self.audit.base_dir();
@@ -941,6 +1048,26 @@ impl TuiApp {
             .format(&time::format_description::parse("[year][month][day]").unwrap())
             .unwrap();
         base_dir.join(format!("audit-{date}.jsonl"))
+    }
+
+    fn form_context(&self) -> Option<&'static str> {
+        match self.view {
+            View::TargetAdd => Some("Context: Add a provider target"),
+            View::TargetRemove => Some("Context: Remove a target by id"),
+            View::TokenSet => Some("Context: Store a token for a provider scope"),
+            View::TokenValidate => Some("Context: Validate token scopes"),
+            _ => None,
+        }
+    }
+
+    fn form_hint(&self) -> Option<&'static str> {
+        match self.view {
+            View::TargetAdd => Some("Scope uses space-separated segments (org project)"),
+            View::TargetRemove => Some("Find target ids on the Targets screen"),
+            View::TokenSet => Some("Scope uses space-separated segments (org project)"),
+            View::TokenValidate => Some("Host optional; defaults to provider host"),
+            _ => None,
+        }
     }
 
     fn token_entries(&self) -> Vec<TokenEntry> {
@@ -1138,6 +1265,7 @@ mod tests {
             token_validation: HashMap::new(),
             audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
             audit_filter: AuditFilter::All,
+            validation_message: None,
         };
         let key = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
         app.handle_main(key).unwrap();
@@ -1184,6 +1312,7 @@ mod tests {
             token_validation: HashMap::new(),
             audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
             audit_filter: AuditFilter::All,
+            validation_message: None,
         };
         let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
         app.handle_token_menu(key).unwrap();
@@ -1199,5 +1328,26 @@ mod tests {
         let message = validation.display();
         assert!(message.contains("missing scopes"));
         assert!(message.contains("repo"));
+    }
+
+    #[test]
+    fn form_hint_is_present_for_target_add() {
+        let tmp = TempDir::new().unwrap();
+        let app = TuiApp {
+            config_path: std::path::PathBuf::from("/tmp/config.json"),
+            config: AppConfigV2::default(),
+            view: View::TargetAdd,
+            menu_index: 0,
+            message: String::new(),
+            input_index: 0,
+            input_fields: Vec::new(),
+            provider_index: 0,
+            token_menu_index: 0,
+            token_validation: HashMap::new(),
+            audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
+            audit_filter: AuditFilter::All,
+            validation_message: None,
+        };
+        assert!(app.form_hint().is_some());
     }
 }

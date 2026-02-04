@@ -290,7 +290,7 @@ mod tests {
         let loaded = RepoCache::load(&path).unwrap();
         assert_eq!(loaded.version, 2);
         assert!(loaded.last_sync.contains_key("repo-1"));
-        assert!(loaded.target_sync_status.contains_key("target-1"));
+        assert!(loaded.target_sync_status.is_empty());
     }
 
     #[test]

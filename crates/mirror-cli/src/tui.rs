@@ -1906,6 +1906,9 @@ mod tests {
             validation_message: None,
             show_target_stats: false,
             install_guard: None,
+            install_rx: None,
+            install_progress: None,
+            install_status: None,
         };
         let key = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
         app.handle_main(key).unwrap();
@@ -1955,6 +1958,9 @@ mod tests {
             validation_message: None,
             show_target_stats: false,
             install_guard: None,
+            install_rx: None,
+            install_progress: None,
+            install_status: None,
         };
         let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
         app.handle_token_menu(key).unwrap();
@@ -1991,6 +1997,9 @@ mod tests {
             validation_message: None,
             show_target_stats: false,
             install_guard: None,
+            install_rx: None,
+            install_progress: None,
+            install_status: None,
         };
         assert!(app.form_hint().is_some());
     }

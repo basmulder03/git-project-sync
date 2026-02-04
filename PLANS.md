@@ -28,6 +28,11 @@
 - [x] Add `--audit-repo` toggle for per-repo audit entries
 - [x] Show last error in Sync Status view
 
+## Milestone 48 — Performance + Reliability (in progress)
+
+- [x] Add `--jobs` to sync and daemon
+- [x] Parallelize repo syncs safely per target
+
 ## Milestone 42 — Installer Single-Instance Fix (in progress)
 
 - [x] Replace installer mutex with lockfile under data_local

@@ -192,6 +192,8 @@ struct SyncArgs {
     status_only: bool,
     #[arg(long)]
     audit_repo: bool,
+    #[arg(long, default_value = "1")]
+    jobs: usize,
     #[arg(long)]
     non_interactive: bool,
     #[arg(long, value_enum, default_value = "prompt")]
@@ -212,6 +214,8 @@ struct DaemonArgs {
     run_once: bool,
     #[arg(long)]
     audit_repo: bool,
+    #[arg(long, default_value = "1")]
+    jobs: usize,
     #[arg(long, value_enum, default_value = "skip")]
     missing_remote: MissingRemotePolicyValue,
     #[arg(long)]
@@ -964,6 +968,7 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                     missing_decider: decider,
                     repo_filter: Some(&filter),
                     progress,
+                    jobs: args.jobs,
                     detect_missing: false,
                     refresh: args.refresh,
                     verify: args.verify,
@@ -979,6 +984,7 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                     missing_decider: decider,
                     repo_filter: Some(&filter),
                     progress,
+                    jobs: args.jobs,
                     detect_missing: true,
                     refresh: args.refresh,
                     verify: args.verify,
@@ -1084,7 +1090,7 @@ fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Result<()> {
             None,
         )?;
         println!("Audit ID: {audit_id}");
-        let job = || run_sync_job(&config_path, &cache_path, policy, audit, args.audit_repo);
+        let job = || run_sync_job(&config_path, &cache_path, policy, audit, args.audit_repo, args.jobs);
         if args.run_once {
             mirror_core::daemon::run_once_with_lock(&lock_path, job)?;
             let audit_id = audit.record(
@@ -2134,6 +2140,7 @@ fn run_sync_job(
     policy: MissingRemotePolicy,
     audit: &AuditLogger,
     audit_repo: bool,
+    jobs: usize,
 ) -> anyhow::Result<()> {
     let (config, migrated) = load_or_migrate(config_path)?;
     if migrated {
@@ -2206,6 +2213,7 @@ fn run_sync_job(
             missing_decider: None,
             repo_filter: Some(&bucketed),
             progress: if audit_repo { Some(&progress_fn) } else { None },
+            jobs,
             detect_missing: true,
             refresh: false,
             verify: false,

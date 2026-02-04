@@ -17,11 +17,13 @@ where
             return Ok(response);
         }
         if is_retryable(status) {
-            if let Some(delay) = retry_delay_from_headers(response.headers()) {
-                sleep(delay);
-                continue;
-            }
             if attempt < max_attempts {
+                let delay = retry_delay_from_headers(response.headers());
+                let _ = response.bytes();
+                if let Some(delay) = delay {
+                    sleep(delay);
+                    continue;
+                }
                 sleep(Duration::from_secs(1));
                 continue;
             }

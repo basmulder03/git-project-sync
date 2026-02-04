@@ -47,7 +47,14 @@ fn is_lock_held(err: &std::io::Error) -> bool {
     if err.kind() == std::io::ErrorKind::WouldBlock {
         return true;
     }
-    matches!(err.raw_os_error(), Some(33))
+    #[cfg(windows)]
+    {
+        return matches!(err.raw_os_error(), Some(32 | 33));
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
 }
 
 #[cfg(test)]

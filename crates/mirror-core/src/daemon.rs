@@ -24,13 +24,32 @@ pub fn run_daemon<F>(lock_path: &Path, interval: Duration, mut job: F) -> anyhow
 where
     F: FnMut() -> anyhow::Result<()>,
 {
+    let mut failure_count: u32 = 0;
     loop {
-        let ran = run_once_with_lock(lock_path, &mut job)?;
-        if ran {
-            info!("run completed");
+        match run_once_with_lock(lock_path, &mut job) {
+            Ok(ran) => {
+                if ran {
+                    info!("run completed");
+                }
+                failure_count = 0;
+            }
+            Err(err) => {
+                failure_count = failure_count.saturating_add(1);
+                warn!(error = %err, failures = failure_count, "run failed");
+            }
         }
-        thread::sleep(interval);
+        thread::sleep(backoff_delay(interval, failure_count));
     }
+}
+
+fn backoff_delay(interval: Duration, failures: u32) -> Duration {
+    if failures == 0 {
+        return interval;
+    }
+    let base = interval.as_secs().max(1);
+    let exp = failures.saturating_sub(1).min(5);
+    let delay = base.saturating_mul(2u64.saturating_pow(exp));
+    Duration::from_secs(delay.min(3600))
 }
 
 #[cfg(test)]

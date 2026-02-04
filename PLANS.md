@@ -13,6 +13,12 @@
 - [x] Harden repo name sanitization for Windows
 - [x] Allow archive moves across devices
 
+## Milestone 40 — Medium-Severity Fixes (in progress)
+
+- [x] Drain retryable HTTP responses before retry
+- [x] Add daemon backoff on repeated failures
+- [x] Improve lockfile held detection on Windows
+
 ## Milestone 12 — Architecture cleanup (completed)
 
 - [x] Add provider spec registry to centralize host/scope/account logic

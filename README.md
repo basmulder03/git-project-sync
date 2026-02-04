@@ -169,6 +169,11 @@ Optional flags:
 - `--delayed-start <seconds>`: delay startup on boot (OS-native where supported)
 - `--path <add|skip>`: opt-in PATH registration
 
+Default launch behavior:
+
+- Running `mirror-cli` with no arguments will open the installer if not installed.
+- Once installed, running `mirror-cli` without arguments shows the CLI help.
+
 Notes:
 
 - Linux: installs a systemd user service

@@ -19,6 +19,7 @@ time = { version = "0.3", features = ["formatting"] }
 tray-icon = "0.14"
 winit = "0.29"
 directories = "5"
+single-instance = "0.3"
 
 [dev-dependencies]
 tempfile = "3"

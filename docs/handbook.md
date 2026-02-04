@@ -191,6 +191,15 @@ Options:
 - `--delayed-start <seconds>`: delayed startup on boot (OS-native).
 - `--path <add|skip>`: opt-in PATH registration.
 
+### Default launch behavior
+
+When you run the executable without arguments:
+
+- If **not installed**, it starts the TUI installer.
+- If **installed**, it shows the CLI help screen.
+
+Installation is tracked via an install marker file stored under the OS data directory.
+
 ## Tray + Dashboard
 
 System tray UI:

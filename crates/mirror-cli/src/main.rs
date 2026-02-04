@@ -1,5 +1,5 @@
 use anyhow::Context;
-use clap::{Parser, ValueEnum};
+use clap::{Parser, ValueEnum, CommandFactory};
 use mirror_core::cache::{
     RepoCacheEntry, backoff_until, update_target_failure, update_target_success,
 };
@@ -396,6 +396,18 @@ fn main() -> anyhow::Result<()> {
     let audit = AuditLogger::new()?;
     let _ = audit.record("app.start", AuditStatus::Ok, None, None, None)?;
     auth::set_audit_logger(audit.clone());
+
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() == 1 {
+        if install::is_installed().unwrap_or(false) {
+            let mut cmd = Cli::command();
+            cmd.print_help()?;
+            println!();
+            return Ok(());
+        }
+        let _guard = install::acquire_install_lock()?;
+        return tui::run_tui(&audit, tui::StartView::Install);
+    }
 
     let cli = Cli::parse();
     let result = match cli.command {
@@ -1065,6 +1077,7 @@ fn handle_service(args: ServiceArgs, audit: &AuditLogger) -> anyhow::Result<()> 
             }
             ServiceAction::Uninstall => {
                 mirror_core::service::uninstall_service()?;
+                let _ = install::remove_marker();
                 println!("Service uninstalled.");
                 let audit_id = audit.record(
                     "service.uninstall",
@@ -1647,8 +1660,10 @@ fn handle_cache_prune(args: CachePruneArgs, audit: &AuditLogger) -> anyhow::Resu
 fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     let result: anyhow::Result<()> = (|| {
         if args.tui {
+            let _guard = install::acquire_install_lock()?;
             return tui::run_tui(audit, tui::StartView::Install);
         }
+        let _guard = install::acquire_install_lock()?;
         let delayed_start = if args.non_interactive {
             args.delayed_start
         } else {

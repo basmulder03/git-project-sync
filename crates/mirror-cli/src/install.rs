@@ -1,5 +1,6 @@
 use anyhow::Context;
-use directories::BaseDirs;
+use directories::{BaseDirs, ProjectDirs};
+use single_instance::SingleInstance;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -21,7 +22,12 @@ pub struct InstallReport {
     pub path: String,
 }
 
+pub struct InstallGuard {
+    _instance: SingleInstance,
+}
+
 pub fn perform_install(exec_path: &Path, options: InstallOptions) -> anyhow::Result<InstallReport> {
+    let _guard = acquire_install_lock()?;
     mirror_core::service::install_service_with_delay(exec_path, options.delayed_start)?;
     let service = match options.delayed_start {
         Some(delay) if delay > 0 => format!("Service installed with delayed start ({delay}s)"),
@@ -31,6 +37,7 @@ pub fn perform_install(exec_path: &Path, options: InstallOptions) -> anyhow::Res
         PathChoice::Add => register_path(exec_path)?,
         PathChoice::Skip => "PATH update skipped".to_string(),
     };
+    write_marker()?;
     Ok(InstallReport { service, path })
 }
 
@@ -76,6 +83,43 @@ fn build_path_update(current: &str, add: &str) -> String {
         return add.to_string();
     }
     format!("{current};{add}")
+}
+
+pub fn acquire_install_lock() -> anyhow::Result<InstallGuard> {
+    let instance = SingleInstance::new("git-project-sync-installer")
+        .context("create installer mutex")?;
+    if !instance.is_single() {
+        anyhow::bail!("installer already running");
+    }
+    Ok(InstallGuard { _instance: instance })
+}
+
+pub fn is_installed() -> anyhow::Result<bool> {
+    let path = marker_path()?;
+    Ok(path.exists())
+}
+
+pub fn write_marker() -> anyhow::Result<()> {
+    let path = marker_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).context("create install marker dir")?;
+    }
+    std::fs::write(&path, "installed=true\n").context("write install marker")?;
+    Ok(())
+}
+
+pub fn remove_marker() -> anyhow::Result<()> {
+    let path = marker_path()?;
+    if path.exists() {
+        std::fs::remove_file(&path).context("remove install marker")?;
+    }
+    Ok(())
+}
+
+fn marker_path() -> anyhow::Result<PathBuf> {
+    let project = ProjectDirs::from("com", "git-project-sync", "git-project-sync")
+        .context("resolve project dirs")?;
+    Ok(project.data_local_dir().join("install.marker"))
 }
 
 #[cfg(test)]

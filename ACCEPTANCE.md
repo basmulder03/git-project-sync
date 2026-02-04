@@ -35,3 +35,4 @@
 28) Run `install` and confirm the daemon service is installed; verify delayed start when `--delayed-start` is provided.
 29) Run `install --tui` and confirm the installer screen runs the same flow.
 30) Run `install --path add` and confirm PATH registration message is shown.
+31) Run `mirror-cli` with no args: if not installed, installer opens; if installed, help is shown.

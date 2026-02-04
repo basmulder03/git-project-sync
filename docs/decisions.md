@@ -55,3 +55,9 @@ This document captures key architectural decisions and the rationale behind them
 **Decision:** The project does not modify PATH automatically.
 
 **Rationale:** Avoids OS policy issues and reduces side effects during install.
+
+## Install marker file
+
+**Decision:** Track installation state using a marker file in OS app data.
+
+**Rationale:** Simple cross-platform detection of “installed” vs “not installed.”

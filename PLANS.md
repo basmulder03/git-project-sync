@@ -17,11 +17,13 @@
 - [x] Ignore non-press key events in TUI to prevent double-handling
 - [x] Add Windows admin check with clear error before service install
 - [x] Add Unix/macOS permission preflight with sudo guidance when dirs aren't writable
+- [x] Use Windows Service APIs for install (avoid sc.exe quoting issues)
 - [ ] Consider follow-up: update docs to mention installer lock behavior
 
 ## Milestone 38 — Build Fix (in progress)
 
 - [x] Fix Windows build error in installer PATH registration
+- [x] Fix Windows service start call type annotation
 - [x] Re-run build to confirm
 
 ## Milestone 39 — High-Severity Fixes (in progress)

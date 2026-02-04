@@ -11,6 +11,18 @@ use std::path::Path;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::path::PathBuf;
 use std::process::Command;
+#[cfg(target_os = "windows")]
+use std::ffi::OsString;
+#[cfg(target_os = "windows")]
+use windows_service::service::{
+    ServiceAccess, ServiceErrorControl, ServiceInfo, ServiceStartType, ServiceType,
+};
+#[cfg(target_os = "windows")]
+use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
+#[cfg(target_os = "windows")]
+use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_SET_VALUE};
+#[cfg(target_os = "windows")]
+use winreg::RegKey;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const SERVICE_NAME: &str = "git-project-sync";
@@ -316,24 +328,29 @@ Otherwise, check your home directory permissions.",
 #[cfg(target_os = "windows")]
 fn install_windows(exec_path: &Path, delay_seconds: Option<u64>) -> anyhow::Result<()> {
     ensure_windows_admin()?;
-    let exec = exec_path.to_string_lossy();
-    let bin_path = format!("\"{exec}\" daemon --missing-remote skip");
-    let start_mode = if delay_seconds.unwrap_or(0) > 0 {
-        "delayed-auto"
-    } else {
-        "auto"
+    let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CREATE_SERVICE)?;
+    let service_info = ServiceInfo {
+        name: OsString::from(SERVICE_NAME),
+        display_name: OsString::from("git-project-sync"),
+        service_type: ServiceType::OWN_PROCESS,
+        start_type: ServiceStartType::AutoStart,
+        error_control: ServiceErrorControl::Normal,
+        executable_path: exec_path.to_path_buf(),
+        launch_arguments: vec![
+            OsString::from("daemon"),
+            OsString::from("--missing-remote"),
+            OsString::from("skip"),
+        ],
+        dependencies: vec![],
+        account_name: None,
+        account_password: None,
     };
-    run_command(
-        "sc.exe",
-        &["create", SERVICE_NAME, &format!("binPath= {bin_path}"), &format!("start= {start_mode}")],
-        "create windows service",
-    )?;
-    run_command(
-        "sc.exe",
-        &["start", SERVICE_NAME],
-        "start windows service",
-    )
-    .ok();
+    let service = manager.create_service(&service_info, ServiceAccess::START)?;
+    if delay_seconds.unwrap_or(0) > 0 {
+        set_delayed_auto_start()?;
+    }
+    let empty_args: [OsString; 0] = [];
+    let _ = service.start(&empty_args);
     Ok(())
 }
 
@@ -360,6 +377,20 @@ fn windows_service_exists() -> anyhow::Result<bool> {
         .status()
         .with_context(|| format!("query windows service {SERVICE_NAME}"))?;
     Ok(status.success())
+}
+
+#[cfg(target_os = "windows")]
+fn set_delayed_auto_start() -> anyhow::Result<()> {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let key = hklm
+        .open_subkey_with_flags(
+            format!("SYSTEM\\CurrentControlSet\\Services\\{SERVICE_NAME}"),
+            KEY_SET_VALUE,
+        )
+        .context("open service registry key for delayed auto start")?;
+    key.set_value("DelayedAutoStart", &1u32)
+        .context("set DelayedAutoStart registry value")?;
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]

@@ -70,6 +70,12 @@
 - [x] Add tests for repo status + tree rendering helpers
 - [x] Document assumptions and follow-ups
 
+## Milestone 50 — TUI Sync Trigger (in progress)
+
+- [x] Add dashboard hotkey to start sync (all targets)
+- [x] Run sync in background with lockfile + audit
+- [x] Surface completion/errors in TUI message view
+
 ## Milestone 39 — High-Severity Fixes (in progress)
 
 - [x] Support GitHub user-scope targets (fallback from org endpoint)

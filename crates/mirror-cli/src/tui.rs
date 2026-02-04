@@ -7,10 +7,16 @@ use crossterm::{
 use mirror_core::audit::{AuditContext, AuditLogger, AuditStatus};
 use mirror_core::cache::{RepoCache, SyncSummarySnapshot};
 use mirror_core::config::{
-    default_cache_path, default_config_path, load_or_migrate, target_id, AppConfigV2, TargetConfig,
+    default_cache_path, default_config_path, default_lock_path, load_or_migrate, target_id,
+    AppConfigV2, TargetConfig,
 };
+use mirror_core::deleted::MissingRemotePolicy;
+use mirror_core::lockfile::LockFile;
 use mirror_core::model::ProviderKind;
+use mirror_core::model::ProviderTarget;
+use mirror_core::model::RemoteRepo;
 use mirror_core::repo_status::RepoLocalStatus;
+use mirror_core::sync_engine::{run_sync_filtered, RunSyncOptions, SyncSummary};
 use crate::repo_overview;
 use mirror_providers::auth;
 use mirror_providers::spec::{host_or_default, pat_help, spec_for};
@@ -86,6 +92,7 @@ fn run_app(
 
         app.poll_install_events()?;
         app.poll_repo_status_events()?;
+        app.poll_sync_events()?;
     }
 
     Ok(())
@@ -174,6 +181,8 @@ struct TuiApp {
     repo_status_refreshing: bool,
     repo_status_rx: Option<mpsc::Receiver<Result<HashMap<String, RepoLocalStatus>, String>>>,
     repo_overview_message: Option<String>,
+    sync_running: bool,
+    sync_rx: Option<mpsc::Receiver<Result<SyncSummary, String>>>,
     install_guard: Option<crate::install::InstallGuard>,
     install_rx: Option<mpsc::Receiver<InstallEvent>>,
     install_progress: Option<InstallProgressState>,
@@ -212,6 +221,8 @@ impl TuiApp {
             repo_status_refreshing: false,
             repo_status_rx: None,
             repo_overview_message: None,
+            sync_running: false,
+            sync_rx: None,
             install_guard: None,
             install_rx: None,
             install_progress: None,
@@ -297,7 +308,7 @@ impl TuiApp {
     fn footer_text(&self) -> String {
         match self.view {
             View::Main => "Up/Down: navigate | Enter: select | q: quit".to_string(),
-            View::Dashboard => "t: toggle targets | s: sync status | Esc: back".to_string(),
+            View::Dashboard => "t: toggle targets | s: sync status | r: sync now | Esc: back".to_string(),
             View::Install => "Tab: next | Enter: run install | s: status | Esc: back".to_string(),
             View::SyncStatus => "Enter/Esc: back".to_string(),
             View::InstallStatus => "Enter/Esc: back".to_string(),
@@ -1068,6 +1079,9 @@ impl TuiApp {
             KeyCode::Char('s') => {
                 self.view = View::SyncStatus;
             }
+            KeyCode::Char('r') => {
+                self.start_sync_run()?;
+            }
             _ => {}
         }
         Ok(false)
@@ -1646,6 +1660,41 @@ impl TuiApp {
         Ok(())
     }
 
+    fn poll_sync_events(&mut self) -> anyhow::Result<()> {
+        let Some(rx) = self.sync_rx.take() else {
+            return Ok(());
+        };
+        let mut done = false;
+        while let Ok(result) = rx.try_recv() {
+            self.sync_running = false;
+            match result {
+                Ok(summary) => {
+                    self.message = format!(
+                        "Sync completed. cloned={} ff={} up={} dirty={} div={} fail={} missA={} missR={} missS={}",
+                        summary.cloned,
+                        summary.fast_forwarded,
+                        summary.up_to_date,
+                        summary.dirty,
+                        summary.diverged,
+                        summary.failed,
+                        summary.missing_archived,
+                        summary.missing_removed,
+                        summary.missing_skipped
+                    );
+                }
+                Err(err) => {
+                    self.message = format!("Sync failed: {err}");
+                }
+            }
+            self.view = View::Message;
+            done = true;
+        }
+        if !done {
+            self.sync_rx = Some(rx);
+        }
+        Ok(())
+    }
+
     fn enter_repo_overview(&mut self) -> anyhow::Result<()> {
         self.view = View::RepoOverview;
         self.repo_overview_message = None;
@@ -1689,6 +1738,62 @@ impl TuiApp {
             let result = repo_overview::refresh_repo_status(&cache_path).map_err(|err| err.to_string());
             let _ = tx.send(result);
         });
+        Ok(())
+    }
+
+    fn start_sync_run(&mut self) -> anyhow::Result<()> {
+        if self.sync_running {
+            self.message = "Sync already running.".to_string();
+            self.view = View::Message;
+            return Ok(());
+        }
+        let root = match self.config.root.clone() {
+            Some(root) => root,
+            None => {
+                self.message = "Config missing root; run config init.".to_string();
+                self.view = View::Message;
+                return Ok(());
+            }
+        };
+        if self.config.targets.is_empty() {
+            self.message = "No targets configured.".to_string();
+            self.view = View::Message;
+            return Ok(());
+        }
+
+        let lock_path = default_lock_path()?;
+        let lock = match LockFile::try_acquire(&lock_path)? {
+            Some(lock) => lock,
+            None => {
+                self.message = "Sync already running (lock held).".to_string();
+                self.view = View::Message;
+                return Ok(());
+            }
+        };
+
+        let targets = self.config.targets.clone();
+        let audit = self.audit.clone();
+        let cache_path = default_cache_path()?;
+        let (tx, rx) = mpsc::channel::<Result<SyncSummary, String>>();
+        self.sync_rx = Some(rx);
+        self.sync_running = true;
+        self.view = View::SyncStatus;
+
+        thread::spawn(move || {
+            let _lock = lock;
+            let result = run_tui_sync(&targets, &root, &cache_path, &audit);
+            if let Err(err) = &result {
+                let _ = audit.record(
+                    "tui.sync.finish",
+                    AuditStatus::Failed,
+                    Some("tui"),
+                    None,
+                    Some(&err.to_string()),
+                );
+            }
+            let _ = tx.send(result.map_err(|err| err.to_string()));
+        });
+
         Ok(())
     }
 
@@ -2115,6 +2220,123 @@ fn read_audit_lines(path: &std::path::Path, filter: AuditFilter) -> anyhow::Resu
     Ok(lines)
 }
 
+fn run_tui_sync(
+    targets: &[TargetConfig],
+    root: &std::path::Path,
+    cache_path: &std::path::Path,
+    audit: &AuditLogger,
+) -> anyhow::Result<SyncSummary> {
+    let audit_id = audit.record("tui.sync.start", AuditStatus::Ok, Some("tui"), None, None)?;
+    let _ = audit_id;
+    let registry = ProviderRegistry::new();
+    let mut total = SyncSummary::default();
+
+    for target in targets {
+        let provider_kind = target.provider.clone();
+        let provider = registry.provider(provider_kind.clone())?;
+        let runtime_target = ProviderTarget {
+            provider: provider_kind,
+            scope: target.scope.clone(),
+            host: target.host.clone(),
+        };
+        let filter = |repo: &RemoteRepo| !repo.archived;
+        let options = RunSyncOptions {
+            missing_policy: MissingRemotePolicy::Skip,
+            missing_decider: None,
+            repo_filter: Some(&filter),
+            progress: None,
+            jobs: 1,
+            detect_missing: true,
+            refresh: false,
+            verify: false,
+        };
+        let summary = match run_sync_filtered(
+            provider.as_ref(),
+            &runtime_target,
+            root,
+            cache_path,
+            options,
+        ) {
+            Ok(summary) => summary,
+            Err(err) => {
+                let context = AuditContext {
+                    provider: Some(target.provider.as_prefix().to_string()),
+                    scope: Some(target.scope.segments().join("/")),
+                    repo_id: Some(target.id.clone()),
+                    path: None,
+                };
+                let _ = audit.record_with_context(
+                    "tui.sync.target",
+                    AuditStatus::Failed,
+                    Some("tui"),
+                    context,
+                    None,
+                    Some(&err.to_string()),
+                );
+                return Err(err);
+            }
+        };
+        let details = serde_json::json!({
+            "cloned": summary.cloned,
+            "fast_forwarded": summary.fast_forwarded,
+            "up_to_date": summary.up_to_date,
+            "dirty": summary.dirty,
+            "diverged": summary.diverged,
+            "failed": summary.failed,
+            "missing_archived": summary.missing_archived,
+            "missing_removed": summary.missing_removed,
+            "missing_skipped": summary.missing_skipped,
+        });
+        let context = AuditContext {
+            provider: Some(target.provider.as_prefix().to_string()),
+            scope: Some(target.scope.segments().join("/")),
+            repo_id: Some(target.id.clone()),
+            path: None,
+        };
+        let _ = audit.record_with_context(
+            "tui.sync.target",
+            AuditStatus::Ok,
+            Some("tui"),
+            context,
+            Some(details),
+            None,
+        );
+        accumulate_summary(&mut total, summary);
+    }
+
+    let details = serde_json::json!({
+        "cloned": total.cloned,
+        "fast_forwarded": total.fast_forwarded,
+        "up_to_date": total.up_to_date,
+        "dirty": total.dirty,
+        "diverged": total.diverged,
+        "failed": total.failed,
+        "missing_archived": total.missing_archived,
+        "missing_removed": total.missing_removed,
+        "missing_skipped": total.missing_skipped,
+    });
+    let _ = audit.record(
+        "tui.sync.finish",
+        AuditStatus::Ok,
+        Some("tui"),
+        Some(details),
+        None,
+    );
+    Ok(total)
+}
+
+fn accumulate_summary(total: &mut SyncSummary, next: SyncSummary) {
+    total.cloned += next.cloned;
+    total.fast_forwarded += next.fast_forwarded;
+    total.up_to_date += next.up_to_date;
+    total.dirty += next.dirty;
+    total.diverged += next.diverged;
+    total.failed += next.failed;
+    total.missing_archived += next.missing_archived;
+    total.missing_removed += next.missing_removed;
+    total.missing_skipped += next.missing_skipped;
+}
+
 fn last_sync_error(audit: &AuditLogger, target_id: &str) -> anyhow::Result<String> {
     let base_dir = audit.base_dir();
     let date = time::OffsetDateTime::now_utc()
@@ -2208,6 +2430,8 @@ mod tests {
             repo_status_refreshing: false,
             repo_status_rx: None,
             repo_overview_message: None,
+            sync_running: false,
+            sync_rx: None,
             install_guard: None,
             install_rx: None,
             install_progress: None,
@@ -2265,6 +2489,8 @@ mod tests {
             repo_status_refreshing: false,
             repo_status_rx: None,
             repo_overview_message: None,
+            sync_running: false,
+            sync_rx: None,
             install_guard: None,
             install_rx: None,
             install_progress: None,
@@ -2309,6 +2535,8 @@ mod tests {
             repo_status_refreshing: false,
             repo_status_rx: None,
             repo_overview_message: None,
+            sync_running: false,
+            sync_rx: None,
             install_guard: None,
             install_rx: None,
             install_progress: None,

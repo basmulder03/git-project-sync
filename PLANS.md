@@ -149,12 +149,12 @@
 - [x] Add audit logging for OAuth events (device start, approval, token refresh, revoke)
 - [x] Add tests for refresh/revoke failure handling and audit entries
 
-## Milestone 34 — OAuth GA UX + Docs (planned)
+## Milestone 34 — OAuth GA UX + Docs (completed)
 
-- [ ] Update CLI/TUI copy for OAuth GA (warnings, fallbacks, retries, timeouts)
-- [ ] Add troubleshooting docs for OAuth flows (common errors + recovery steps)
-- [ ] Add acceptance criteria updates for OAuth GA
-- [ ] Add end-to-end manual test checklist for OAuth login flows
+- [x] Update CLI/TUI copy for OAuth GA (warnings, fallbacks, retries, timeouts)
+- [x] Add troubleshooting docs for OAuth flows (common errors + recovery steps)
+- [x] Add acceptance criteria updates for OAuth GA
+- [x] Add end-to-end manual test checklist for OAuth login flows
 
 ## Notes / Decisions
 

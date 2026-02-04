@@ -52,6 +52,20 @@ mirror-cli token set --provider github --scope org-or-user --token <token>
 mirror-cli token set --provider gitlab --scope group --token <token>
 ```
 
+OAuth device flow (GitHub/Azure DevOps):
+
+```bash
+mirror-cli oauth device --provider github --scope org-or-user --client-id <id>
+mirror-cli oauth device --provider azure-devops --scope org project --client-id <id> --tenant <tenant>
+```
+
+Revoke OAuth tokens:
+
+```bash
+mirror-cli oauth revoke --provider github --scope org-or-user
+mirror-cli oauth revoke --provider azure-devops --scope org project
+```
+
 Run a sync:
 
 ```bash
@@ -128,3 +142,11 @@ Notes:
 - If the default branch diverges, sync will skip it and log the reason
 - If origin is missing or mismatched, sync will update the origin URL before fetch
 - For Azure DevOps 401/403/404 responses, the CLI prints a friendly scope/token hint
+- OAuth device flow is gated by provider/host allowlist; override with `GIT_PROJECT_SYNC_OAUTH_ALLOW`
+
+### OAuth Troubleshooting
+
+- `OAuth not enabled for <provider> at <host>`: add the host to `GIT_PROJECT_SYNC_OAUTH_ALLOW`
+- `device code expired`: restart `oauth device` and complete authorization sooner
+- `access denied`: confirm the correct account is used and re-run the flow
+- `oauth refresh failed`: revoke the token and re-run `oauth device`

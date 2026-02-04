@@ -51,5 +51,14 @@
 - `sync --verify` to compare local refs with upstreams without modifying non-default branches
 - `cache prune` to remove cached entries for deleted targets
 - `token guide` and `token validate` to help create and validate PATs
-- `oauth device` (experimental) for GitHub device flow
-  - Experimental; tokens still stored in keyring. Use PATs if device flow is unavailable.
+- `oauth device` for GitHub + Azure DevOps device flow
+  - OAuth gating by provider/host (default allowlist; override via `GIT_PROJECT_SYNC_OAUTH_ALLOW`)
+  - Tokens stored in keyring; OAuth refresh handled automatically when supported
+- `oauth revoke` to remove stored OAuth tokens for a provider scope
+
+## OAuth troubleshooting
+
+- OAuth not enabled for host: add to `GIT_PROJECT_SYNC_OAUTH_ALLOW`
+- device code expired: restart `oauth device`
+- access denied: re-run and confirm the correct account
+- oauth refresh failed: revoke token and re-auth

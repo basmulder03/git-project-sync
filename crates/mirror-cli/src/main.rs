@@ -50,7 +50,7 @@ enum Commands {
     Health(HealthArgs),
     #[command(about = "Manage webhooks")]
     Webhook(WebhookArgs),
-    #[command(about = "OAuth helpers (experimental)")]
+    #[command(about = "OAuth helpers")]
     Oauth(OauthArgs),
     #[command(about = "Manage cache")]
     Cache(CacheArgs),
@@ -280,8 +280,6 @@ struct DeviceFlowArgs {
     tenant: Option<String>,
     #[arg(long, value_name = "OAUTH_SCOPE")]
     oauth_scope: Vec<String>,
-    #[arg(long)]
-    experimental: bool,
 }
 
 #[derive(Parser)]
@@ -1213,9 +1211,6 @@ fn handle_oauth(args: OauthArgs, audit: &AuditLogger) -> anyhow::Result<()> {
 
 fn handle_device_flow(args: DeviceFlowArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     let result: anyhow::Result<()> = (|| {
-        if !args.experimental && std::env::var("GIT_PROJECT_SYNC_EXPERIMENTAL").is_err() {
-            anyhow::bail!("device flow is experimental; pass --experimental or set GIT_PROJECT_SYNC_EXPERIMENTAL=1");
-        }
         let provider: ProviderKind = args.provider.into();
         let spec = spec_for(provider.clone());
         let scope = spec.parse_scope(args.scope)?;

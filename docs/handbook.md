@@ -199,6 +199,7 @@ When you run the executable without arguments:
 - If **installed**, it shows the CLI help screen.
 
 Installation is tracked via an install marker file stored under the OS data directory.
+Only one installer can run at a time (guarded by an install lock file under the same directory).
 
 ## Tray + Dashboard
 

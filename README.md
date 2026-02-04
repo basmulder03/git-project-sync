@@ -185,6 +185,7 @@ Notes:
 - Linux: installs a systemd user service
 - macOS: installs a LaunchAgent
 - Windows: installs a Windows service
+- Only one installer can run at a time (guarded by a lock file under the OS app data directory).
 
 ## Troubleshooting
 

@@ -157,6 +157,7 @@ struct TuiApp {
     audit_filter: AuditFilter,
     validation_message: Option<String>,
     show_target_stats: bool,
+    install_guard: Option<crate::install::InstallGuard>,
 }
 
 impl TuiApp {
@@ -171,7 +172,7 @@ impl TuiApp {
             StartView::Install => View::Install,
             StartView::Main => View::Main,
         };
-        Ok(Self {
+        let mut app = Self {
             config_path,
             config,
             view,
@@ -186,7 +187,38 @@ impl TuiApp {
             audit_filter: AuditFilter::All,
             validation_message: None,
             show_target_stats: false,
-        })
+            install_guard: None,
+        };
+        if app.view == View::Install {
+            app.enter_install_view()?;
+        }
+        Ok(app)
+    }
+
+    fn prepare_install_form(&mut self) {
+        self.input_fields = vec![
+            InputField::new("Delayed start seconds (optional)"),
+            InputField::new("Add CLI to PATH? (y/n)"),
+        ];
+        self.input_index = 0;
+    }
+
+    fn ensure_install_guard(&mut self) -> anyhow::Result<()> {
+        if self.install_guard.is_none() {
+            self.install_guard = Some(crate::install::acquire_install_lock()?);
+        }
+        Ok(())
+    }
+
+    fn release_install_guard(&mut self) {
+        self.install_guard = None;
+    }
+
+    fn enter_install_view(&mut self) -> anyhow::Result<()> {
+        self.ensure_install_guard()?;
+        self.view = View::Install;
+        self.prepare_install_form();
+        Ok(())
     }
 
     fn draw(&mut self, frame: &mut ratatui::Frame) {
@@ -629,12 +661,10 @@ impl TuiApp {
             KeyCode::Enter => match self.menu_index {
                 0 => self.view = View::Dashboard,
                 1 => {
-                    self.view = View::Install;
-                    self.input_fields = vec![
-                        InputField::new("Delayed start seconds (optional)"),
-                        InputField::new("Add CLI to PATH? (y/n)"),
-                    ];
-                    self.input_index = 0;
+                    if let Err(err) = self.enter_install_view() {
+                        self.message = format!("Installer unavailable: {err}");
+                        self.view = View::Message;
+                    }
                 }
                 2 => {
                     self.view = View::ConfigRoot;
@@ -657,9 +687,17 @@ impl TuiApp {
 
     fn handle_install(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
         match key.code {
-            KeyCode::Esc => self.view = View::Main,
+            KeyCode::Esc => {
+                self.release_install_guard();
+                self.view = View::Main;
+            }
             KeyCode::Tab => self.input_index = (self.input_index + 1) % self.input_fields.len(),
             KeyCode::Enter => {
+                if let Err(err) = self.ensure_install_guard() {
+                    self.message = format!("Installer unavailable: {err}");
+                    self.view = View::Message;
+                    return Ok(false);
+                }
                 let delay_raw = self.input_fields[0].value.trim();
                 let delayed_start = if delay_raw.is_empty() {
                     None
@@ -686,6 +724,7 @@ impl TuiApp {
                         path_choice,
                     },
                 )?;
+                self.release_install_guard();
                 let audit_id = self.audit.record(
                     "tui.install",
                     AuditStatus::Ok,
@@ -1529,6 +1568,7 @@ mod tests {
             audit_filter: AuditFilter::All,
             validation_message: None,
             show_target_stats: false,
+            install_guard: None,
         };
         let key = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
         app.handle_main(key).unwrap();
@@ -1577,6 +1617,7 @@ mod tests {
             audit_filter: AuditFilter::All,
             validation_message: None,
             show_target_stats: false,
+            install_guard: None,
         };
         let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
         app.handle_token_menu(key).unwrap();
@@ -1612,6 +1653,7 @@ mod tests {
             audit_filter: AuditFilter::All,
             validation_message: None,
             show_target_stats: false,
+            install_guard: None,
         };
         assert!(app.form_hint().is_some());
     }

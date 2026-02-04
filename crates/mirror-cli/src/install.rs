@@ -2,7 +2,7 @@ use anyhow::Context;
 use directories::ProjectDirs;
 #[cfg(unix)]
 use directories::BaseDirs;
-use single_instance::SingleInstance;
+use mirror_core::lockfile::LockFile;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -25,11 +25,10 @@ pub struct InstallReport {
 }
 
 pub struct InstallGuard {
-    _instance: SingleInstance,
+    _lock: LockFile,
 }
 
 pub fn perform_install(exec_path: &Path, options: InstallOptions) -> anyhow::Result<InstallReport> {
-    let _guard = acquire_install_lock()?;
     mirror_core::service::install_service_with_delay(exec_path, options.delayed_start)?;
     let service = match options.delayed_start {
         Some(delay) if delay > 0 => format!("Service installed with delayed start ({delay}s)"),
@@ -94,12 +93,10 @@ fn build_path_update(current: &str, add: &str) -> String {
 }
 
 pub fn acquire_install_lock() -> anyhow::Result<InstallGuard> {
-    let instance = SingleInstance::new("git-project-sync-installer")
-        .context("create installer mutex")?;
-    if !instance.is_single() {
-        anyhow::bail!("installer already running");
-    }
-    Ok(InstallGuard { _instance: instance })
+    let path = install_lock_path()?;
+    let lock = LockFile::try_acquire(&path)?
+        .ok_or_else(|| anyhow::anyhow!("installer already running"))?;
+    Ok(InstallGuard { _lock: lock })
 }
 
 pub fn is_installed() -> anyhow::Result<bool> {
@@ -128,6 +125,12 @@ fn marker_path() -> anyhow::Result<PathBuf> {
     let project = ProjectDirs::from("com", "git-project-sync", "git-project-sync")
         .context("resolve project dirs")?;
     Ok(project.data_local_dir().join("install.marker"))
+}
+
+fn install_lock_path() -> anyhow::Result<PathBuf> {
+    let project = ProjectDirs::from("com", "git-project-sync", "git-project-sync")
+        .context("resolve project dirs")?;
+    Ok(project.data_local_dir().join("install.lock"))
 }
 
 #[cfg(test)]

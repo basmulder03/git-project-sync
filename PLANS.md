@@ -1,5 +1,11 @@
 # PLANS.md
 
+## Milestone 42 — Installer Single-Instance Fix (in progress)
+
+- [x] Replace installer mutex with lockfile under data_local
+- [x] Gate TUI installer entry with lock guard + release on exit
+- [ ] Consider follow-up: update docs to mention installer lock behavior
+
 ## Milestone 38 — Build Fix (in progress)
 
 - [x] Fix Windows build error in installer PATH registration
@@ -210,3 +216,4 @@
 - Git implementation: git2; shelling out to git can be added later if needed.
 - Docs alignment: spec-first, concise edits only.
 - Roadmap focus: Azure DevOps depth first, then provider parity, then sync safety.
+- Installer lock: use data_local lockfile to enforce single installer across CLI/TUI.

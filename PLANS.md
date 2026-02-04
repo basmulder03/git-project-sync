@@ -22,6 +22,12 @@
 - [x] Add `task` subcommand (status/run/remove)
 - [x] Expose task last run/result in install status
 
+## Milestone 47 — Sync UX + Observability (in progress)
+
+- [x] Add `sync --status-only` read-only command
+- [x] Add `--audit-repo` toggle for per-repo audit entries
+- [x] Show last error in Sync Status view
+
 ## Milestone 42 — Installer Single-Instance Fix (in progress)
 
 - [x] Replace installer mutex with lockfile under data_local

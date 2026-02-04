@@ -1636,6 +1636,7 @@ fn handle_text_input(&mut self, key: KeyEvent) {
             let total = status.map(|s| s.total_repos).unwrap_or(0);
             let processed = status.map(|s| s.processed_repos).unwrap_or(0);
             let bar = progress_bar(processed.min(total), total, 20);
+            let error = last_sync_error(&self.audit, &target.id).unwrap_or_default();
             lines.push(Line::from(Span::raw(format!(
                 "{} | {} | {} | {} | {}",
                 label, state, action, repo, updated
@@ -1656,6 +1657,9 @@ fn handle_text_input(&mut self, key: KeyEvent) {
                 summary.missing_removed,
                 summary.missing_skipped
             ))));
+            if !error.is_empty() {
+                lines.push(Line::from(Span::raw(format!("last error: {error}"))));
+            }
             lines.push(Line::from(Span::raw("")));
         }
         Ok(lines)
@@ -1811,6 +1815,37 @@ fn read_audit_lines(path: &std::path::Path, filter: AuditFilter) -> anyhow::Resu
         lines.push(line.to_string());
     }
     Ok(lines)
+}
+
+fn last_sync_error(audit: &AuditLogger, target_id: &str) -> anyhow::Result<String> {
+    let base_dir = audit.base_dir();
+    let date = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::parse("[year][month][day]").unwrap())
+        .unwrap();
+    let path = base_dir.join(format!("audit-{date}.jsonl"));
+    if !path.exists() {
+        return Ok(String::new());
+    }
+    let contents = std::fs::read_to_string(&path)?;
+    for line in contents.lines().rev().take(200) {
+        if !line.contains("\"status\":\"failed\"") {
+            continue;
+        }
+        if !line.contains("\"event\":\"sync.target\"")
+            && !line.contains("\"event\":\"daemon.sync.target\"")
+        {
+            continue;
+        }
+        if !line.contains(&format!("\"repo_id\":\"{target_id}\"")) {
+            continue;
+        }
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
+            if let Some(error) = value.get("error").and_then(|v| v.as_str()) {
+                return Ok(error.to_string());
+            }
+        }
+    }
+    Ok(String::new())
 }
 
 fn validation_timestamp() -> String {

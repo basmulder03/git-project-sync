@@ -189,6 +189,10 @@ struct SyncArgs {
     #[arg(long)]
     status: bool,
     #[arg(long)]
+    status_only: bool,
+    #[arg(long)]
+    audit_repo: bool,
+    #[arg(long)]
     non_interactive: bool,
     #[arg(long, value_enum, default_value = "prompt")]
     missing_remote: MissingRemotePolicyValue,
@@ -206,6 +210,8 @@ struct DaemonArgs {
     interval_seconds: u64,
     #[arg(long)]
     run_once: bool,
+    #[arg(long)]
+    audit_repo: bool,
     #[arg(long, value_enum, default_value = "skip")]
     missing_remote: MissingRemotePolicyValue,
     #[arg(long)]
@@ -865,6 +871,32 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
         if migrated {
             config.save(&config_path)?;
         }
+        if args.status_only {
+            let targets =
+                select_targets(&config, args.target_id.as_deref(), args.provider, &args.scope)?;
+            if targets.is_empty() {
+                println!("No matching targets found.");
+                let audit_id = audit.record(
+                    "sync.status",
+                    AuditStatus::Skipped,
+                    Some("sync"),
+                    None,
+                    Some("no matching targets"),
+                )?;
+                println!("Audit ID: {audit_id}");
+                return Ok(());
+            }
+            print_sync_status(&cache_path, &targets)?;
+            let audit_id = audit.record(
+                "sync.status",
+                AuditStatus::Ok,
+                Some("sync"),
+                None,
+                None,
+            )?;
+            println!("Audit ID: {audit_id}");
+            return Ok(());
+        }
         let root = config
             .root
             .as_ref()
@@ -914,9 +946,12 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                 if args.status {
                     render_sync_progress(&target_label, &last_len, &progress);
                 }
-    audit_repo_progress(audit, "sync", "sync.repo", &runtime_target, &progress);
+                if args.audit_repo {
+                    audit_repo_progress(audit, "sync", "sync.repo", &runtime_target, &progress);
+                }
             };
-            let progress: Option<&dyn Fn(SyncProgress)> = Some(&progress_fn);
+            let progress: Option<&dyn Fn(SyncProgress)> =
+                if args.status || args.audit_repo { Some(&progress_fn) } else { None };
             let summary = if let Some(repo_name) = args.repo.as_ref() {
                 let repo_name = repo_name.clone();
                 let filter = move |remote: &mirror_core::model::RemoteRepo| {
@@ -1049,7 +1084,7 @@ fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Result<()> {
             None,
         )?;
         println!("Audit ID: {audit_id}");
-        let job = || run_sync_job(&config_path, &cache_path, policy, audit);
+        let job = || run_sync_job(&config_path, &cache_path, policy, audit, args.audit_repo);
         if args.run_once {
             mirror_core::daemon::run_once_with_lock(&lock_path, job)?;
             let audit_id = audit.record(
@@ -1948,6 +1983,65 @@ fn render_sync_progress(target_label: &str, last_len: &Cell<usize>, progress: &S
     }
 }
 
+fn print_sync_status(cache_path: &Path, targets: &[TargetConfig]) -> anyhow::Result<()> {
+    let cache = mirror_core::cache::RepoCache::load(cache_path).unwrap_or_default();
+    for target in targets {
+        let label = format!(
+            "{} | {}",
+            target.provider.as_prefix(),
+            target.scope.segments().join("/")
+        );
+        let status = cache.target_sync_status.get(&target.id);
+        let state = status
+            .map(|s| if s.in_progress { "running" } else { "idle" })
+            .unwrap_or("idle");
+        let action = status
+            .and_then(|s| s.last_action.as_deref())
+            .unwrap_or("unknown");
+        let repo = status
+            .and_then(|s| s.last_repo.as_deref())
+            .unwrap_or("-");
+        let updated = status
+            .map(|s| epoch_to_label(s.last_updated))
+            .unwrap_or_else(|| "unknown".to_string());
+        let empty_summary = mirror_core::cache::SyncSummarySnapshot::default();
+        let summary = status
+            .map(|s| &s.summary)
+            .unwrap_or(&empty_summary);
+        let total = status.map(|s| s.total_repos).unwrap_or(0);
+        let processed = status.map(|s| s.processed_repos).unwrap_or(0);
+
+        println!("{label} | {state} | {action} | {repo} | {updated}");
+        println!(
+            "progress: {}/{} {}",
+            processed,
+            total,
+            render_progress_bar(processed.min(total), total, 20)
+        );
+        println!(
+            "counts: cl={} ff={} up={} dirty={} div={} fail={} missA={} missR={} missS={}",
+            summary.cloned,
+            summary.fast_forwarded,
+            summary.up_to_date,
+            summary.dirty,
+            summary.diverged,
+            summary.failed,
+            summary.missing_archived,
+            summary.missing_removed,
+            summary.missing_skipped
+        );
+        println!();
+    }
+    Ok(())
+}
+
+fn epoch_to_label(epoch: u64) -> String {
+    let ts = time::OffsetDateTime::from_unix_timestamp(epoch as i64)
+        .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
+    ts.format(&time::format_description::parse("[year]-[month]-[day] [hour]:[minute]").unwrap())
+        .unwrap_or_else(|_| "unknown".to_string())
+}
+
 fn audit_repo_progress(
     audit: &AuditLogger,
     category: &str,
@@ -2039,6 +2133,7 @@ fn run_sync_job(
     cache_path: &Path,
     policy: MissingRemotePolicy,
     audit: &AuditLogger,
+    audit_repo: bool,
 ) -> anyhow::Result<()> {
     let (config, migrated) = load_or_migrate(config_path)?;
     if migrated {
@@ -2093,13 +2188,15 @@ fn run_sync_job(
             host: target.host.clone(),
         };
         let progress_fn = |progress: SyncProgress| {
-            audit_repo_progress(
-                audit,
-                "daemon.sync",
-                "daemon.sync.repo",
-                &runtime_target,
-                &progress,
-            );
+            if audit_repo {
+                audit_repo_progress(
+                    audit,
+                    "daemon.sync",
+                    "daemon.sync.repo",
+                    &runtime_target,
+                    &progress,
+                );
+            }
         };
         let bucketed = move |repo: &mirror_core::model::RemoteRepo| {
             !repo.archived && bucket_for_repo_id(&repo.id) == day_bucket
@@ -2108,7 +2205,7 @@ fn run_sync_job(
             missing_policy: policy,
             missing_decider: None,
             repo_filter: Some(&bucketed),
-            progress: Some(&progress_fn),
+            progress: if audit_repo { Some(&progress_fn) } else { None },
             detect_missing: true,
             refresh: false,
             verify: false,

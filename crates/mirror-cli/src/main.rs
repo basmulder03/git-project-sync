@@ -906,13 +906,12 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
             );
             let last_len = Cell::new(0usize);
             let progress_fn = |progress: SyncProgress| {
-                render_sync_progress(&target_label, &last_len, progress);
+                if args.status {
+                    render_sync_progress(&target_label, &last_len, &progress);
+                }
+    audit_repo_progress(audit, "sync", "sync.repo", &runtime_target, &progress);
             };
-            let progress: Option<&dyn Fn(SyncProgress)> = if args.status {
-                Some(&progress_fn)
-            } else {
-                None
-            };
+            let progress: Option<&dyn Fn(SyncProgress)> = Some(&progress_fn);
             let summary = if let Some(repo_name) = args.repo.as_ref() {
                 let repo_name = repo_name.clone();
                 let filter = move |remote: &mirror_core::model::RemoteRepo| {
@@ -1045,7 +1044,7 @@ fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Result<()> {
             None,
         )?;
         println!("Audit ID: {audit_id}");
-        let job = || run_sync_job(&config_path, &cache_path, policy);
+        let job = || run_sync_job(&config_path, &cache_path, policy, audit);
         if args.run_once {
             mirror_core::daemon::run_once_with_lock(&lock_path, job)?;
             let audit_id = audit.record(
@@ -1676,6 +1675,11 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
     let result: anyhow::Result<()> = (|| {
         if args.status {
             let status = install::install_status()?;
+            let service_label = if cfg!(target_os = "windows") {
+                "Scheduled task"
+            } else {
+                "Service"
+            };
             println!("Installed: {}", if status.installed { "yes" } else { "no" });
             println!(
                 "Installed path: {}",
@@ -1690,13 +1694,18 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
                 if status.manifest_present { "yes" } else { "no" }
             );
             println!(
-                "Service installed: {}",
+                "{} installed: {}",
+                service_label,
                 if status.service_installed { "yes" } else { "no" }
             );
             println!(
-                "Service running: {}",
+                "{} running: {}",
+                service_label,
                 if status.service_running { "yes" } else { "no" }
             );
+            if cfg!(target_os = "windows") {
+                println!("Task name: git-project-sync");
+            }
             println!(
                 "PATH contains install dir (current shell): {}",
                 if status.path_in_env { "yes" } else { "no" }
@@ -1788,7 +1797,7 @@ fn render_progress_bar(step: usize, total: usize, width: usize) -> String {
     format!("[{}{}]", "#".repeat(filled), "-".repeat(empty))
 }
 
-fn render_sync_progress(target_label: &str, last_len: &Cell<usize>, progress: SyncProgress) {
+fn render_sync_progress(target_label: &str, last_len: &Cell<usize>, progress: &SyncProgress) {
     let total = progress.total_repos;
     let processed = progress.processed_repos.min(total);
     let bar = render_progress_bar(processed, total, 20);
@@ -1820,6 +1829,68 @@ fn render_sync_progress(target_label: &str, last_len: &Cell<usize>, progress: Sy
     }
 }
 
+fn audit_repo_progress(
+    audit: &AuditLogger,
+    category: &str,
+    event: &str,
+    runtime_target: &ProviderTarget,
+    progress: &SyncProgress,
+) {
+    if !should_audit_action(progress.action) {
+        return;
+    }
+    let repo_id = progress.repo_id.clone().or_else(|| progress.repo_name.clone());
+    let context = AuditContext {
+        provider: Some(runtime_target.provider.as_prefix().to_string()),
+        scope: Some(runtime_target.scope.segments().join("/")),
+        repo_id,
+        path: None,
+    };
+    let details = serde_json::json!({
+        "action": progress.action.as_str(),
+        "repo_name": progress.repo_name.clone(),
+        "repo_id": progress.repo_id.clone(),
+        "processed": progress.processed_repos,
+        "total": progress.total_repos,
+        "summary": {
+            "cloned": progress.summary.cloned,
+            "fast_forwarded": progress.summary.fast_forwarded,
+            "up_to_date": progress.summary.up_to_date,
+            "dirty": progress.summary.dirty,
+            "diverged": progress.summary.diverged,
+            "failed": progress.summary.failed,
+            "missing_archived": progress.summary.missing_archived,
+            "missing_removed": progress.summary.missing_removed,
+            "missing_skipped": progress.summary.missing_skipped,
+        }
+    });
+    let status = audit_status_for_action(progress.action);
+    let _ = audit.record_with_context(event, status, Some(category), context, Some(details), None);
+}
+
+fn should_audit_action(action: SyncAction) -> bool {
+    matches!(
+        action,
+        SyncAction::Cloned
+            | SyncAction::FastForwarded
+            | SyncAction::UpToDate
+            | SyncAction::Dirty
+            | SyncAction::Diverged
+            | SyncAction::Failed
+            | SyncAction::MissingArchived
+            | SyncAction::MissingRemoved
+            | SyncAction::MissingSkipped
+    )
+}
+
+fn audit_status_for_action(action: SyncAction) -> AuditStatus {
+    match action {
+        SyncAction::Failed => AuditStatus::Failed,
+        SyncAction::Dirty | SyncAction::Diverged | SyncAction::MissingSkipped => AuditStatus::Skipped,
+        _ => AuditStatus::Ok,
+    }
+}
+
 fn prompt_delay_seconds() -> anyhow::Result<Option<u64>> {
     println!("Delayed start on boot? Enter seconds or leave empty:");
     let mut input = String::new();
@@ -1848,6 +1919,7 @@ fn run_sync_job(
     config_path: &Path,
     cache_path: &Path,
     policy: MissingRemotePolicy,
+    audit: &AuditLogger,
 ) -> anyhow::Result<()> {
     let (config, migrated) = load_or_migrate(config_path)?;
     if migrated {
@@ -1879,6 +1951,19 @@ fn run_sync_job(
                     until = until,
                     "skipping target due to backoff"
                 );
+                let _ = audit.record_with_context(
+                    "daemon.sync.target",
+                    AuditStatus::Skipped,
+                    Some("daemon.sync"),
+                    AuditContext {
+                        provider: Some(target.provider.as_prefix().to_string()),
+                        scope: Some(target.scope.segments().join("/")),
+                        repo_id: Some(target.id.clone()),
+                        path: None,
+                    },
+                    Some(serde_json::json!({"reason": "backoff", "until": until})),
+                    Some("skipping target due to backoff"),
+                );
                 continue;
             }
         let provider_kind = target.provider.clone();
@@ -1888,6 +1973,15 @@ fn run_sync_job(
             scope: target.scope.clone(),
             host: target.host.clone(),
         };
+        let progress_fn = |progress: SyncProgress| {
+            audit_repo_progress(
+                audit,
+                "daemon.sync",
+                "daemon.sync.repo",
+                &runtime_target,
+                &progress,
+            );
+        };
         let bucketed = move |repo: &mirror_core::model::RemoteRepo| {
             !repo.archived && bucket_for_repo_id(&repo.id) == day_bucket
         };
@@ -1895,7 +1989,7 @@ fn run_sync_job(
             missing_policy: policy,
             missing_decider: None,
             repo_filter: Some(&bucketed),
-            progress: None,
+            progress: Some(&progress_fn),
             detect_missing: true,
             refresh: false,
             verify: false,
@@ -1903,8 +1997,32 @@ fn run_sync_job(
         let result = run_sync_filtered(provider.as_ref(), &runtime_target, root, cache_path, options)
             .or_else(|err| map_azdo_error(&runtime_target, err));
         match result {
-            Ok(_) => {
+            Ok(summary) => {
                 let _ = update_target_success(cache_path, &target_key, now);
+                let details = serde_json::json!({
+                    "cloned": summary.cloned,
+                    "fast_forwarded": summary.fast_forwarded,
+                    "up_to_date": summary.up_to_date,
+                    "dirty": summary.dirty,
+                    "diverged": summary.diverged,
+                    "failed": summary.failed,
+                    "missing_archived": summary.missing_archived,
+                    "missing_removed": summary.missing_removed,
+                    "missing_skipped": summary.missing_skipped,
+                });
+                let _ = audit.record_with_context(
+                    "daemon.sync.target",
+                    AuditStatus::Ok,
+                    Some("daemon.sync"),
+                    AuditContext {
+                        provider: Some(target.provider.as_prefix().to_string()),
+                        scope: Some(target.scope.segments().join("/")),
+                        repo_id: Some(target.id.clone()),
+                        path: None,
+                    },
+                    Some(details),
+                    None,
+                );
             }
             Err(err) => {
                 had_failure = true;
@@ -1914,6 +2032,19 @@ fn run_sync_job(
                     scope = ?runtime_target.scope,
                     error = %err,
                     "target sync failed"
+                );
+                let _ = audit.record_with_context(
+                    "daemon.sync.target",
+                    AuditStatus::Failed,
+                    Some("daemon.sync"),
+                    AuditContext {
+                        provider: Some(runtime_target.provider.as_prefix().to_string()),
+                        scope: Some(runtime_target.scope.segments().join("/")),
+                        repo_id: Some(target.id.clone()),
+                        path: None,
+                    },
+                    None,
+                    Some(&err.to_string()),
                 );
             }
         }

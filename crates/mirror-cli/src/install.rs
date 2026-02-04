@@ -74,8 +74,8 @@ pub fn perform_install_with_progress(
     report_progress(progress, step, total, "Installing service");
     mirror_core::service::install_service_with_delay(&install_path, options.delayed_start)?;
     let service = match options.delayed_start {
-        Some(delay) if delay > 0 => format!("Service installed with delayed start ({delay}s)"),
-        _ => "Service installed".to_string(),
+        Some(delay) if delay > 0 => format!("{} installed with delayed start ({delay}s)", service_label()),
+        _ => format!("{} installed", service_label()),
     };
     let path = match options.path_choice {
         PathChoice::Add => {
@@ -90,6 +90,14 @@ pub fn perform_install_with_progress(
     write_marker()?;
     write_manifest(&install_path)?;
     Ok(InstallReport { install: install_message, service, path })
+}
+
+fn service_label() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "Scheduled task"
+    } else {
+        "Service"
+    }
 }
 
 fn report_progress(

@@ -32,6 +32,8 @@
 - [x] Add live install progress UI for TUI
 - [x] Add install status view (TUI + CLI flag)
 - [x] Extend install status with service running state
+- [x] Add daemon sync audit records per target
+- [x] Add per-repo audit records during sync (CLI + daemon)
 - [ ] Consider follow-up: update docs to mention installer lock behavior
 
 ## Milestone 38 — Build Fix (in progress)

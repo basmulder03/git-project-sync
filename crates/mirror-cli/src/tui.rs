@@ -415,6 +415,11 @@ impl TuiApp {
             Line::from(Span::raw("")),
         ];
         if let Some(status) = &self.install_status {
+            let service_label = if cfg!(target_os = "windows") {
+                "Scheduled task"
+            } else {
+                "Service"
+            };
             lines.push(Line::from(Span::raw(format!(
                 "Installed: {}",
                 if status.installed { "yes" } else { "no" }
@@ -432,13 +437,18 @@ impl TuiApp {
                 if status.manifest_present { "yes" } else { "no" }
             ))));
             lines.push(Line::from(Span::raw(format!(
-                "Service installed: {}",
+                "{} installed: {}",
+                service_label,
                 if status.service_installed { "yes" } else { "no" }
             ))));
             lines.push(Line::from(Span::raw(format!(
-                "Service running: {}",
+                "{} running: {}",
+                service_label,
                 if status.service_running { "yes" } else { "no" }
             ))));
+            if cfg!(target_os = "windows") {
+                lines.push(Line::from(Span::raw("Task name: git-project-sync")));
+            }
             lines.push(Line::from(Span::raw(format!(
                 "PATH contains install dir (current shell): {}",
                 if status.path_in_env { "yes" } else { "no" }

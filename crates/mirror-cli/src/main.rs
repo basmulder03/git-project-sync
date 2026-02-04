@@ -9,7 +9,9 @@ use mirror_core::config::{
 };
 use mirror_core::deleted::{DeletedRepoAction, MissingRemotePolicy};
 use mirror_core::audit::{AuditContext, AuditLogger, AuditStatus};
-use mirror_core::model::{ProviderKind, ProviderScope, ProviderTarget};
+use mirror_core::model::{ProviderKind, ProviderTarget};
+#[cfg(test)]
+use mirror_core::model::ProviderScope;
 use mirror_core::scheduler::{bucket_for_repo_id, current_day_bucket};
 use mirror_core::sync_engine::{SyncSummary, run_sync_filtered};
 use mirror_providers::auth;

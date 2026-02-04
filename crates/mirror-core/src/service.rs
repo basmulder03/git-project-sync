@@ -1,9 +1,13 @@
 use anyhow::{Context, bail};
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use directories::BaseDirs;
 #[cfg(target_os = "macos")]
 use directories::ProjectDirs;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use std::path::PathBuf;
 use std::process::Command;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]

@@ -5,6 +5,14 @@
 - [x] Fix Windows build error in installer PATH registration
 - [x] Re-run build to confirm
 
+## Milestone 39 — High-Severity Fixes (in progress)
+
+- [x] Support GitHub user-scope targets (fallback from org endpoint)
+- [x] Implement OAuth revocation endpoint calls
+- [x] Handle repo rename path moves safely
+- [x] Harden repo name sanitization for Windows
+- [x] Allow archive moves across devices
+
 ## Milestone 12 — Architecture cleanup (completed)
 
 - [x] Add provider spec registry to centralize host/scope/account logic

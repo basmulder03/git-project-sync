@@ -100,6 +100,24 @@ pub fn revoke_oauth_token(account: &str) -> anyhow::Result<()> {
     if stored.kind != "oauth" {
         anyhow::bail!("stored token is not an OAuth token");
     }
+    if let Some(endpoint) = stored.revocation_endpoint.as_deref() {
+        let client = Client::new();
+        let mut form = vec![("token", stored.access_token.clone())];
+        form.push(("token_type_hint", "access_token".to_string()));
+        if let Some(client_id) = stored.client_id.clone() {
+            form.push(("client_id", client_id));
+        }
+        let response = client
+            .post(endpoint)
+            .form(&form)
+            .send()
+            .context("request oauth revocation")?;
+        if !response.status().is_success() {
+            let status = response.status();
+            audit_event("oauth.revoke", AuditStatus::Failed, account, Some(&status.to_string()));
+            anyhow::bail!("oauth revoke failed with status {status}");
+        }
+    }
     entry
         .delete_password()
         .context("delete oauth token from keyring")?;

@@ -17,12 +17,22 @@ pub fn repo_path(
 }
 
 fn sanitize_repo_name(name: &str) -> String {
-    name.chars()
+    let mut sanitized: String = name
+        .chars()
         .map(|ch| match ch {
-            '/' | '\\' => '_',
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            ch if ch.is_control() => '_',
             _ => ch,
         })
-        .collect()
+        .collect();
+    while sanitized.ends_with('.') || sanitized.ends_with(' ') {
+        sanitized.pop();
+    }
+    if sanitized.is_empty() {
+        "_".to_string()
+    } else {
+        sanitized
+    }
 }
 
 #[cfg(test)]
@@ -65,6 +75,25 @@ mod tests {
                 .join("org")
                 .join("project")
                 .join("name_with_slash")
+        );
+    }
+
+    #[test]
+    fn sanitizes_windows_reserved_chars() {
+        let scope = ProviderScope::new(vec!["org".into(), "project".into()]).unwrap();
+        let path = repo_path(
+            Path::new("C:\\root"),
+            &ProviderKind::GitHub,
+            &scope,
+            "bad:repo*name?.",
+        );
+        assert_eq!(
+            path,
+            PathBuf::from("C:\\root")
+                .join("github")
+                .join("org")
+                .join("project")
+                .join("bad_repo_name_")
         );
     }
 }

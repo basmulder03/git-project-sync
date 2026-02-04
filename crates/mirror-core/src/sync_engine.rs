@@ -8,7 +8,8 @@ use crate::provider::RepoProvider;
 use crate::model::{ProviderTarget, RemoteRepo};
 use anyhow::Context;
 use std::collections::HashSet;
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{info, warn};
 
@@ -108,6 +109,36 @@ pub fn run_sync_filtered(
 
     for repo in repos {
         let path = repo_path(root, &repo.provider, &repo.scope, &repo.name);
+        if let Some(entry) = cache.repos.get(&repo.id) {
+            let cached_path = PathBuf::from(&entry.path);
+            if cached_path != path {
+                if cached_path.exists() && !path.exists() {
+                    if let Err(err) = move_repo_path(&cached_path, &path) {
+                        warn!(
+                            repo_id = %repo.id,
+                            from = %cached_path.display(),
+                            to = %path.display(),
+                            error = %err,
+                            "failed to move repo after rename"
+                        );
+                    } else {
+                        info!(
+                            repo_id = %repo.id,
+                            from = %cached_path.display(),
+                            to = %path.display(),
+                            "moved repo to match rename"
+                        );
+                    }
+                } else if !cached_path.exists() {
+                    info!(
+                        repo_id = %repo.id,
+                        from = %cached_path.display(),
+                        to = %path.display(),
+                        "cached repo path missing; updating to new path"
+                    );
+                }
+            }
+        }
         let outcome = match sync_repo(
             &path,
             &repo.clone_url,
@@ -164,6 +195,41 @@ pub fn run_sync_filtered(
 
     cache.save(cache_path).context("save cache")?;
     Ok(summary)
+}
+
+fn move_repo_path(from: &Path, to: &Path) -> anyhow::Result<()> {
+    if let Some(parent) = to.parent() {
+        fs::create_dir_all(parent).context("create repo rename parent")?;
+    }
+    if let Err(err) = fs::rename(from, to) {
+        copy_dir_recursive(from, to)
+            .with_context(|| format!("copy repo after rename failed: {err}"))?;
+        fs::remove_dir_all(from).context("remove old repo path after rename copy")?;
+    }
+    Ok(())
+}
+
+fn copy_dir_recursive(source: &Path, destination: &Path) -> anyhow::Result<()> {
+    if !source.exists() {
+        return Ok(());
+    }
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).context("create repo copy parent")?;
+    }
+    fs::create_dir_all(destination).context("create repo copy dir")?;
+    for entry in fs::read_dir(source).context("read repo source dir")? {
+        let entry = entry.context("read repo entry")?;
+        let file_type = entry.file_type().context("read repo entry type")?;
+        let from = entry.path();
+        let to = destination.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_recursive(&from, &to)?;
+        } else if file_type.is_file() {
+            fs::copy(&from, &to)
+                .with_context(|| format!("copy repo file {}", from.display()))?;
+        }
+    }
+    Ok(())
 }
 
 fn load_repos_with_cache(
@@ -343,6 +409,7 @@ fn current_timestamp_secs() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn cache_is_valid_within_ttl() {
@@ -352,5 +419,18 @@ mod tests {
         };
         assert!(cache_is_valid(&entry, 100 + 60));
         assert!(!cache_is_valid(&entry, 100 + 16 * 60));
+    }
+
+    #[test]
+    fn move_repo_path_moves_directory() {
+        let tmp = TempDir::new().unwrap();
+        let from = tmp.path().join("old");
+        let to = tmp.path().join("new");
+        fs::create_dir_all(&from).unwrap();
+        fs::write(from.join("file.txt"), "data").unwrap();
+
+        move_repo_path(&from, &to).unwrap();
+        assert!(!from.exists());
+        assert!(to.join("file.txt").exists());
     }
 }

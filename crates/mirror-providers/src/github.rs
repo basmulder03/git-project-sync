@@ -6,6 +6,7 @@ use mirror_core::model::{ProviderKind, ProviderScope, ProviderTarget, RemoteRepo
 use mirror_core::provider::ProviderSpec;
 use reqwest::blocking::Client;
 use reqwest::header::HeaderMap;
+use reqwest::StatusCode;
 use serde::Deserialize;
 use tracing::info;
 use crate::http::send_with_retry;
@@ -13,6 +14,12 @@ use serde_json::json;
 
 pub struct GitHubProvider {
     client: Client,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ScopeKind {
+    Org,
+    User,
 }
 
 impl GitHubProvider {
@@ -35,6 +42,13 @@ impl GitHubProvider {
             .unwrap_or_else(|| "main".to_string())
             .trim_start_matches("refs/heads/")
             .to_string()
+    }
+
+    fn repos_url(host: &str, scope: &str, kind: ScopeKind, page: u32) -> String {
+        match kind {
+            ScopeKind::Org => format!("{host}/orgs/{scope}/repos?per_page=100&page={page}"),
+            ScopeKind::User => format!("{host}/users/{scope}/repos?per_page=100&page={page}"),
+        }
     }
 
     fn next_page(headers: &HeaderMap) -> Option<u32> {
@@ -60,6 +74,35 @@ impl GitHubProvider {
         }
         None
     }
+
+    fn fetch_repos_page(
+        &self,
+        host: &str,
+        scope: &str,
+        token: &str,
+        kind: ScopeKind,
+        page: u32,
+    ) -> anyhow::Result<(Vec<RepoItem>, Option<u32>, StatusCode)> {
+        let url = Self::repos_url(host, scope, kind, page);
+        info!(scope, page, kind = ?kind, "listing GitHub repos");
+        let builder = self
+            .client
+            .get(url)
+            .header("User-Agent", "git-project-sync")
+            .bearer_auth(token);
+        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
+            .context("call GitHub list repos")?;
+        let status = response.status();
+        if status == StatusCode::NOT_FOUND {
+            return Ok((Vec::new(), None, status));
+        }
+        let response = response
+            .error_for_status()
+            .context("GitHub list repos status")?;
+        let next_page = Self::next_page(response.headers());
+        let payload: Vec<RepoItem> = response.json().context("decode repos response")?;
+        Ok((payload, next_page, status))
+    }
 }
 
 impl RepoProvider for GitHubProvider {
@@ -73,31 +116,29 @@ impl RepoProvider for GitHubProvider {
         }
         let spec = GitHubSpec;
         let host = host_or_default(target.host.as_deref(), &spec);
-        let org = Self::parse_scope(&target.scope)?;
+        let scope = Self::parse_scope(&target.scope)?;
         let account = spec.account_key(&host, &target.scope)?;
         let token = auth::get_pat(&account)?;
 
         let mut page = 1;
         let mut repos = Vec::new();
+        let mut scope_kind = ScopeKind::Org;
         let auth = RepoAuth {
             username: "pat".to_string(),
             token: token.clone(),
         };
 
         loop {
-            let url = format!("{host}/orgs/{org}/repos?per_page=100&page={page}");
-            info!(org, page, "listing GitHub repos");
-            let builder = self
-                .client
-                .get(url)
-                .header("User-Agent", "git-project-sync")
-                .bearer_auth(token.as_str());
-            let response = send_with_retry(|| builder.try_clone().expect("clone request"))
-                .context("call GitHub list repos")?
-                .error_for_status()
-                .context("GitHub list repos status")?;
-            let next_page = Self::next_page(response.headers());
-            let payload: Vec<RepoItem> = response.json().context("decode repos response")?;
+            let (payload, next_page, status) =
+                self.fetch_repos_page(&host, scope, token.as_str(), scope_kind, page)?;
+            if status == StatusCode::NOT_FOUND && scope_kind == ScopeKind::Org {
+                scope_kind = ScopeKind::User;
+                page = 1;
+                continue;
+            }
+            if status == StatusCode::NOT_FOUND && scope_kind == ScopeKind::User {
+                anyhow::bail!("GitHub scope not found: {scope}");
+            }
             if payload.is_empty() {
                 break;
             }
@@ -150,21 +191,21 @@ impl RepoProvider for GitHubProvider {
         }
         let spec = GitHubSpec;
         let host = host_or_default(target.host.as_deref(), &spec);
-        let org = Self::parse_scope(&target.scope)?;
+        let scope = Self::parse_scope(&target.scope)?;
         let account = spec.account_key(&host, &target.scope)?;
         let token = auth::get_pat(&account)?;
 
-        let url = format!("{host}/orgs/{org}/repos?per_page=1&page=1");
-        let builder = self
-            .client
-            .get(url)
-            .header("User-Agent", "git-project-sync")
-            .bearer_auth(token.as_str());
-        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
-            .context("call GitHub health check")?
-            .error_for_status()
-            .context("GitHub health check status")?;
-        let _payload: Vec<RepoItem> = response.json().context("decode health response")?;
+        let (payload, _next, status) =
+            self.fetch_repos_page(&host, scope, token.as_str(), ScopeKind::Org, 1)?;
+        if status == StatusCode::NOT_FOUND {
+            let (_payload, _next, status) =
+                self.fetch_repos_page(&host, scope, token.as_str(), ScopeKind::User, 1)?;
+            if status == StatusCode::NOT_FOUND {
+                anyhow::bail!("GitHub scope not found: {scope}");
+            }
+        } else if payload.is_empty() {
+            return Ok(());
+        }
         Ok(())
     }
 
@@ -205,7 +246,11 @@ impl RepoProvider for GitHubProvider {
             .bearer_auth(token.as_str())
             .json(&body);
         let response = send_with_retry(|| builder.try_clone().expect("clone request"))
-            .context("call GitHub webhook register")?
+            .context("call GitHub webhook register")?;
+        if response.status() == StatusCode::NOT_FOUND {
+            anyhow::bail!("GitHub org not found or webhooks unsupported for user scopes");
+        }
+        let response = response
             .error_for_status()
             .context("GitHub webhook register status")?;
         let _ = response.text();

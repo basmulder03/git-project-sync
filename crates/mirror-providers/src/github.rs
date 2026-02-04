@@ -20,6 +20,7 @@ pub struct GitHubProvider {
 enum ScopeKind {
     Org,
     User,
+    AuthenticatedUser,
 }
 
 impl GitHubProvider {
@@ -48,7 +49,17 @@ impl GitHubProvider {
         match kind {
             ScopeKind::Org => format!("{host}/orgs/{scope}/repos?per_page=100&page={page}"),
             ScopeKind::User => format!("{host}/users/{scope}/repos?per_page=100&page={page}"),
+            ScopeKind::AuthenticatedUser => {
+                format!("{host}/user/repos?per_page=100&page={page}&affiliation=owner")
+            }
         }
+    }
+
+    fn owner_matches(scope: &str, repo: &RepoItem) -> bool {
+        repo.owner
+            .as_ref()
+            .map(|owner| owner.login == scope)
+            .unwrap_or(false)
     }
 
     fn next_page(headers: &HeaderMap) -> Option<u32> {
@@ -122,6 +133,8 @@ impl RepoProvider for GitHubProvider {
         let mut page = 1;
         let mut repos = Vec::new();
         let mut scope_kind = ScopeKind::Org;
+        let mut saw_authenticated = false;
+        let mut auth_had_results = false;
         let auth = RepoAuth {
             username: "pat".to_string(),
             token: token.clone(),
@@ -131,6 +144,11 @@ impl RepoProvider for GitHubProvider {
             let (payload, next_page, status) =
                 self.fetch_repos_page(&host, scope, token.as_str(), scope_kind, page)?;
             if status == StatusCode::NOT_FOUND && scope_kind == ScopeKind::Org {
+                scope_kind = ScopeKind::AuthenticatedUser;
+                page = 1;
+                continue;
+            }
+            if status == StatusCode::NOT_FOUND && scope_kind == ScopeKind::AuthenticatedUser {
                 scope_kind = ScopeKind::User;
                 page = 1;
                 continue;
@@ -139,9 +157,22 @@ impl RepoProvider for GitHubProvider {
                 anyhow::bail!("GitHub scope not found: {scope}");
             }
             if payload.is_empty() {
+                if scope_kind == ScopeKind::AuthenticatedUser {
+                    scope_kind = ScopeKind::User;
+                    page = 1;
+                    continue;
+                }
                 break;
             }
+            if scope_kind == ScopeKind::AuthenticatedUser {
+                saw_authenticated = true;
+            }
             for repo in payload {
+                if scope_kind == ScopeKind::AuthenticatedUser {
+                    if !Self::owner_matches(scope, &repo) {
+                        continue;
+                    }
+                }
                 repos.push(RemoteRepo {
                     id: repo.id.to_string(),
                     name: repo.name.clone(),
@@ -153,6 +184,16 @@ impl RepoProvider for GitHubProvider {
                     auth: Some(auth.clone()),
                 });
             }
+            if scope_kind == ScopeKind::AuthenticatedUser {
+                if !repos.is_empty() {
+                    auth_had_results = true;
+                }
+                if !auth_had_results && next_page.is_none() {
+                    scope_kind = ScopeKind::User;
+                    page = 1;
+                    continue;
+                }
+            }
             if let Some(next) = next_page {
                 page = next;
             } else {
@@ -160,6 +201,9 @@ impl RepoProvider for GitHubProvider {
             }
         }
 
+        if saw_authenticated && repos.is_empty() {
+            anyhow::bail!("GitHub scope not found: {scope}");
+        }
         Ok(repos)
     }
 
@@ -197,10 +241,25 @@ impl RepoProvider for GitHubProvider {
         let (payload, _next, status) =
             self.fetch_repos_page(&host, scope, token.as_str(), ScopeKind::Org, 1)?;
         if status == StatusCode::NOT_FOUND {
-            let (_payload, _next, status) =
-                self.fetch_repos_page(&host, scope, token.as_str(), ScopeKind::User, 1)?;
+            let (payload, _next, status) =
+                self.fetch_repos_page(&host, scope, token.as_str(), ScopeKind::AuthenticatedUser, 1)?;
             if status == StatusCode::NOT_FOUND {
-                anyhow::bail!("GitHub scope not found: {scope}");
+                let (_payload, _next, status) =
+                    self.fetch_repos_page(&host, scope, token.as_str(), ScopeKind::User, 1)?;
+                if status == StatusCode::NOT_FOUND {
+                    anyhow::bail!("GitHub scope not found: {scope}");
+                }
+            } else {
+                let owned = payload
+                    .into_iter()
+                    .any(|repo| Self::owner_matches(scope, &repo));
+                if !owned {
+                    let (_payload, _next, status) =
+                        self.fetch_repos_page(&host, scope, token.as_str(), ScopeKind::User, 1)?;
+                    if status == StatusCode::NOT_FOUND {
+                        anyhow::bail!("GitHub scope not found: {scope}");
+                    }
+                }
             }
         } else if payload.is_empty() {
             return Ok(());
@@ -291,6 +350,12 @@ struct RepoItem {
     clone_url: String,
     default_branch: Option<String>,
     archived: Option<bool>,
+    owner: Option<RepoOwner>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RepoOwner {
+    login: String,
 }
 
 fn parse_scopes_header(value: &str) -> Vec<String> {
@@ -333,10 +398,27 @@ mod tests {
             "name": "repo",
             "clone_url": "https://example.com/repo.git",
             "default_branch": "main",
-            "archived": true
+            "archived": true,
+            "owner": { "login": "me" }
         });
         let repo: RepoItem = serde_json::from_value(value).unwrap();
         assert_eq!(repo.archived, Some(true));
+    }
+
+    #[test]
+    fn owner_matches_filters_user_scope() {
+        let repo = RepoItem {
+            id: 1,
+            name: "repo".to_string(),
+            clone_url: "https://example.com/repo.git".to_string(),
+            default_branch: Some("main".to_string()),
+            archived: Some(false),
+            owner: Some(RepoOwner {
+                login: "me".to_string(),
+            }),
+        };
+        assert!(GitHubProvider::owner_matches("me", &repo));
+        assert!(!GitHubProvider::owner_matches("other", &repo));
     }
 
     #[test]

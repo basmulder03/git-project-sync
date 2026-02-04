@@ -34,7 +34,7 @@ pub fn install_service_with_delay(exec_path: &Path, delay_seconds: Option<u64>) 
     }
     #[cfg(target_os = "windows")]
     {
-        return install_windows(exec_path, delay_seconds);
+        install_windows(exec_path, delay_seconds)
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
@@ -53,11 +53,33 @@ pub fn uninstall_service() -> anyhow::Result<()> {
     }
     #[cfg(target_os = "windows")]
     {
-        return uninstall_windows();
+        uninstall_windows()
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
         bail!("service uninstall not supported on this OS");
+    }
+}
+
+pub fn uninstall_service_if_exists() -> anyhow::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        if !windows_service_exists()? {
+            return Ok(());
+        }
+        uninstall_windows()
+    }
+    #[cfg(target_os = "linux")]
+    {
+        return uninstall_systemd();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return uninstall_launchd();
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        Ok(())
     }
 }
 
@@ -299,6 +321,15 @@ fn uninstall_windows() -> anyhow::Result<()> {
         "delete windows service",
     )?;
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_service_exists() -> anyhow::Result<bool> {
+    let status = Command::new("sc.exe")
+        .args(["query", SERVICE_NAME])
+        .status()
+        .with_context(|| format!("query windows service {SERVICE_NAME}"))?;
+    Ok(status.success())
 }
 
 fn run_command(binary: &str, args: &[&str], context_label: &str) -> anyhow::Result<()> {

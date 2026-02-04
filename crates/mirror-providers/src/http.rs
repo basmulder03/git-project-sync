@@ -16,8 +16,8 @@ where
         if status.is_success() {
             return Ok(response);
         }
-        if is_retryable(status) {
-            if attempt < max_attempts {
+        if is_retryable(status)
+            && attempt < max_attempts {
                 let delay = retry_delay_from_headers(response.headers());
                 let _ = response.bytes();
                 if let Some(delay) = delay {
@@ -27,7 +27,6 @@ where
                 sleep(Duration::from_secs(1));
                 continue;
             }
-        }
         return Err(response.error_for_status().unwrap_err().into());
     }
     bail!("request failed after retries");

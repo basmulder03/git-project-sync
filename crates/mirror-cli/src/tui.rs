@@ -67,13 +67,11 @@ fn run_app(
             .checked_sub(last_tick.elapsed())
             .unwrap_or_else(|| Duration::from_secs(0));
 
-        if event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                if app.handle_key(key)? {
+        if event::poll(timeout)?
+            && let Event::Key(key) = event::read()?
+                && app.handle_key(key)? {
                     break;
                 }
-            }
-        }
 
         if last_tick.elapsed() >= tick_rate {
             last_tick = Instant::now();
@@ -273,16 +271,14 @@ impl TuiApp {
     }
 
     fn draw_main(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
-        let items = vec![
-            "Dashboard",
+        let items = ["Dashboard",
             "Installer",
             "Config",
             "Targets",
             "Tokens",
             "Service",
             "Audit Log",
-            "Quit",
-        ];
+            "Quit"];
         let list_items: Vec<ListItem> = items
             .iter()
             .enumerate()
@@ -379,7 +375,7 @@ impl TuiApp {
     }
 
     fn draw_token_menu(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
-        let items = vec!["List", "Set/Update", "Validate", "Back"];
+        let items = ["List", "Set/Update", "Validate", "Back"];
         let list_items: Vec<ListItem> = items
             .iter()
             .enumerate()
@@ -545,8 +541,7 @@ impl TuiApp {
         lines.push(Line::from(Span::raw("")));
         lines.push(Line::from(Span::raw("New root:")));
         lines.push(Line::from(Span::raw(
-            self.input_fields
-                .get(0)
+            self.input_fields.first()
                 .map(|f| f.display_value())
                 .unwrap_or_default(),
         )));
@@ -733,8 +728,8 @@ impl TuiApp {
                     None,
                 )?;
                 self.message = format!(
-                    "{}. {}. Audit ID: {audit_id}",
-                    report.service, report.path
+                    "{}\n{}\n{}\nAudit ID: {audit_id}",
+                    report.install, report.service, report.path
                 );
                 self.view = View::Message;
             }
@@ -758,7 +753,7 @@ impl TuiApp {
         match key.code {
             KeyCode::Esc => self.view = View::Main,
             KeyCode::Enter => {
-                let value = self.input_fields.get(0).map(|f| f.value.trim().to_string());
+                let value = self.input_fields.first().map(|f| f.value.trim().to_string());
                 if let Some(path) = value {
                     if path.is_empty() {
                         self.validation_message = Some("Root path cannot be empty.".to_string());
@@ -979,10 +974,7 @@ impl TuiApp {
     }
 
     fn handle_token_list(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
-        match key.code {
-            KeyCode::Esc => self.view = View::TokenMenu,
-            _ => {}
-        }
+        if key.code == KeyCode::Esc { self.view = View::TokenMenu }
         Ok(false)
     }
 
@@ -1138,10 +1130,7 @@ impl TuiApp {
     }
 
     fn handle_message(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
-        match key.code {
-            KeyCode::Enter => self.view = View::Main,
-            _ => {}
-        }
+        if key.code == KeyCode::Enter { self.view = View::Main }
         Ok(false)
     }
 
@@ -1193,6 +1182,8 @@ impl TuiApp {
                 let result = mirror_core::service::uninstall_service();
                 match result {
                     Ok(()) => {
+                        let _ = crate::install::remove_marker();
+                        let _ = crate::install::remove_manifest();
                         let audit_id = self.audit.record(
                             "tui.service.uninstall",
                             AuditStatus::Ok,

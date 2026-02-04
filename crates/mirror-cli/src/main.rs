@@ -13,7 +13,7 @@ use mirror_core::model::{ProviderKind, ProviderTarget};
 #[cfg(test)]
 use mirror_core::model::ProviderScope;
 use mirror_core::scheduler::{bucket_for_repo_id, current_day_bucket};
-use mirror_core::sync_engine::{SyncSummary, run_sync_filtered};
+use mirror_core::sync_engine::{SyncSummary, RunSyncOptions, run_sync_filtered};
 use mirror_providers::auth;
 use crate::install::{InstallOptions, PathChoice};
 use mirror_providers::azure_devops::{AZDO_DEFAULT_OAUTH_SCOPE, AzureDevOpsProvider};
@@ -883,7 +883,6 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
         };
 
         let registry = ProviderRegistry::new();
-        let repo_name = args.repo.clone();
         let mut total = SyncSummary::default();
 
         let target_count = targets.len();
@@ -895,46 +894,39 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                 scope: target.scope.clone(),
                 host: target.host.clone(),
             };
-            let repo_filter = repo_name.as_ref().map(|repo| {
-                let repo = repo.clone();
-                move |remote: &mirror_core::model::RemoteRepo| {
-                    remote.name == repo || remote.id == repo
-                }
-            });
-
-        let include_archived = args.include_archived;
-        let summary = if let Some(filter) = repo_filter.as_ref() {
-            run_sync_filtered(
-                provider.as_ref(),
-                &runtime_target,
-                root,
-                &cache_path,
-                policy,
-                decider,
-                Some(&|repo| {
-                    let allowed = include_archived || !repo.archived;
-                    allowed && filter(repo)
-                }),
-                false,
-                args.refresh,
-                args.verify,
-            )
-            .or_else(|err| map_azdo_error(&runtime_target, err))?
-        } else {
-            run_sync_filtered(
-                provider.as_ref(),
-                &runtime_target,
-                root,
-                &cache_path,
-                policy,
-                decider,
-                Some(&|repo| include_archived || !repo.archived),
-                true,
-                args.refresh,
-                args.verify,
-            )
-            .or_else(|err| map_azdo_error(&runtime_target, err))?
-        };
+            let include_archived = args.include_archived;
+            let summary = if let Some(repo_name) = args.repo.as_ref() {
+                let repo_name = repo_name.clone();
+                let filter = move |remote: &mirror_core::model::RemoteRepo| {
+                    let matches = remote.name == repo_name || remote.id == repo_name;
+                    let allowed = include_archived || !remote.archived;
+                    allowed && matches
+                };
+                let options = RunSyncOptions {
+                    missing_policy: policy,
+                    missing_decider: decider,
+                    repo_filter: Some(&filter),
+                    detect_missing: false,
+                    refresh: args.refresh,
+                    verify: args.verify,
+                };
+                run_sync_filtered(provider.as_ref(), &runtime_target, root, &cache_path, options)
+                    .or_else(|err| map_azdo_error(&runtime_target, err))?
+            } else {
+                let filter = move |repo: &mirror_core::model::RemoteRepo| {
+                    include_archived || !repo.archived
+                };
+                let options = RunSyncOptions {
+                    missing_policy: policy,
+                    missing_decider: decider,
+                    repo_filter: Some(&filter),
+                    detect_missing: true,
+                    refresh: args.refresh,
+                    verify: args.verify,
+                };
+                run_sync_filtered(provider.as_ref(), &runtime_target, root, &cache_path, options)
+                    .or_else(|err| map_azdo_error(&runtime_target, err))?
+            };
 
             print_summary(&target, summary);
             let details = serde_json::json!({
@@ -1080,6 +1072,7 @@ fn handle_service(args: ServiceArgs, audit: &AuditLogger) -> anyhow::Result<()> 
             ServiceAction::Uninstall => {
                 mirror_core::service::uninstall_service()?;
                 let _ = install::remove_marker();
+                let _ = install::remove_manifest();
                 println!("Service uninstalled.");
                 let audit_id = audit.record(
                     "service.uninstall",
@@ -1691,6 +1684,7 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
                 path_choice,
             },
         )?;
+        println!("{}", report.install);
         println!("{}", report.service);
         println!("{}", report.path);
         let audit_id = audit.record(
@@ -1767,8 +1761,8 @@ fn run_sync_job(
             target.host.as_deref(),
             &target.scope,
         );
-        if let Some(until) = backoff_until(&cache_snapshot, &target_key) {
-            if until > now {
+        if let Some(until) = backoff_until(&cache_snapshot, &target_key)
+            && until > now {
                 warn!(
                     provider = %target.provider,
                     scope = ?target.scope,
@@ -1777,7 +1771,6 @@ fn run_sync_job(
                 );
                 continue;
             }
-        }
         let provider_kind = target.provider.clone();
         let provider = registry.provider(provider_kind.clone())?;
         let runtime_target = ProviderTarget {
@@ -1785,22 +1778,19 @@ fn run_sync_job(
             scope: target.scope.clone(),
             host: target.host.clone(),
         };
-        let bucketed = |repo: &mirror_core::model::RemoteRepo| {
+        let bucketed = move |repo: &mirror_core::model::RemoteRepo| {
             !repo.archived && bucket_for_repo_id(&repo.id) == day_bucket
         };
-        let result = run_sync_filtered(
-            provider.as_ref(),
-            &runtime_target,
-            root,
-            cache_path,
-            policy,
-            None,
-            Some(&bucketed),
-            true,
-            false,
-            false,
-        )
-        .or_else(|err| map_azdo_error(&runtime_target, err));
+        let options = RunSyncOptions {
+            missing_policy: policy,
+            missing_decider: None,
+            repo_filter: Some(&bucketed),
+            detect_missing: true,
+            refresh: false,
+            verify: false,
+        };
+        let result = run_sync_filtered(provider.as_ref(), &runtime_target, root, cache_path, options)
+            .or_else(|err| map_azdo_error(&runtime_target, err));
         match result {
             Ok(_) => {
                 let _ = update_target_success(cache_path, &target_key, now);
@@ -1905,15 +1895,12 @@ fn map_azdo_error(
     target: &ProviderTarget,
     err: anyhow::Error,
 ) -> anyhow::Result<SyncSummary> {
-    if target.provider == ProviderKind::AzureDevOps {
-        if let Some(reqwest_err) = err.downcast_ref::<reqwest::Error>() {
-            if let Some(status) = reqwest_err.status() {
-                if let Some(message) = azdo_message_for_status(target, status) {
+    if target.provider == ProviderKind::AzureDevOps
+        && let Some(reqwest_err) = err.downcast_ref::<reqwest::Error>()
+            && let Some(status) = reqwest_err.status()
+                && let Some(message) = azdo_message_for_status(target, status) {
                     return Err(anyhow::anyhow!(message));
                 }
-            }
-        }
-    }
     Err(err)
 }
 
@@ -1921,8 +1908,8 @@ fn map_provider_error(
     target: &ProviderTarget,
     err: anyhow::Error,
 ) -> anyhow::Result<()> {
-    if let Some(reqwest_err) = err.downcast_ref::<reqwest::Error>() {
-        if let Some(status) = reqwest_err.status() {
+    if let Some(reqwest_err) = err.downcast_ref::<reqwest::Error>()
+        && let Some(status) = reqwest_err.status() {
             let scope = target.scope.segments().join("/");
             let message = match target.provider {
                 ProviderKind::AzureDevOps => azdo_status_message(&scope, status),
@@ -1933,7 +1920,6 @@ fn map_provider_error(
                 return Err(anyhow::anyhow!(message));
             }
         }
-    }
     Err(err)
 }
 

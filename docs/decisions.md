@@ -50,14 +50,20 @@ This document captures key architectural decisions and the rationale behind them
 
 **Rationale:** Device flow improves UX but availability varies; PATs remain universal.
 
-## No PATH modification in installer
+## PATH modification is opt-in
 
-**Decision:** The project does not modify PATH automatically.
+**Decision:** The installer only modifies PATH when explicitly requested.
 
-**Rationale:** Avoids OS policy issues and reduces side effects during install.
+**Rationale:** Avoids OS policy issues and reduces side effects during install while still offering convenience.
 
-## Install marker file
+## Default install location + manifest
 
-**Decision:** Track installation state using a marker file in OS app data.
+**Decision:** The installer copies the binary into the OS default per-user install location and writes an `install.json` manifest.
 
-**Rationale:** Simple cross-platform detection of “installed” vs “not installed.”
+**Rationale:** Uses predictable OS-appropriate locations and enables reliable update/replace behavior.
+
+## Install marker file (legacy)
+
+**Decision:** Keep a marker file in OS app data for backward-compatible install detection.
+
+**Rationale:** Ensures older installs remain detectable while migrating to the manifest.

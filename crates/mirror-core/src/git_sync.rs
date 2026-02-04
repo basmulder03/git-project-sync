@@ -150,19 +150,16 @@ fn fast_forward_default_branch(
     update_branch_ref(repo, &local_ref, remote_oid)?;
     if is_head_on_default(repo, default_branch)? {
         checkout_head(repo)?;
-    } else if let Ok(head) = repo.head() {
-        if head.is_branch() {
-            if let Some(name) = head.shorthand() {
-                if name != default_branch {
+    } else if let Ok(head) = repo.head()
+        && head.is_branch()
+            && let Some(name) = head.shorthand()
+                && name != default_branch {
                     warn!(
                         current = %name,
                         new_default = %default_branch,
                         "default branch differs from current HEAD"
                     );
                 }
-            }
-        }
-    }
     Ok(SyncOutcome::FastForwarded)
 }
 
@@ -175,8 +172,8 @@ fn detect_orphaned_branches(repo: &Repository) -> anyhow::Result<Vec<String>> {
         if name.is_empty() {
             continue;
         }
-        if let Some(upstream_name) = upstream_ref_from_config(repo, &name)? {
-            if repo.find_reference(&upstream_name).is_err() {
+        if let Some(upstream_name) = upstream_ref_from_config(repo, &name)?
+            && repo.find_reference(&upstream_name).is_err() {
                 warn!(
                     branch = %name,
                     upstream = %upstream_name,
@@ -184,7 +181,6 @@ fn detect_orphaned_branches(repo: &Repository) -> anyhow::Result<Vec<String>> {
                 );
                 orphaned.push(name);
             }
-        }
     }
     Ok(orphaned)
 }
@@ -201,11 +197,9 @@ fn verify_refs(repo: &Repository, default_branch: &str) -> anyhow::Result<Verify
     let remote_ref = format!("refs/remotes/origin/{default_branch}");
     if let (Ok(local_oid), Ok(remote_oid)) =
         (repo.refname_to_id(&local_ref), repo.refname_to_id(&remote_ref))
-    {
-        if local_oid != remote_oid {
+        && local_oid != remote_oid {
             summary.default_mismatch = true;
         }
-    }
 
     let branches = repo.branches(Some(git2::BranchType::Local))?;
     for branch in branches {
@@ -214,15 +208,12 @@ fn verify_refs(repo: &Repository, default_branch: &str) -> anyhow::Result<Verify
         if name.is_empty() || name == default_branch {
             continue;
         }
-        if let Some(upstream_name) = upstream_ref_from_config(repo, &name)? {
-            if let (Ok(local_oid), Ok(upstream_oid)) =
+        if let Some(upstream_name) = upstream_ref_from_config(repo, &name)?
+            && let (Ok(local_oid), Ok(upstream_oid)) =
                 (repo.refname_to_id(&format!("refs/heads/{name}")), repo.refname_to_id(&upstream_name))
-            {
-                if local_oid != upstream_oid {
+                && local_oid != upstream_oid {
                     summary.mismatched_branches.push(name);
                 }
-            }
-        }
     }
     Ok(summary)
 }

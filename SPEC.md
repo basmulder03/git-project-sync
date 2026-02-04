@@ -58,6 +58,7 @@
 - `tray` to run the system tray UI (quick actions + dashboard)
 - `tui --dashboard` to open the status dashboard directly
 - `install` to run guided installation (service + optional PATH)
+- Installer copies the binary to the OS default per-user install location and re-runs service registration from that path.
 
 ## OAuth troubleshooting
 

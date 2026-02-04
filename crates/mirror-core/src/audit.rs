@@ -193,12 +193,11 @@ fn next_audit_path(base_dir: &Path, date: &str, max_bytes: u64) -> anyhow::Resul
             format!("audit-{date}-{suffix}.jsonl")
         };
         let path = base_dir.join(name);
-        if let Ok(metadata) = fs::metadata(&path) {
-            if metadata.len() >= max_bytes {
+        if let Ok(metadata) = fs::metadata(&path)
+            && metadata.len() >= max_bytes {
                 suffix += 1;
                 continue;
             }
-        }
         return Ok(path);
     }
 }

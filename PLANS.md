@@ -1,5 +1,13 @@
 # PLANS.md
 
+## Milestone 43 — Installer Default Location + Update (in progress)
+
+- [x] Install binary to OS default per-user location (app-data based)
+- [x] Reinstall service using installed binary path
+- [x] Add install manifest for detection/reporting
+- [x] Update CLI/TUI messaging for install location
+- [x] Update docs + acceptance notes for replace/update behavior
+
 ## Milestone 42 — Installer Single-Instance Fix (in progress)
 
 - [x] Replace installer mutex with lockfile under data_local

@@ -36,3 +36,4 @@
 29) Run `install --tui` and confirm the installer screen runs the same flow.
 30) Run `install --path add` and confirm PATH registration message is shown.
 31) Run `mirror-cli` with no args: if not installed, installer opens; if installed, help is shown.
+32) Re-run `install` with a newer binary and confirm it replaces the existing install in the OS default location and restarts the service using that path.

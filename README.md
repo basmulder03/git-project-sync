@@ -182,6 +182,8 @@ Default launch behavior:
 
 Notes:
 
+- The installer copies `mirror-cli` into the OS default per-user install location and reuses it for the service.
+- Re-running `mirror-cli install` replaces the existing install in place.
 - Linux: installs a systemd user service
 - macOS: installs a LaunchAgent
 - Windows: installs a Windows service

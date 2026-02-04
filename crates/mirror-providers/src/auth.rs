@@ -62,11 +62,10 @@ pub fn get_pat(account: &str) -> anyhow::Result<String> {
 pub fn get_token(account: &str) -> anyhow::Result<String> {
     let entry = Entry::new(SERVICE, account).context("open keyring entry")?;
     let value = entry.get_password().context("read token from keyring")?;
-    if let Ok(stored) = serde_json::from_str::<StoredToken>(&value) {
-        if stored.kind == "oauth" {
+    if let Ok(stored) = serde_json::from_str::<StoredToken>(&value)
+        && stored.kind == "oauth" {
             return ensure_oauth_token(account, &entry, stored);
         }
-    }
     Ok(value)
 }
 
@@ -213,14 +212,13 @@ pub fn set_audit_logger(logger: AuditLogger) {
 }
 
 pub fn oauth_allowed(provider: &str, host: &str) -> bool {
-    if let Ok(value) = std::env::var(OAUTH_ALLOW_ENV) {
-        if !value.trim().is_empty() {
+    if let Ok(value) = std::env::var(OAUTH_ALLOW_ENV)
+        && !value.trim().is_empty() {
             return parse_oauth_allowlist(&value)
                 .get(provider)
                 .map(|hosts| host_matches_any(host, hosts))
                 .unwrap_or(false);
         }
-    }
     default_oauth_allowed(provider, host)
 }
 
@@ -258,11 +256,10 @@ fn match_host(host: &str, pattern: &str) -> bool {
 
 fn normalize_host(value: &str) -> String {
     let lower = value.trim().to_lowercase();
-    if let Ok(url) = reqwest::Url::parse(&lower) {
-        if let Some(host) = url.host_str() {
+    if let Ok(url) = reqwest::Url::parse(&lower)
+        && let Some(host) = url.host_str() {
             return host.to_string();
         }
-    }
     lower
 }
 

@@ -87,6 +87,6 @@ Service install helpers are OS-specific:
 
 ## Known limitations
 
-- No PATH modification during install.
+- PATH modification is opt-in during install.
 - OAuth device flow is supported for GitHub and Azure DevOps only.
 - Tray UI requires a graphical session.

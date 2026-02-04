@@ -22,10 +22,10 @@ Run the binary:
 
 ### PATH behavior
 
-This project does **not** modify PATH on any OS. The service installer only registers background services. If you want `mirror-cli` on PATH, use OS-specific steps:
+PATH updates are **opt-in** during `mirror-cli install`. If you skip it, you can add it later:
 
-- Windows: add the release folder (for example `C:\path\to\repo\target\release`) to the user PATH environment variable.
-- macOS/Linux: add a symlink to a PATH location, for example `ln -s /path/to/repo/target/release/mirror-cli /usr/local/bin/mirror-cli`.
+- Windows: add the install folder to the user PATH environment variable.
+- macOS/Linux: add a symlink to a PATH location, for example `ln -s <install-dir>/mirror-cli /usr/local/bin/mirror-cli`.
 
 ## Configuration
 
@@ -191,6 +191,12 @@ Options:
 - `--delayed-start <seconds>`: delayed startup on boot (OS-native).
 - `--path <add|skip>`: opt-in PATH registration.
 
+Default install locations (per-user):
+
+- Windows: `%LOCALAPPDATA%\Programs\git-project-sync\mirror-cli.exe`
+- macOS: `~/Library/Application Support/git-project-sync/bin/mirror-cli`
+- Linux: `~/.local/share/git-project-sync/bin/mirror-cli`
+
 ### Default launch behavior
 
 When you run the executable without arguments:
@@ -199,7 +205,9 @@ When you run the executable without arguments:
 - If **installed**, it shows the CLI help screen.
 
 Installation is tracked via an install marker file stored under the OS data directory.
+The installer also writes an `install.json` manifest to the same location and uses it to detect existing installs.
 Only one installer can run at a time (guarded by an install lock file under the same directory).
+Re-running the installer replaces the existing install in place and updates the service to point at the new binary.
 
 ## Tray + Dashboard
 

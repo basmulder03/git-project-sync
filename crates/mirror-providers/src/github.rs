@@ -65,11 +65,10 @@ impl GitHubProvider {
                 let mut iter = pair.splitn(2, '=');
                 let key = iter.next().unwrap_or("");
                 let value = iter.next().unwrap_or("");
-                if key == "page" {
-                    if let Ok(page) = value.parse::<u32>() {
+                if key == "page"
+                    && let Ok(page) = value.parse::<u32>() {
                         return Some(page);
                     }
-                }
             }
         }
         None
@@ -277,11 +276,10 @@ impl RepoProvider for GitHubProvider {
             .context("call GitHub token scopes")?
             .error_for_status()
             .context("GitHub token scopes status")?;
-        if let Some(header) = response.headers().get("x-oauth-scopes") {
-            if let Ok(value) = header.to_str() {
+        if let Some(header) = response.headers().get("x-oauth-scopes")
+            && let Ok(value) = header.to_str() {
                 return Ok(Some(parse_scopes_header(value)));
             }
-        }
         Ok(None)
     }
 }

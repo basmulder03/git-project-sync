@@ -13,6 +13,10 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{info, warn};
 
+pub type MissingDecider =
+    dyn Fn(&crate::cache::RepoCacheEntry) -> anyhow::Result<DeletedRepoAction>;
+pub type RepoFilter = dyn Fn(&RemoteRepo) -> bool;
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SyncSummary {
     pub cloned: u32,
@@ -50,20 +54,37 @@ pub fn run_sync(
     root: &Path,
     cache_path: &Path,
     missing_policy: MissingRemotePolicy,
-    missing_decider: Option<&dyn Fn(&crate::cache::RepoCacheEntry) -> anyhow::Result<DeletedRepoAction>>,
+    missing_decider: Option<&MissingDecider>,
 ) -> anyhow::Result<SyncSummary> {
-    run_sync_filtered(
-        provider,
-        target,
-        root,
-        cache_path,
+    let options = RunSyncOptions {
         missing_policy,
         missing_decider,
-        None,
-        true,
-        false,
-        false,
-    )
+        ..RunSyncOptions::default()
+    };
+    run_sync_filtered(provider, target, root, cache_path, options)
+}
+
+#[derive(Clone, Copy)]
+pub struct RunSyncOptions<'a, 'b> {
+    pub missing_policy: MissingRemotePolicy,
+    pub missing_decider: Option<&'a MissingDecider>,
+    pub repo_filter: Option<&'b RepoFilter>,
+    pub detect_missing: bool,
+    pub refresh: bool,
+    pub verify: bool,
+}
+
+impl Default for RunSyncOptions<'_, '_> {
+    fn default() -> Self {
+        Self {
+            missing_policy: MissingRemotePolicy::Skip,
+            missing_decider: None,
+            repo_filter: None,
+            detect_missing: true,
+            refresh: false,
+            verify: false,
+        }
+    }
 }
 
 pub fn run_sync_filtered(
@@ -71,12 +92,7 @@ pub fn run_sync_filtered(
     target: &ProviderTarget,
     root: &Path,
     cache_path: &Path,
-    missing_policy: MissingRemotePolicy,
-    missing_decider: Option<&dyn Fn(&crate::cache::RepoCacheEntry) -> anyhow::Result<DeletedRepoAction>>,
-    repo_filter: Option<&dyn Fn(&RemoteRepo) -> bool>,
-    detect_missing: bool,
-    refresh: bool,
-    verify: bool,
+    options: RunSyncOptions<'_, '_>,
 ) -> anyhow::Result<SyncSummary> {
     provider
         .validate_auth(target)
@@ -91,19 +107,19 @@ pub fn run_sync_filtered(
     );
 
     let (mut repos, used_cache) =
-        load_repos_with_cache(provider, target, &mut cache, refresh)?;
-    if detect_missing && !used_cache {
+        load_repos_with_cache(provider, target, &mut cache, options.refresh)?;
+    if options.detect_missing && !used_cache {
         let current_ids: HashSet<String> = repos.iter().map(|repo| repo.id.clone()).collect();
         let missing_summary = handle_missing_repos(
             &mut cache,
             root,
             &current_ids,
-            missing_policy,
-            missing_decider,
+            options.missing_policy,
+            options.missing_decider,
         )?;
         summary.record_missing(missing_summary);
     }
-    if let Some(filter) = repo_filter {
+    if let Some(filter) = options.repo_filter {
         repos.retain(|repo| filter(repo));
     }
 
@@ -144,7 +160,7 @@ pub fn run_sync_filtered(
             &repo.clone_url,
             &repo.default_branch,
             repo.auth.as_ref(),
-            verify,
+            options.verify,
         ) {
             Ok(outcome) => outcome,
             Err(err) => {
@@ -244,9 +260,9 @@ fn load_repos_with_cache(
         &target.scope,
     );
     let now = current_timestamp_secs();
-    if !refresh {
-        if let Some(entry) = cache.repo_inventory.get(&target_key) {
-            if cache_is_valid(entry, now) {
+    if !refresh
+        && let Some(entry) = cache.repo_inventory.get(&target_key)
+            && cache_is_valid(entry, now) {
                 let auth = provider.auth_for_target(target)?;
                 let repos = entry
                     .repos
@@ -265,8 +281,6 @@ fn load_repos_with_cache(
                     .collect();
                 return Ok((repos, true));
             }
-        }
-    }
 
     let repos = provider.list_repos(target).context("list repos")?;
     let inventory = RepoInventoryEntry {
@@ -305,7 +319,7 @@ fn handle_missing_repos(
     root: &Path,
     current_repo_ids: &HashSet<String>,
     policy: MissingRemotePolicy,
-    decider: Option<&dyn Fn(&crate::cache::RepoCacheEntry) -> anyhow::Result<DeletedRepoAction>>,
+    decider: Option<&MissingDecider>,
 ) -> anyhow::Result<MissingSummary> {
     let missing = detect_deleted_repos(cache, current_repo_ids);
     if missing.is_empty() {
@@ -372,7 +386,7 @@ fn handle_missing_repos(
 fn resolve_action(
     entry: &crate::cache::RepoCacheEntry,
     policy: MissingRemotePolicy,
-    decider: Option<&dyn Fn(&crate::cache::RepoCacheEntry) -> anyhow::Result<DeletedRepoAction>>,
+    decider: Option<&MissingDecider>,
 ) -> anyhow::Result<DeletedRepoAction> {
     match policy {
         MissingRemotePolicy::Prompt => {

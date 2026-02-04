@@ -72,6 +72,20 @@ Run a sync:
 mirror-cli sync
 ```
 
+## Tray + Dashboard
+
+Run the system tray UI:
+
+```bash
+mirror-cli tray
+```
+
+The tray menu can open a dashboard TUI or trigger a sync. You can also launch the dashboard directly:
+
+```bash
+mirror-cli tui --dashboard
+```
+
 ## Scope Shapes
 
 - Azure DevOps: `<org>` or `<org>/<project>`

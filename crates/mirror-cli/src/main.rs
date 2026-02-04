@@ -23,6 +23,7 @@ use serde::Deserialize;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use tracing_subscriber::EnvFilter;
+mod tray;
 mod tui;
 
 #[derive(Parser)]
@@ -55,7 +56,9 @@ enum Commands {
     #[command(about = "Manage cache")]
     Cache(CacheArgs),
     #[command(about = "Launch terminal UI")]
-    Tui,
+    Tui(TuiArgs),
+    #[command(about = "Run system tray UI")]
+    Tray,
 }
 
 #[derive(Parser)]
@@ -304,6 +307,12 @@ struct HealthArgs {
     config: Option<PathBuf>,
 }
 
+#[derive(Parser)]
+struct TuiArgs {
+    #[arg(long)]
+    dashboard: bool,
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 enum ServiceAction {
     Install,
@@ -367,7 +376,8 @@ fn main() -> anyhow::Result<()> {
         Commands::Webhook(args) => handle_webhook(args, &audit),
         Commands::Oauth(args) => handle_oauth(args, &audit),
         Commands::Cache(args) => handle_cache(args, &audit),
-        Commands::Tui => tui::run_tui(&audit),
+        Commands::Tui(args) => tui::run_tui(&audit, args.dashboard),
+        Commands::Tray => tray::run_tray(&audit),
     };
 
     if let Err(err) = &result {

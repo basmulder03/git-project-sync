@@ -163,6 +163,12 @@
 - [x] Apply minimal layout polish (headers, spacing, concise summaries)
 - [x] Add tests for guidance rendering and validation text
 
+## Milestone 36 — Tray UI + Dashboard (completed)
+
+- [x] Add system tray command with quick actions and dashboard launch
+- [x] Add TUI dashboard view with core stats and per-target toggle
+- [x] Update docs and acceptance checks for tray/dashboard
+
 ## Notes / Decisions
 
 - Focus: architecture tidy (per user request).

@@ -5,7 +5,9 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use mirror_core::audit::{AuditContext, AuditLogger, AuditStatus};
-use mirror_core::config::{default_config_path, load_or_migrate, target_id, AppConfigV2, TargetConfig};
+use mirror_core::config::{
+    default_cache_path, default_config_path, load_or_migrate, target_id, AppConfigV2, TargetConfig,
+};
 use mirror_core::model::ProviderKind;
 use mirror_providers::auth;
 use mirror_providers::spec::{host_or_default, pat_help, spec_for};
@@ -22,7 +24,7 @@ use std::io::{self, Stdout};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
-pub fn run_tui(audit: &AuditLogger) -> anyhow::Result<()> {
+pub fn run_tui(audit: &AuditLogger, start_dashboard: bool) -> anyhow::Result<()> {
     enable_raw_mode().context("enable raw mode")?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen).context("enter alternate screen")?;
@@ -30,7 +32,7 @@ pub fn run_tui(audit: &AuditLogger) -> anyhow::Result<()> {
     let mut terminal = Terminal::new(backend).context("create terminal")?;
 
     let _ = audit.record("tui.start", AuditStatus::Ok, Some("tui"), None, None)?;
-    let result = run_app(&mut terminal, audit);
+    let result = run_app(&mut terminal, audit, start_dashboard);
 
     disable_raw_mode().ok();
     execute!(terminal.backend_mut(), LeaveAlternateScreen).ok();
@@ -42,8 +44,12 @@ pub fn run_tui(audit: &AuditLogger) -> anyhow::Result<()> {
     result
 }
 
-fn run_app(terminal: &mut Terminal<CrosstermBackend<Stdout>>, audit: &AuditLogger) -> anyhow::Result<()> {
-    let mut app = TuiApp::load(audit.clone())?;
+fn run_app(
+    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    audit: &AuditLogger,
+    start_dashboard: bool,
+) -> anyhow::Result<()> {
+    let mut app = TuiApp::load(audit.clone(), start_dashboard)?;
     let mut last_tick = Instant::now();
     let tick_rate = Duration::from_millis(200);
 
@@ -73,6 +79,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<Stdout>>, audit: &AuditLogge
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum View {
     Main,
+    Dashboard,
     ConfigRoot,
     Targets,
     TargetAdd,
@@ -141,10 +148,11 @@ struct TuiApp {
     audit: AuditLogger,
     audit_filter: AuditFilter,
     validation_message: Option<String>,
+    show_target_stats: bool,
 }
 
 impl TuiApp {
-    fn load(audit: AuditLogger) -> anyhow::Result<Self> {
+    fn load(audit: AuditLogger, start_dashboard: bool) -> anyhow::Result<Self> {
         let config_path = default_config_path()?;
         let (config, migrated) = load_or_migrate(&config_path)?;
         if migrated {
@@ -153,7 +161,7 @@ impl TuiApp {
         Ok(Self {
             config_path,
             config,
-            view: View::Main,
+            view: if start_dashboard { View::Dashboard } else { View::Main },
             menu_index: 0,
             message: String::new(),
             input_index: 0,
@@ -164,6 +172,7 @@ impl TuiApp {
             audit,
             audit_filter: AuditFilter::All,
             validation_message: None,
+            show_target_stats: false,
         })
     }
 
@@ -180,6 +189,7 @@ impl TuiApp {
 
         match self.view {
             View::Main => self.draw_main(frame, layout[1]),
+            View::Dashboard => self.draw_dashboard(frame, layout[1]),
             View::ConfigRoot => self.draw_config_root(frame, layout[1]),
             View::Targets => self.draw_targets(frame, layout[1]),
             View::TargetAdd => self.draw_form(frame, layout[1], "Add Target"),
@@ -201,6 +211,7 @@ impl TuiApp {
     fn footer_text(&self) -> String {
         match self.view {
             View::Main => "Up/Down: navigate | Enter: select | q: quit".to_string(),
+            View::Dashboard => "t: toggle targets | Esc: back".to_string(),
             View::ConfigRoot => "Enter: save | Esc: back".to_string(),
             View::Targets => "a: add | d: remove | Esc: back".to_string(),
             View::TargetAdd | View::TargetRemove | View::TokenSet | View::TokenValidate => {
@@ -216,6 +227,7 @@ impl TuiApp {
 
     fn draw_main(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         let items = vec![
+            "Dashboard",
             "Config",
             "Targets",
             "Tokens",
@@ -237,6 +249,45 @@ impl TuiApp {
         let list = List::new(list_items)
             .block(Block::default().borders(Borders::ALL).title("Main Menu"));
         frame.render_widget(list, area);
+    }
+
+    fn draw_dashboard(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let stats = self.dashboard_stats();
+        let mut lines = vec![
+            Line::from(Span::raw("Dashboard: System status")),
+            Line::from(Span::raw("")),
+            Line::from(Span::raw(format!("Targets: {} total", stats.total_targets))),
+            Line::from(Span::raw(format!("Healthy: {}", stats.healthy_targets))),
+            Line::from(Span::raw(format!("Backoff: {}", stats.backoff_targets))),
+            Line::from(Span::raw(format!("No recent success: {}", stats.no_success_targets))),
+            Line::from(Span::raw(format!(
+                "Last sync: {}",
+                stats.last_sync.unwrap_or_else(|| "unknown".to_string())
+            ))),
+            Line::from(Span::raw(format!(
+                "Audit entries today: {}",
+                stats.audit_entries
+            ))),
+        ];
+        if self.show_target_stats {
+            lines.push(Line::from(Span::raw("")));
+            lines.push(Line::from(Span::raw("Per-target status:")));
+            for target in stats.targets {
+                lines.push(Line::from(Span::raw(format!(
+                    "{} | {} | {}",
+                    target.id, target.status, target.last_success
+                ))));
+            }
+        } else {
+            lines.push(Line::from(Span::raw("")));
+            lines.push(Line::from(Span::raw(
+                "Press t to show per-target status",
+            )));
+        }
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(Block::default().borders(Borders::ALL).title("Dashboard"));
+        frame.render_widget(widget, area);
     }
 
     fn draw_audit_log(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
@@ -509,6 +560,7 @@ impl TuiApp {
     fn handle_key(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
         match self.view {
             View::Main => self.handle_main(key),
+            View::Dashboard => self.handle_dashboard(key),
             View::ConfigRoot => self.handle_config_root(key),
             View::Targets => self.handle_targets(key),
             View::TargetAdd => self.handle_target_add(key),
@@ -526,29 +578,41 @@ impl TuiApp {
     fn handle_main(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
         match key.code {
             KeyCode::Char('q') => return Ok(true),
-            KeyCode::Down => self.menu_index = (self.menu_index + 1) % 6,
+            KeyCode::Down => self.menu_index = (self.menu_index + 1) % 7,
             KeyCode::Up => {
                 if self.menu_index == 0 {
-                    self.menu_index = 5;
+                    self.menu_index = 6;
                 } else {
                     self.menu_index -= 1;
                 }
             }
             KeyCode::Enter => match self.menu_index {
-                0 => {
+                0 => self.view = View::Dashboard,
+                1 => {
                     self.view = View::ConfigRoot;
                     self.input_fields = vec![InputField::new("Root path")];
                     self.input_index = 0;
                 }
-                1 => self.view = View::Targets,
-                2 => {
+                2 => self.view = View::Targets,
+                3 => {
                     self.view = View::TokenMenu;
                     self.token_menu_index = 0;
                 }
-                3 => self.view = View::Service,
-                4 => self.view = View::AuditLog,
+                4 => self.view = View::Service,
+                5 => self.view = View::AuditLog,
                 _ => return Ok(true),
             },
+            _ => {}
+        }
+        Ok(false)
+    }
+
+    fn handle_dashboard(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
+        match key.code {
+            KeyCode::Esc => self.view = View::Main,
+            KeyCode::Char('t') => {
+                self.show_target_stats = !self.show_target_stats;
+            }
             _ => {}
         }
         Ok(false)
@@ -1133,6 +1197,76 @@ fn handle_text_input(&mut self, key: KeyEvent) {
             at: validation_timestamp(),
         })
     }
+
+    fn dashboard_stats(&self) -> DashboardStats {
+        let cache_path = default_cache_path().ok();
+        let cache = cache_path
+            .as_ref()
+            .and_then(|path| mirror_core::cache::RepoCache::load(path).ok());
+        let audit_entries = self.audit_log_count();
+        let now = current_epoch_seconds();
+        let mut healthy = 0;
+        let mut backoff = 0;
+        let mut no_success = 0;
+        let mut last_sync: Option<String> = None;
+        let mut targets = Vec::new();
+
+        for target in &self.config.targets {
+            let id = target.id.clone();
+            let last_success = cache
+                .as_ref()
+                .and_then(|c| c.target_last_success.get(&id).copied());
+            let backoff_until = cache
+                .as_ref()
+                .and_then(|c| c.target_backoff_until.get(&id).copied());
+            let status = if let Some(until) = backoff_until {
+                if until > now {
+                    backoff += 1;
+                    "backoff"
+                } else {
+                    healthy += 1;
+                    "ok"
+                }
+            } else if last_success.is_some() {
+                healthy += 1;
+                "ok"
+            } else {
+                no_success += 1;
+                "unknown"
+            };
+
+            let last_success_label = last_success
+                .map(epoch_to_label)
+                .unwrap_or_else(|| "none".to_string());
+            if last_sync.is_none() {
+                last_sync = last_success.map(epoch_to_label);
+            }
+
+            targets.push(DashboardTarget {
+                id,
+                status: status.to_string(),
+                last_success: last_success_label,
+            });
+        }
+
+        DashboardStats {
+            total_targets: self.config.targets.len(),
+            healthy_targets: healthy,
+            backoff_targets: backoff,
+            no_success_targets: no_success,
+            last_sync,
+            audit_entries,
+            targets,
+        }
+    }
+
+    fn audit_log_count(&self) -> usize {
+        let path = self.audit_log_path();
+        if let Ok(contents) = std::fs::read_to_string(path) {
+            return contents.lines().count();
+        }
+        0
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1174,6 +1308,22 @@ enum TokenValidationStatus {
     Ok,
     MissingScopes(Vec<String>),
     Unsupported,
+}
+
+struct DashboardStats {
+    total_targets: usize,
+    healthy_targets: usize,
+    backoff_targets: usize,
+    no_success_targets: usize,
+    last_sync: Option<String>,
+    audit_entries: usize,
+    targets: Vec<DashboardTarget>,
+}
+
+struct DashboardTarget {
+    id: String,
+    status: String,
+    last_success: String,
 }
 
 fn provider_kind(index: usize) -> ProviderKind {
@@ -1231,6 +1381,21 @@ fn validation_timestamp() -> String {
         .unwrap_or_else(|_| "unknown".to_string())
 }
 
+fn epoch_to_label(epoch: u64) -> String {
+    let ts = time::OffsetDateTime::from_unix_timestamp(epoch as i64)
+        .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
+    ts.format(&time::format_description::parse("[year]-[month]-[day] [hour]:[minute]").unwrap())
+        .unwrap_or_else(|_| "unknown".to_string())
+}
+
+fn current_epoch_seconds() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1256,7 +1421,7 @@ mod tests {
             config_path: std::path::PathBuf::from("/tmp/config.json"),
             config: AppConfigV2::default(),
             view: View::Main,
-            menu_index: 5,
+            menu_index: 6,
             message: String::new(),
             input_index: 0,
             input_fields: Vec::new(),
@@ -1266,6 +1431,7 @@ mod tests {
             audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
             audit_filter: AuditFilter::All,
             validation_message: None,
+            show_target_stats: false,
         };
         let key = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
         app.handle_main(key).unwrap();
@@ -1313,6 +1479,7 @@ mod tests {
             audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
             audit_filter: AuditFilter::All,
             validation_message: None,
+            show_target_stats: false,
         };
         let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
         app.handle_token_menu(key).unwrap();
@@ -1347,6 +1514,7 @@ mod tests {
             audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
             audit_filter: AuditFilter::All,
             validation_message: None,
+            show_target_stats: false,
         };
         assert!(app.form_hint().is_some());
     }

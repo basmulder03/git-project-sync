@@ -66,6 +66,8 @@ enum Commands {
     Tray,
     #[command(about = "Install daemon and optionally register PATH")]
     Install(InstallArgs),
+    #[command(about = "Manage scheduled task (Windows only)")]
+    Task(TaskArgs),
 }
 
 #[derive(Parser)]
@@ -331,6 +333,8 @@ struct InstallArgs {
     #[arg(long)]
     status: bool,
     #[arg(long)]
+    start: bool,
+    #[arg(long)]
     delayed_start: Option<u64>,
     #[arg(long, value_enum)]
     path: Option<PathChoiceValue>,
@@ -439,6 +443,7 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Tray => tray::run_tray(&audit),
         Commands::Install(args) => handle_install(args, &audit),
+        Commands::Task(args) => handle_task(args, &audit),
     };
 
     if let Err(err) = &result {
@@ -1675,11 +1680,7 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
     let result: anyhow::Result<()> = (|| {
         if args.status {
             let status = install::install_status()?;
-            let service_label = if cfg!(target_os = "windows") {
-                "Scheduled task"
-            } else {
-                "Service"
-            };
+            let service_label = service_label();
             println!("Installed: {}", if status.installed { "yes" } else { "no" });
             println!(
                 "Installed path: {}",
@@ -1703,6 +1704,15 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
                 service_label,
                 if status.service_running { "yes" } else { "no" }
             );
+            if let Some(value) = status.service_last_run.as_deref() {
+                println!("Last run: {value}");
+            }
+            if let Some(value) = status.service_next_run.as_deref() {
+                println!("Next run: {value}");
+            }
+            if let Some(value) = status.service_last_result.as_deref() {
+                println!("Last result: {value}");
+            }
             if cfg!(target_os = "windows") {
                 println!("Task name: git-project-sync");
             }
@@ -1764,6 +1774,11 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
         println!("{}", report.install);
         println!("{}", report.service);
         println!("{}", report.path);
+        if args.start {
+            mirror_core::service::start_service_now()
+                .context("start service/task after install")?;
+            println!("{} started.", service_label());
+        }
         let audit_id = audit.record(
             "install.run",
             AuditStatus::Ok,
@@ -1785,6 +1800,110 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
         );
     }
     result
+}
+
+fn handle_task(args: TaskArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = (|| {
+        if !cfg!(target_os = "windows") {
+            println!("Task Scheduler is only supported on Windows.");
+            let _ = audit.record(
+                "task",
+                AuditStatus::Skipped,
+                Some("task"),
+                None,
+                Some("task scheduler unsupported"),
+            );
+            return Ok(());
+        }
+        match args.command {
+            TaskCommands::Status => {
+                let status = mirror_core::service::service_status()?;
+                println!(
+                    "Installed: {}",
+                    if status.installed { "yes" } else { "no" }
+                );
+                println!(
+                    "Running: {}",
+                    if status.running { "yes" } else { "no" }
+                );
+                if let Some(value) = status.last_run_time.as_deref() {
+                    println!("Last run: {value}");
+                }
+                if let Some(value) = status.next_run_time.as_deref() {
+                    println!("Next run: {value}");
+                }
+                if let Some(value) = status.last_result.as_deref() {
+                    println!("Last result: {value}");
+                }
+                println!("Task name: git-project-sync");
+                let _ = audit.record(
+                    "task.status",
+                    AuditStatus::Ok,
+                    Some("task"),
+                    None,
+                    None,
+                );
+            }
+            TaskCommands::Run => {
+                mirror_core::service::start_service_now()?;
+                println!("Task started.");
+                let _ = audit.record(
+                    "task.run",
+                    AuditStatus::Ok,
+                    Some("task"),
+                    None,
+                    None,
+                );
+            }
+            TaskCommands::Remove => {
+                mirror_core::service::uninstall_service()?;
+                println!("Task removed.");
+                let _ = audit.record(
+                    "task.remove",
+                    AuditStatus::Ok,
+                    Some("task"),
+                    None,
+                    None,
+                );
+            }
+        }
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "task",
+            AuditStatus::Failed,
+            Some("task"),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+    result
+}
+
+#[derive(Parser)]
+struct TaskArgs {
+    #[command(subcommand)]
+    command: TaskCommands,
+}
+
+#[derive(clap::Subcommand)]
+enum TaskCommands {
+    #[command(about = "Show task status (Windows only)")]
+    Status,
+    #[command(about = "Run task now (Windows only)")]
+    Run,
+    #[command(about = "Remove task (Windows only)")]
+    Remove,
+}
+
+fn service_label() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "Scheduled task"
+    } else {
+        "Service"
+    }
 }
 
 fn render_progress_bar(step: usize, total: usize, width: usize) -> String {

@@ -16,6 +16,12 @@
 - [x] CLI sync `--status` progress bar with current action/repo
 - [x] TUI Sync Status view with live status from cache
 
+## Milestone 46 — Windows Task Scheduler UX (in progress)
+
+- [x] Add `install --start` to run task after install
+- [x] Add `task` subcommand (status/run/remove)
+- [x] Expose task last run/result in install status
+
 ## Milestone 42 — Installer Single-Instance Fix (in progress)
 
 - [x] Replace installer mutex with lockfile under data_local

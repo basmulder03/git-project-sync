@@ -40,6 +40,9 @@ pub struct InstallStatus {
     pub manifest_present: bool,
     pub service_installed: bool,
     pub service_running: bool,
+    pub service_last_run: Option<String>,
+    pub service_last_result: Option<String>,
+    pub service_next_run: Option<String>,
     pub path_in_env: bool,
 }
 
@@ -158,6 +161,7 @@ pub fn install_status() -> anyhow::Result<InstallStatus> {
         .unwrap_or(marker_present);
     let service_installed = mirror_core::service::service_exists().unwrap_or(false);
     let service_running = mirror_core::service::service_running().unwrap_or(false);
+    let service_status = mirror_core::service::service_status().ok();
     let path_dir = installed_path
         .as_ref()
         .and_then(|path| path.parent().map(|p| p.to_path_buf()));
@@ -171,6 +175,9 @@ pub fn install_status() -> anyhow::Result<InstallStatus> {
         manifest_present,
         service_installed,
         service_running,
+        service_last_run: service_status.as_ref().and_then(|s| s.last_run_time.clone()),
+        service_last_result: service_status.as_ref().and_then(|s| s.last_result.clone()),
+        service_next_run: service_status.as_ref().and_then(|s| s.next_run_time.clone()),
         path_in_env,
     })
 }

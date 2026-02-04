@@ -446,6 +446,15 @@ impl TuiApp {
                 service_label,
                 if status.service_running { "yes" } else { "no" }
             ))));
+            if let Some(value) = status.service_last_run.as_deref() {
+                lines.push(Line::from(Span::raw(format!("Last run: {value}"))));
+            }
+            if let Some(value) = status.service_next_run.as_deref() {
+                lines.push(Line::from(Span::raw(format!("Next run: {value}"))));
+            }
+            if let Some(value) = status.service_last_result.as_deref() {
+                lines.push(Line::from(Span::raw(format!("Last result: {value}"))));
+            }
             if cfg!(target_os = "windows") {
                 lines.push(Line::from(Span::raw("Task name: git-project-sync")));
             }

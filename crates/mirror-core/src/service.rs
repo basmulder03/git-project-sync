@@ -101,6 +101,98 @@ pub fn service_running() -> anyhow::Result<bool> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ServiceStatusInfo {
+    pub installed: bool,
+    pub running: bool,
+    pub last_run_time: Option<String>,
+    pub last_result: Option<String>,
+    pub next_run_time: Option<String>,
+}
+
+pub fn service_status() -> anyhow::Result<ServiceStatusInfo> {
+    #[cfg(target_os = "windows")]
+    {
+        return windows_task_status();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let installed = service_exists().unwrap_or(false);
+        let running = service_running().unwrap_or(false);
+        return Ok(ServiceStatusInfo {
+            installed,
+            running,
+            last_run_time: None,
+            last_result: None,
+            next_run_time: None,
+        });
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let installed = service_exists().unwrap_or(false);
+        let running = service_running().unwrap_or(false);
+        return Ok(ServiceStatusInfo {
+            installed,
+            running,
+            last_run_time: None,
+            last_result: None,
+            next_run_time: None,
+        });
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        Ok(ServiceStatusInfo {
+            installed: false,
+            running: false,
+            last_run_time: None,
+            last_result: None,
+            next_run_time: None,
+        })
+    }
+}
+
+pub fn start_service_now() -> anyhow::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        run_schtasks(&[
+            "/Run".to_string(),
+            "/TN".to_string(),
+            SERVICE_NAME.to_string(),
+        ])?;
+        return Ok(());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if systemd_timer_path()?.exists() {
+            run_command(
+                "systemctl",
+                &["--user", "start", SYSTEMD_TIMER_NAME],
+                "start systemd user timer",
+            )?;
+        } else {
+            run_command(
+                "systemctl",
+                &["--user", "start", SYSTEMD_UNIT_NAME],
+                "start systemd user service",
+            )?;
+        }
+        return Ok(());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        run_command(
+            "launchctl",
+            &["start", LAUNCHD_LABEL],
+            "start launchd agent",
+        )?;
+        return Ok(());
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        Ok(())
+    }
+}
+
 pub fn uninstall_service_if_exists() -> anyhow::Result<()> {
     #[cfg(target_os = "windows")]
     {
@@ -420,6 +512,65 @@ fn windows_service_running() -> anyhow::Result<bool> {
     Ok(output
         .lines()
         .any(|line| line.trim_start().starts_with("Status:") && line.contains("Running")))
+}
+
+#[cfg(target_os = "windows")]
+fn windows_task_status() -> anyhow::Result<ServiceStatusInfo> {
+    let output = match run_schtasks_output(&[
+        "/Query".to_string(),
+        "/TN".to_string(),
+        SERVICE_NAME.to_string(),
+        "/FO".to_string(),
+        "LIST".to_string(),
+        "/V".to_string(),
+    ]) {
+        Ok(output) => output,
+        Err(_) => {
+            return Ok(ServiceStatusInfo {
+                installed: false,
+                running: false,
+                last_run_time: None,
+                last_result: None,
+                next_run_time: None,
+            });
+        }
+    };
+    let mut status = None;
+    let mut last_run_time = None;
+    let mut last_result = None;
+    let mut next_run_time = None;
+    for line in output.lines() {
+        let line = line.trim();
+        if let Some(value) = line.strip_prefix("Status:") {
+            status = Some(value.trim().to_string());
+        } else if let Some(value) = line.strip_prefix("Last Run Time:") {
+            let value = value.trim();
+            if !value.is_empty() && value != "N/A" {
+                last_run_time = Some(value.to_string());
+            }
+        } else if let Some(value) = line.strip_prefix("Last Result:") {
+            let value = value.trim();
+            if !value.is_empty() && value != "N/A" {
+                last_result = Some(value.to_string());
+            }
+        } else if let Some(value) = line.strip_prefix("Next Run Time:") {
+            let value = value.trim();
+            if !value.is_empty() && value != "N/A" {
+                next_run_time = Some(value.to_string());
+            }
+        }
+    }
+    let running = status
+        .as_deref()
+        .map(|value| value.eq_ignore_ascii_case("Running"))
+        .unwrap_or(false);
+    Ok(ServiceStatusInfo {
+        installed: true,
+        running,
+        last_run_time,
+        last_result,
+        next_run_time,
+    })
 }
 
 #[cfg(target_os = "linux")]

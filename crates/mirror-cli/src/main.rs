@@ -262,6 +262,8 @@ struct OauthArgs {
 enum OauthCommands {
     #[command(about = "Start OAuth device flow")]
     Device(DeviceFlowArgs),
+    #[command(about = "Revoke stored OAuth token")]
+    Revoke(RevokeOauthArgs),
 }
 
 #[derive(Parser)]
@@ -280,6 +282,16 @@ struct DeviceFlowArgs {
     oauth_scope: Vec<String>,
     #[arg(long)]
     experimental: bool,
+}
+
+#[derive(Parser)]
+struct RevokeOauthArgs {
+    #[arg(long, value_enum)]
+    provider: ProviderKindValue,
+    #[arg(long, required = true)]
+    scope: Vec<String>,
+    #[arg(long)]
+    host: Option<String>,
 }
 
 #[derive(Parser)]
@@ -343,6 +355,7 @@ fn main() -> anyhow::Result<()> {
 
     let audit = AuditLogger::new()?;
     let _ = audit.record("app.start", AuditStatus::Ok, None, None, None)?;
+    auth::set_audit_logger(audit.clone());
 
     let cli = Cli::parse();
     let result = match cli.command {
@@ -1194,6 +1207,7 @@ fn handle_cache(args: CacheArgs, audit: &AuditLogger) -> anyhow::Result<()> {
 fn handle_oauth(args: OauthArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     match args.command {
         OauthCommands::Device(args) => handle_device_flow(args, audit),
+        OauthCommands::Revoke(args) => handle_revoke_oauth(args, audit),
     }
 }
 
@@ -1206,6 +1220,43 @@ fn handle_device_flow(args: DeviceFlowArgs, audit: &AuditLogger) -> anyhow::Resu
         let spec = spec_for(provider.clone());
         let scope = spec.parse_scope(args.scope)?;
         let host = host_or_default(args.host.as_deref(), spec.as_ref());
+        let oauth_host = oauth_gate_host(&provider, &host);
+        if !auth::oauth_allowed(provider.as_prefix(), &oauth_host) {
+            let message = format!(
+                "OAuth not enabled for {} at {}. Set {} to override.",
+                provider.as_prefix(),
+                oauth_host,
+                "GIT_PROJECT_SYNC_OAUTH_ALLOW"
+            );
+            let _ = audit.record_with_context(
+                "oauth.device.start",
+                AuditStatus::Failed,
+                Some("oauth.device"),
+                AuditContext {
+                    provider: Some(provider.as_prefix().to_string()),
+                    scope: Some(scope.segments().join("/")),
+                    repo_id: None,
+                    path: None,
+                },
+                None,
+                Some(&message),
+            );
+            anyhow::bail!(message);
+        }
+        let start_audit = audit.record_with_context(
+            "oauth.device.start",
+            AuditStatus::Ok,
+            Some("oauth.device"),
+            AuditContext {
+                provider: Some(provider.as_prefix().to_string()),
+                scope: Some(scope.segments().join("/")),
+                repo_id: None,
+                path: None,
+            },
+            None,
+            None,
+        )?;
+        println!("Audit ID: {start_audit}");
         let client = Client::new();
         let account = spec.account_key(&host, &scope)?;
         match provider {
@@ -1247,6 +1298,19 @@ fn handle_device_flow(args: DeviceFlowArgs, audit: &AuditLogger) -> anyhow::Resu
 
                 auth::set_pat(&account, &token)?;
                 println!("Token stored for {account}");
+                let _ = audit.record_with_context(
+                    "oauth.device.approved",
+                    AuditStatus::Ok,
+                    Some("oauth.device"),
+                    AuditContext {
+                        provider: Some(provider.as_prefix().to_string()),
+                        scope: Some(scope.segments().join("/")),
+                        repo_id: None,
+                        path: None,
+                    },
+                    None,
+                    None,
+                );
             }
             ProviderKind::AzureDevOps => {
                 let tenant = args.tenant.as_deref().unwrap_or("common");
@@ -1302,11 +1366,25 @@ fn handle_device_flow(args: DeviceFlowArgs, audit: &AuditLogger) -> anyhow::Resu
                         refresh_token: token_response.refresh_token.clone(),
                         expires_at,
                         token_endpoint: token_endpoint.clone(),
+                        revocation_endpoint: None,
                         client_id: args.client_id.clone(),
                         scope: Some(oauth_scope),
                     },
                 )?;
                 println!("OAuth token stored for {account}");
+                let _ = audit.record_with_context(
+                    "oauth.device.approved",
+                    AuditStatus::Ok,
+                    Some("oauth.device"),
+                    AuditContext {
+                        provider: Some(provider.as_prefix().to_string()),
+                        scope: Some(scope.segments().join("/")),
+                        repo_id: None,
+                        path: None,
+                    },
+                    None,
+                    None,
+                );
             }
             ProviderKind::GitLab => {
                 anyhow::bail!("device flow is not supported for GitLab yet");
@@ -1335,6 +1413,44 @@ fn handle_device_flow(args: DeviceFlowArgs, audit: &AuditLogger) -> anyhow::Resu
             "oauth.device",
             AuditStatus::Failed,
             Some("oauth.device"),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+    result
+}
+
+fn handle_revoke_oauth(args: RevokeOauthArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = (|| {
+        let provider: ProviderKind = args.provider.into();
+        let spec = spec_for(provider.clone());
+        let scope = spec.parse_scope(args.scope)?;
+        let host = host_or_default(args.host.as_deref(), spec.as_ref());
+        let account = spec.account_key(&host, &scope)?;
+        auth::revoke_oauth_token(&account)?;
+        println!("OAuth token revoked for {account}");
+        let audit_id = audit.record_with_context(
+            "oauth.revoke",
+            AuditStatus::Ok,
+            Some("oauth.revoke"),
+            AuditContext {
+                provider: Some(provider.as_prefix().to_string()),
+                scope: Some(scope.segments().join("/")),
+                repo_id: None,
+                path: None,
+            },
+            None,
+            None,
+        )?;
+        println!("Audit ID: {audit_id}");
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "oauth.revoke",
+            AuditStatus::Failed,
+            Some("oauth.revoke"),
             None,
             Some(&err.to_string()),
         );
@@ -1420,6 +1536,13 @@ fn github_oauth_base(host: &str) -> String {
         stripped.to_string()
     } else {
         host.trim_end_matches('/').to_string()
+    }
+}
+
+fn oauth_gate_host(provider: &ProviderKind, host: &str) -> String {
+    match provider {
+        ProviderKind::GitHub => github_oauth_base(host),
+        _ => host.to_string(),
     }
 }
 

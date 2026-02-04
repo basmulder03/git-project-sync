@@ -142,12 +142,12 @@
 - [x] Add TUI flow to validate PATs against required scopes and show results
 - [x] Add tests for PAT TUI state transitions and validation outcomes
 
-## Milestone 33 — OAuth GA Hardening (planned)
+## Milestone 33 — OAuth GA Hardening (completed)
 
-- [ ] Add provider capability gating (feature flags by provider + host)
-- [ ] Implement robust token refresh + revocation handling across supported providers
-- [ ] Add audit logging for OAuth events (device start, approval, token refresh, revoke)
-- [ ] Add tests for refresh/revoke failure handling and audit entries
+- [x] Add provider capability gating (feature flags by provider + host)
+- [x] Implement robust token refresh + revocation handling across supported providers
+- [x] Add audit logging for OAuth events (device start, approval, token refresh, revoke)
+- [x] Add tests for refresh/revoke failure handling and audit entries
 
 ## Milestone 34 — OAuth GA UX + Docs (planned)
 

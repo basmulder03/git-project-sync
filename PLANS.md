@@ -19,6 +19,11 @@
 - [x] Add Unix/macOS permission preflight with sudo guidance when dirs aren't writable
 - [x] Use Windows Service APIs for install (avoid sc.exe quoting issues)
 - [x] Suppress external command output during TUI install (prevents UI corruption)
+- [x] Remove net-session admin check to avoid console output in TUI
+- [x] Add install progress output for non-interactive CLI
+- [x] Add live install progress UI for TUI
+- [x] Add install status view (TUI + CLI flag)
+- [x] Extend install status with service running state
 - [ ] Consider follow-up: update docs to mention installer lock behavior
 
 ## Milestone 38 — Build Fix (in progress)

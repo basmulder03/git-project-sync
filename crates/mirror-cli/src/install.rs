@@ -6,6 +6,13 @@ use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::info;
+
+pub struct InstallProgress {
+    pub step: usize,
+    pub total: usize,
+    pub message: String,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PathChoice {
@@ -26,26 +33,81 @@ pub struct InstallReport {
     pub path: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct InstallStatus {
+    pub installed: bool,
+    pub installed_path: Option<PathBuf>,
+    pub manifest_present: bool,
+    pub service_installed: bool,
+    pub service_running: bool,
+    pub path_in_env: bool,
+}
+
 pub struct InstallGuard {
     _lock: LockFile,
 }
 
-pub fn perform_install(exec_path: &Path, options: InstallOptions) -> anyhow::Result<InstallReport> {
+pub fn perform_install_with_progress(
+    exec_path: &Path,
+    options: InstallOptions,
+    progress: Option<&dyn Fn(InstallProgress)>,
+) -> anyhow::Result<InstallReport> {
+    let total = if matches!(options.path_choice, PathChoice::Add) {
+        5
+    } else {
+        4
+    };
+    let mut step = 0;
+    step += 1;
+    report_progress(progress, step, total, "Preparing install");
     mirror_core::service::uninstall_service_if_exists().ok();
     let install_path = default_install_path(exec_path)?;
+    step += 1;
+    report_progress(
+        progress,
+        step,
+        total,
+        &format!("Installing binary to {}", install_path.display()),
+    );
     let install_message = install_binary(exec_path, &install_path)?;
+    step += 1;
+    report_progress(progress, step, total, "Installing service");
     mirror_core::service::install_service_with_delay(&install_path, options.delayed_start)?;
     let service = match options.delayed_start {
         Some(delay) if delay > 0 => format!("Service installed with delayed start ({delay}s)"),
         _ => "Service installed".to_string(),
     };
     let path = match options.path_choice {
-        PathChoice::Add => register_path(&install_path)?,
+        PathChoice::Add => {
+            step += 1;
+            report_progress(progress, step, total, "Registering PATH entry");
+            register_path(&install_path)?
+        }
         PathChoice::Skip => "PATH update skipped".to_string(),
     };
+    step += 1;
+    report_progress(progress, step, total, "Writing install metadata");
     write_marker()?;
     write_manifest(&install_path)?;
     Ok(InstallReport { install: install_message, service, path })
+}
+
+fn report_progress(
+    progress: Option<&dyn Fn(InstallProgress)>,
+    step: usize,
+    total: usize,
+    message: &str,
+) {
+    if progress.is_none() {
+        info!(step = message, "installer progress");
+    }
+    if let Some(callback) = progress {
+        callback(InstallProgress {
+            step,
+            total,
+            message: message.to_string(),
+        });
+    }
 }
 
 pub fn register_path(exec_path: &Path) -> anyhow::Result<String> {
@@ -75,6 +137,34 @@ fn add_path_unix(dir: &Path) -> anyhow::Result<String> {
 #[cfg(not(unix))]
 fn add_path_unix(_dir: &Path) -> anyhow::Result<String> {
     anyhow::bail!("PATH install is only supported on Unix-like systems")
+}
+
+pub fn install_status() -> anyhow::Result<InstallStatus> {
+    let manifest = read_manifest()?;
+    let installed_path = manifest.as_ref().map(|m| m.installed_path.clone());
+    let manifest_present = manifest.is_some();
+    let marker_present = marker_path()?.exists();
+    let installed = installed_path
+        .as_ref()
+        .map(|path| path.exists())
+        .unwrap_or(marker_present);
+    let service_installed = mirror_core::service::service_exists().unwrap_or(false);
+    let service_running = mirror_core::service::service_running().unwrap_or(false);
+    let path_dir = installed_path
+        .as_ref()
+        .and_then(|path| path.parent().map(|p| p.to_path_buf()));
+    let path_in_env = path_dir
+        .as_ref()
+        .map(|dir| path_contains_dir(dir))
+        .unwrap_or(false);
+    Ok(InstallStatus {
+        installed,
+        installed_path,
+        manifest_present,
+        service_installed,
+        service_running,
+        path_in_env,
+    })
 }
 
 fn add_path_windows(dir: &Path) -> anyhow::Result<String> {
@@ -239,6 +329,14 @@ fn write_manifest(install_path: &Path) -> anyhow::Result<()> {
     let data = serde_json::to_string_pretty(&manifest).context("serialize install manifest")?;
     fs::write(&path, data).context("write install manifest")?;
     Ok(())
+}
+
+fn path_contains_dir(dir: &Path) -> bool {
+    let current = std::env::var("PATH").unwrap_or_default();
+    let dir_str = dir.to_string_lossy();
+    current
+        .split(';')
+        .any(|p| p.trim().eq_ignore_ascii_case(dir_str.as_ref()))
 }
 
 fn current_epoch_seconds() -> u64 {

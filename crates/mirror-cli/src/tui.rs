@@ -22,6 +22,8 @@ use ratatui::{
 };
 use std::io::{self, Stdout};
 use std::collections::{HashMap, HashSet};
+use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, Debug)]
@@ -76,6 +78,8 @@ fn run_app(
         if last_tick.elapsed() >= tick_rate {
             last_tick = Instant::now();
         }
+
+        app.poll_install_events()?;
     }
 
     Ok(())
@@ -86,6 +90,7 @@ enum View {
     Main,
     Dashboard,
     Install,
+    InstallStatus,
     ConfigRoot,
     Targets,
     TargetAdd,
@@ -97,6 +102,7 @@ enum View {
     Service,
     AuditLog,
     Message,
+    InstallProgress,
 }
 
 #[derive(Clone, Debug)]
@@ -156,6 +162,9 @@ struct TuiApp {
     validation_message: Option<String>,
     show_target_stats: bool,
     install_guard: Option<crate::install::InstallGuard>,
+    install_rx: Option<mpsc::Receiver<InstallEvent>>,
+    install_progress: Option<InstallProgressState>,
+    install_status: Option<crate::install::InstallStatus>,
 }
 
 impl TuiApp {
@@ -186,6 +195,9 @@ impl TuiApp {
             validation_message: None,
             show_target_stats: false,
             install_guard: None,
+            install_rx: None,
+            install_progress: None,
+            install_status: None,
         };
         if app.view == View::Install {
             app.enter_install_view()?;
@@ -242,6 +254,7 @@ impl TuiApp {
             View::Main => self.draw_main(frame, layout[1]),
             View::Dashboard => self.draw_dashboard(frame, layout[1]),
             View::Install => self.draw_install(frame, layout[1]),
+            View::InstallStatus => self.draw_install_status(frame, layout[1]),
             View::ConfigRoot => self.draw_config_root(frame, layout[1]),
             View::Targets => self.draw_targets(frame, layout[1]),
             View::TargetAdd => self.draw_form(frame, layout[1], "Add Target"),
@@ -253,6 +266,7 @@ impl TuiApp {
             View::Service => self.draw_service(frame, layout[1]),
             View::AuditLog => self.draw_audit_log(frame, layout[1]),
             View::Message => self.draw_message(frame, layout[1]),
+            View::InstallProgress => self.draw_install_progress(frame, layout[1]),
         }
 
         let footer = Paragraph::new(self.footer_text())
@@ -264,7 +278,8 @@ impl TuiApp {
         match self.view {
             View::Main => "Up/Down: navigate | Enter: select | q: quit".to_string(),
             View::Dashboard => "t: toggle targets | Esc: back".to_string(),
-            View::Install => "Tab: next | Enter: run install | Esc: back".to_string(),
+            View::Install => "Tab: next | Enter: run install | s: status | Esc: back".to_string(),
+            View::InstallStatus => "Enter/Esc: back".to_string(),
             View::ConfigRoot => "Enter: save | Esc: back".to_string(),
             View::Targets => "a: add | d: remove | Esc: back".to_string(),
             View::TargetAdd | View::TargetRemove | View::TokenSet | View::TokenValidate => {
@@ -275,6 +290,7 @@ impl TuiApp {
             View::Service => "i: install | u: uninstall | Esc: back".to_string(),
             View::AuditLog => "f: failures | a: all | Esc: back".to_string(),
             View::Message => "Enter: back".to_string(),
+            View::InstallProgress => "Installing... please wait".to_string(),
         }
     }
 
@@ -362,6 +378,73 @@ impl TuiApp {
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .block(Block::default().borders(Borders::ALL).title("Installer"));
+        frame.render_widget(widget, area);
+    }
+
+    fn draw_install_progress(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let mut lines = vec![
+            Line::from(Span::raw("Context: Installing... please wait")),
+            Line::from(Span::raw("")),
+        ];
+        if let Some(progress) = &self.install_progress {
+            let bar = progress_bar(progress.current, progress.total, 20);
+            lines.push(Line::from(Span::raw(format!(
+                "Step {}/{} {}",
+                progress.current, progress.total, bar
+            ))));
+            lines.push(Line::from(Span::raw("")));
+            for line in &progress.messages {
+                lines.push(Line::from(Span::raw(line)));
+            }
+        } else {
+            lines.push(Line::from(Span::raw("Starting installer...")));
+        }
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(Block::default().borders(Borders::ALL).title("Installer"));
+        frame.render_widget(widget, area);
+    }
+
+    fn draw_install_status(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let mut lines = vec![
+            Line::from(Span::raw("Context: Installer status")),
+            Line::from(Span::raw("")),
+        ];
+        if let Some(status) = &self.install_status {
+            lines.push(Line::from(Span::raw(format!(
+                "Installed: {}",
+                if status.installed { "yes" } else { "no" }
+            ))));
+            lines.push(Line::from(Span::raw(format!(
+                "Installed path: {}",
+                status
+                    .installed_path
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "(unknown)".to_string())
+            ))));
+            lines.push(Line::from(Span::raw(format!(
+                "Manifest present: {}",
+                if status.manifest_present { "yes" } else { "no" }
+            ))));
+            lines.push(Line::from(Span::raw(format!(
+                "Service installed: {}",
+                if status.service_installed { "yes" } else { "no" }
+            ))));
+            lines.push(Line::from(Span::raw(format!(
+                "Service running: {}",
+                if status.service_running { "yes" } else { "no" }
+            ))));
+            lines.push(Line::from(Span::raw(format!(
+                "PATH contains install dir (current shell): {}",
+                if status.path_in_env { "yes" } else { "no" }
+            ))));
+        } else {
+            lines.push(Line::from(Span::raw("Status unavailable.")));
+        }
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(Block::default().borders(Borders::ALL).title("Installer Status"));
         frame.render_widget(widget, area);
     }
 
@@ -650,6 +733,8 @@ impl TuiApp {
             View::Service => self.handle_service(key),
             View::AuditLog => self.handle_audit_log(key),
             View::Message => self.handle_message(key),
+            View::InstallProgress => self.handle_install_progress(key),
+            View::InstallStatus => self.handle_install_status(key),
         }
     }
 
@@ -723,26 +808,28 @@ impl TuiApp {
                     crate::install::PathChoice::Skip
                 };
                 let exec = std::env::current_exe().context("resolve current executable")?;
-                let report = crate::install::perform_install(
-                    &exec,
-                    crate::install::InstallOptions {
-                        delayed_start,
-                        path_choice,
-                    },
-                )?;
-                self.release_install_guard();
-                let audit_id = self.audit.record(
-                    "tui.install",
-                    AuditStatus::Ok,
-                    Some("tui"),
-                    None,
-                    None,
-                )?;
-                self.message = format!(
-                    "{}\n{}\n{}\nAudit ID: {audit_id}",
-                    report.install, report.service, report.path
-                );
-                self.view = View::Message;
+                let (tx, rx) = mpsc::channel::<InstallEvent>();
+                thread::spawn(move || {
+                    let result = crate::install::perform_install_with_progress(
+                        &exec,
+                        crate::install::InstallOptions {
+                            delayed_start,
+                            path_choice,
+                        },
+                        Some(&|progress| {
+                            let _ = tx.send(InstallEvent::Progress(progress));
+                        }),
+                    )
+                    .map_err(|err| err.to_string());
+                    let _ = tx.send(InstallEvent::Done(result));
+                });
+                self.install_rx = Some(rx);
+                self.install_progress = None;
+                self.view = View::InstallProgress;
+            }
+            KeyCode::Char('s') => {
+                self.install_status = crate::install::install_status().ok();
+                self.view = View::InstallStatus;
             }
             _ => self.handle_text_input(key),
         }
@@ -1222,6 +1309,69 @@ impl TuiApp {
         Ok(false)
     }
 
+    fn handle_install_progress(&mut self, _key: KeyEvent) -> anyhow::Result<bool> {
+        Ok(false)
+    }
+
+    fn handle_install_status(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
+        match key.code {
+            KeyCode::Enter | KeyCode::Esc => self.view = View::Install,
+            _ => {}
+        }
+        Ok(false)
+    }
+
+    fn poll_install_events(&mut self) -> anyhow::Result<()> {
+        let Some(rx) = self.install_rx.take() else {
+            return Ok(());
+        };
+        let mut done = false;
+        while let Ok(event) = rx.try_recv() {
+            match event {
+                InstallEvent::Progress(progress) => {
+                    let state = self.install_progress.get_or_insert_with(|| {
+                        InstallProgressState::new(progress.total)
+                    });
+                    state.update(progress);
+                }
+                InstallEvent::Done(result) => {
+                    self.release_install_guard();
+                    match result {
+                        Ok(report) => {
+                            let audit_id = self.audit.record(
+                                "tui.install",
+                                AuditStatus::Ok,
+                                Some("tui"),
+                                None,
+                                None,
+                            )?;
+                            self.message = format!(
+                                "{}\n{}\n{}\nAudit ID: {audit_id}",
+                                report.install, report.service, report.path
+                            );
+                        }
+                        Err(err) => {
+                            let _ = self.audit.record(
+                                "tui.install",
+                                AuditStatus::Failed,
+                                Some("tui"),
+                                None,
+                                Some(&err),
+                            );
+                            self.message = format!("Install failed: {err}");
+                        }
+                    }
+                    self.view = View::Message;
+                    done = true;
+                }
+            }
+        }
+        if !done {
+            self.install_rx = Some(rx);
+        }
+        Ok(())
+    }
+
 fn handle_text_input(&mut self, key: KeyEvent) {
     if self.input_fields.is_empty() {
         return;
@@ -1496,6 +1646,43 @@ fn split_labels(value: &str) -> Vec<String> {
         .filter(|label| !label.is_empty())
         .map(|label| label.to_string())
         .collect()
+}
+
+enum InstallEvent {
+    Progress(crate::install::InstallProgress),
+    Done(Result<crate::install::InstallReport, String>),
+}
+
+struct InstallProgressState {
+    current: usize,
+    total: usize,
+    messages: Vec<String>,
+}
+
+impl InstallProgressState {
+    fn new(total: usize) -> Self {
+        Self {
+            current: 0,
+            total,
+            messages: Vec::new(),
+        }
+    }
+
+    fn update(&mut self, progress: crate::install::InstallProgress) {
+        self.current = progress.step;
+        self.total = progress.total.max(1);
+        self.messages.push(progress.message);
+    }
+}
+
+fn progress_bar(step: usize, total: usize, width: usize) -> String {
+    if total == 0 || width == 0 {
+        return "[]".to_string();
+    }
+    let filled = ((step as f32 / total as f32) * width as f32).round() as usize;
+    let filled = filled.min(width);
+    let empty = width.saturating_sub(filled);
+    format!("[{}{}]", "#".repeat(filled), "-".repeat(empty))
 }
 
 fn read_audit_lines(path: &std::path::Path, filter: AuditFilter) -> anyhow::Result<Vec<String>> {

@@ -75,6 +75,44 @@ pub fn uninstall_service() -> anyhow::Result<()> {
     }
 }
 
+pub fn service_exists() -> anyhow::Result<bool> {
+    #[cfg(target_os = "windows")]
+    {
+        return windows_service_exists();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        return Ok(systemd_unit_path()?.exists() || systemd_timer_path()?.exists());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return Ok(launchd_plist_path()?.exists());
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        Ok(false)
+    }
+}
+
+pub fn service_running() -> anyhow::Result<bool> {
+    #[cfg(target_os = "windows")]
+    {
+        return windows_service_running();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        return systemd_service_running();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return launchd_service_running();
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        Ok(false)
+    }
+}
+
 pub fn uninstall_service_if_exists() -> anyhow::Result<()> {
     #[cfg(target_os = "windows")]
     {
@@ -327,8 +365,11 @@ Otherwise, check your home directory permissions.",
 
 #[cfg(target_os = "windows")]
 fn install_windows(exec_path: &Path, delay_seconds: Option<u64>) -> anyhow::Result<()> {
-    ensure_windows_admin()?;
-    let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CREATE_SERVICE)?;
+    let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CREATE_SERVICE)
+        .with_context(|| {
+            "opening the Windows Service Manager failed. \
+Run this command from an Administrator PowerShell and try again."
+        })?;
     let service_info = ServiceInfo {
         name: OsString::from(SERVICE_NAME),
         display_name: OsString::from("git-project-sync"),
@@ -381,6 +422,18 @@ fn windows_service_exists() -> anyhow::Result<bool> {
 }
 
 #[cfg(target_os = "windows")]
+fn windows_service_running() -> anyhow::Result<bool> {
+    let manager =
+        ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)?;
+    let service = match manager.open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS) {
+        Ok(service) => service,
+        Err(_err) => return Ok(false),
+    };
+    let status = service.query_status()?;
+    Ok(matches!(status.current_state, windows_service::service::ServiceState::Running))
+}
+
+#[cfg(target_os = "windows")]
 fn set_delayed_auto_start() -> anyhow::Result<()> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let key = hklm
@@ -394,21 +447,28 @@ fn set_delayed_auto_start() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(target_os = "windows")]
-fn ensure_windows_admin() -> anyhow::Result<()> {
-    let status = Command::new("net")
-        .args(["session"])
+#[cfg(target_os = "linux")]
+fn systemd_service_running() -> anyhow::Result<bool> {
+    if systemd_timer_path()?.exists() {
+        return Ok(command_success("systemctl", &["--user", "is-active", SYSTEMD_TIMER_NAME]));
+    }
+    Ok(command_success("systemctl", &["--user", "is-active", SYSTEMD_UNIT_NAME]))
+}
+
+#[cfg(target_os = "macos")]
+fn launchd_service_running() -> anyhow::Result<bool> {
+    Ok(command_success("launchctl", &["list", LAUNCHD_LABEL]))
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn command_success(binary: &str, args: &[&str]) -> bool {
+    Command::new(binary)
+        .args(args)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .context("check Windows admin privileges")?;
-    if !status.success() {
-        bail!(
-            "Windows service installation requires an elevated (Administrator) shell. \
-Run this command from an Administrator PowerShell and try again."
-        );
-    }
-    Ok(())
+        .map(|status| status.success())
+        .unwrap_or(false)
 }
 
 fn run_command(binary: &str, args: &[&str], context_label: &str) -> anyhow::Result<()> {

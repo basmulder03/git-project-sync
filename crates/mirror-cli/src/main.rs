@@ -326,6 +326,8 @@ struct InstallArgs {
     #[arg(long)]
     tui: bool,
     #[arg(long)]
+    status: bool,
+    #[arg(long)]
     delayed_start: Option<u64>,
     #[arg(long, value_enum)]
     path: Option<PathChoiceValue>,
@@ -1653,10 +1655,40 @@ fn handle_cache_prune(args: CachePruneArgs, audit: &AuditLogger) -> anyhow::Resu
 
 fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     let result: anyhow::Result<()> = (|| {
+        if args.status {
+            let status = install::install_status()?;
+            println!("Installed: {}", if status.installed { "yes" } else { "no" });
+            println!(
+                "Installed path: {}",
+                status
+                    .installed_path
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "(unknown)".to_string())
+            );
+            println!(
+                "Manifest present: {}",
+                if status.manifest_present { "yes" } else { "no" }
+            );
+            println!(
+                "Service installed: {}",
+                if status.service_installed { "yes" } else { "no" }
+            );
+            println!(
+                "Service running: {}",
+                if status.service_running { "yes" } else { "no" }
+            );
+            println!(
+                "PATH contains install dir (current shell): {}",
+                if status.path_in_env { "yes" } else { "no" }
+            );
+            return Ok(());
+        }
         if args.tui {
             return tui::run_tui(audit, tui::StartView::Install);
         }
         let _guard = install::acquire_install_lock()?;
+        println!("Starting installer (non-interactive).");
         let delayed_start = if args.non_interactive {
             args.delayed_start
         } else if let Some(value) = args.delayed_start {
@@ -1675,13 +1707,32 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
             }
         };
         let exec = std::env::current_exe().context("resolve current executable")?;
-        let report = install::perform_install(
+        let last_len = std::cell::Cell::new(0usize);
+        let report = install::perform_install_with_progress(
             &exec,
             InstallOptions {
                 delayed_start,
                 path_choice,
             },
+            Some(&|progress| {
+                let bar = render_progress_bar(progress.step, progress.total, 20);
+                let line = format!(
+                    "Step {}/{} {} {}",
+                    progress.step, progress.total, bar, progress.message
+                );
+                let prev_len = last_len.get();
+                if line.len() < prev_len {
+                    print!("\r{line}{}", " ".repeat(prev_len - line.len()));
+                } else {
+                    print!("\r{line}");
+                }
+                last_len.set(line.len());
+                let _ = io::stdout().flush();
+            }),
         )?;
+        if last_len.get() > 0 {
+            println!();
+        }
         println!("{}", report.install);
         println!("{}", report.service);
         println!("{}", report.path);
@@ -1706,6 +1757,16 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
         );
     }
     result
+}
+
+fn render_progress_bar(step: usize, total: usize, width: usize) -> String {
+    if total == 0 || width == 0 {
+        return "[]".to_string();
+    }
+    let filled = ((step as f32 / total as f32) * width as f32).round() as usize;
+    let filled = filled.min(width);
+    let empty = width.saturating_sub(filled);
+    format!("[{}{}]", "#".repeat(filled), "-".repeat(empty))
 }
 
 fn prompt_delay_seconds() -> anyhow::Result<Option<u64>> {

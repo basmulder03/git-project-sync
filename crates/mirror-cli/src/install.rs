@@ -1,5 +1,7 @@
 use anyhow::Context;
-use directories::{BaseDirs, ProjectDirs};
+use directories::ProjectDirs;
+#[cfg(unix)]
+use directories::BaseDirs;
 use single_instance::SingleInstance;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -51,6 +53,7 @@ pub fn register_path(exec_path: &Path) -> anyhow::Result<String> {
     add_path_unix(dir)
 }
 
+#[cfg(unix)]
 fn add_path_unix(dir: &Path) -> anyhow::Result<String> {
     let base = BaseDirs::new().context("resolve base dirs")?;
     let user_bin = base.home_dir().join(".local").join("bin");
@@ -62,6 +65,11 @@ fn add_path_unix(dir: &Path) -> anyhow::Result<String> {
     std::os::unix::fs::symlink(dir.join("mirror-cli"), &target)
         .context("create symlink for mirror-cli")?;
     Ok(format!("Symlinked mirror-cli to {}", target.display()))
+}
+
+#[cfg(not(unix))]
+fn add_path_unix(_dir: &Path) -> anyhow::Result<String> {
+    anyhow::bail!("PATH install is only supported on Unix-like systems")
 }
 
 fn add_path_windows(dir: &Path) -> anyhow::Result<String> {

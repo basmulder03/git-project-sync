@@ -1,5 +1,10 @@
 # PLANS.md
 
+## Milestone 38 — Build Fix (in progress)
+
+- [x] Fix Windows build error in installer PATH registration
+- [x] Re-run build to confirm
+
 ## Milestone 12 — Architecture cleanup (completed)
 
 - [x] Add provider spec registry to centralize host/scope/account logic

@@ -135,12 +135,12 @@
 - [x] Persist AzDO OAuth tokens in keyring; add refresh/expiry handling
 - [x] Add tests for device flow happy path and expiry/refresh behavior (mocked)
 
-## Milestone 32 — PAT Management Screens (planned)
+## Milestone 32 — PAT Management Screens (completed)
 
-- [ ] Add TUI screens for PAT listing (per provider/host/scope) with last-verified status
-- [ ] Add TUI flow for setting/updating PATs with validation and guidance links
-- [ ] Add TUI flow to validate PATs against required scopes and show results
-- [ ] Add tests for PAT TUI state transitions and validation outcomes
+- [x] Add TUI screens for PAT listing (per provider/host/scope) with last-verified status
+- [x] Add TUI flow for setting/updating PATs with validation and guidance links
+- [x] Add TUI flow to validate PATs against required scopes and show results
+- [x] Add tests for PAT TUI state transitions and validation outcomes
 
 ## Milestone 33 — OAuth GA Hardening (planned)
 

@@ -8,7 +8,8 @@ use mirror_core::audit::{AuditContext, AuditLogger, AuditStatus};
 use mirror_core::config::{default_config_path, load_or_migrate, target_id, AppConfigV2, TargetConfig};
 use mirror_core::model::ProviderKind;
 use mirror_providers::auth;
-use mirror_providers::spec::{host_or_default, spec_for};
+use mirror_providers::spec::{host_or_default, pat_help, spec_for};
+use mirror_providers::ProviderRegistry;
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
@@ -18,6 +19,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
 use std::io::{self, Stdout};
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 pub fn run_tui(audit: &AuditLogger) -> anyhow::Result<()> {
@@ -75,7 +77,10 @@ enum View {
     Targets,
     TargetAdd,
     TargetRemove,
-    TokenSetup,
+    TokenMenu,
+    TokenList,
+    TokenSet,
+    TokenValidate,
     Service,
     AuditLog,
     Message,
@@ -131,6 +136,8 @@ struct TuiApp {
     input_index: usize,
     input_fields: Vec<InputField>,
     provider_index: usize,
+    token_menu_index: usize,
+    token_validation: HashMap<String, TokenValidation>,
     audit: AuditLogger,
     audit_filter: AuditFilter,
 }
@@ -151,6 +158,8 @@ impl TuiApp {
             input_index: 0,
             input_fields: Vec::new(),
             provider_index: 0,
+            token_menu_index: 0,
+            token_validation: HashMap::new(),
             audit,
             audit_filter: AuditFilter::All,
         })
@@ -173,7 +182,10 @@ impl TuiApp {
             View::Targets => self.draw_targets(frame, layout[1]),
             View::TargetAdd => self.draw_form(frame, layout[1], "Add Target"),
             View::TargetRemove => self.draw_form(frame, layout[1], "Remove Target"),
-            View::TokenSetup => self.draw_form(frame, layout[1], "Token Setup"),
+            View::TokenMenu => self.draw_token_menu(frame, layout[1]),
+            View::TokenList => self.draw_token_list(frame, layout[1]),
+            View::TokenSet => self.draw_token_set(frame, layout[1]),
+            View::TokenValidate => self.draw_token_validate(frame, layout[1]),
             View::Service => self.draw_service(frame, layout[1]),
             View::AuditLog => self.draw_audit_log(frame, layout[1]),
             View::Message => self.draw_message(frame, layout[1]),
@@ -189,9 +201,11 @@ impl TuiApp {
             View::Main => "Up/Down: navigate | Enter: select | q: quit".to_string(),
             View::ConfigRoot => "Type path | Enter: save | Esc: back".to_string(),
             View::Targets => "a: add | d: delete | Esc: back".to_string(),
-            View::TargetAdd | View::TargetRemove | View::TokenSetup => {
+            View::TargetAdd | View::TargetRemove | View::TokenSet | View::TokenValidate => {
                 "Tab: next field | Enter: submit | Esc: back".to_string()
             }
+            View::TokenMenu => "Up/Down: navigate | Enter: select | Esc: back".to_string(),
+            View::TokenList => "Esc: back".to_string(),
             View::Service => "i: install | u: uninstall | Esc: back".to_string(),
             View::AuditLog => "f: failures | a: all | Esc: back".to_string(),
             View::Message => "Enter: back".to_string(),
@@ -202,7 +216,7 @@ impl TuiApp {
         let items = vec![
             "Config Root",
             "Targets",
-            "Token Setup",
+            "Token Management",
             "Service Installer",
             "Audit Log Viewer",
             "Quit",
@@ -236,6 +250,114 @@ impl TuiApp {
         let list = List::new(list_items)
             .block(Block::default().borders(Borders::ALL).title("Audit Log Viewer"));
         frame.render_widget(list, area);
+    }
+
+    fn draw_token_menu(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let items = vec!["List Tokens", "Set/Update Token", "Validate Token", "Back"];
+        let list_items: Vec<ListItem> = items
+            .iter()
+            .enumerate()
+            .map(|(idx, item)| {
+                let mut line = Line::from(Span::raw(*item));
+                if idx == self.token_menu_index {
+                    line = line.style(Style::default().add_modifier(Modifier::BOLD));
+                }
+                ListItem::new(line)
+            })
+            .collect();
+        let list = List::new(list_items)
+            .block(Block::default().borders(Borders::ALL).title("Token Management"));
+        frame.render_widget(list, area);
+    }
+
+    fn draw_token_list(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let entries = self.token_entries();
+        let mut items: Vec<ListItem> = Vec::new();
+        if entries.is_empty() {
+            items.push(ListItem::new(Line::from(Span::raw(
+                "No targets configured yet.",
+            ))));
+        } else {
+            for entry in entries {
+                let status = if entry.present {
+                    "stored"
+                } else {
+                    "missing"
+                };
+                let validation = entry
+                    .validation
+                    .as_ref()
+                    .map(|v| format!(" | {}", v.display()))
+                    .unwrap_or_else(|| " | not verified".to_string());
+                items.push(ListItem::new(Line::from(Span::raw(format!(
+                    "{} | {} | {} | {} | {}{}",
+                    entry.account,
+                    entry.provider.as_prefix(),
+                    entry.scope,
+                    entry.host,
+                    status,
+                    validation
+                )))));
+            }
+        }
+        let list = List::new(items)
+            .block(Block::default().borders(Borders::ALL).title("Token List"));
+        frame.render_widget(list, area);
+    }
+
+    fn draw_token_set(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let provider = provider_kind(self.provider_index);
+        let help = pat_help(provider.clone());
+        let mut lines = Vec::new();
+        lines.push(Line::from(Span::raw(format!(
+            "Provider: {}",
+            provider_label(self.provider_index)
+        ))));
+        lines.push(Line::from(Span::raw(format!("Create PAT: {}", help.url))));
+        lines.push(Line::from(Span::raw(format!(
+            "Required scopes: {}",
+            help.scopes.join(", ")
+        ))));
+        lines.push(Line::from(Span::raw("")));
+        for (idx, field) in self.input_fields.iter().enumerate() {
+            let label = if idx == self.input_index {
+                format!("> {}: {}", field.label, field.display_value())
+            } else {
+                format!("  {}: {}", field.label, field.display_value())
+            };
+            lines.push(Line::from(Span::raw(label)));
+        }
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(Block::default().borders(Borders::ALL).title("Set/Update Token"));
+        frame.render_widget(widget, area);
+    }
+
+    fn draw_token_validate(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let provider = provider_kind(self.provider_index);
+        let help = pat_help(provider.clone());
+        let mut lines = Vec::new();
+        lines.push(Line::from(Span::raw(format!(
+            "Provider: {}",
+            provider_label(self.provider_index)
+        ))));
+        lines.push(Line::from(Span::raw(format!(
+            "Required scopes: {}",
+            help.scopes.join(", ")
+        ))));
+        lines.push(Line::from(Span::raw("")));
+        for (idx, field) in self.input_fields.iter().enumerate() {
+            let label = if idx == self.input_index {
+                format!("> {}: {}", field.label, field.display_value())
+            } else {
+                format!("  {}: {}", field.label, field.display_value())
+            };
+            lines.push(Line::from(Span::raw(label)));
+        }
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(Block::default().borders(Borders::ALL).title("Validate Token"));
+        frame.render_widget(widget, area);
     }
 
     fn draw_service(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
@@ -304,7 +426,7 @@ impl TuiApp {
 
     fn draw_form(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect, title: &str) {
         let mut lines = Vec::new();
-        if matches!(self.view, View::TargetAdd | View::TokenSetup) {
+        if matches!(self.view, View::TargetAdd | View::TokenSet) {
             lines.push(Line::from(Span::raw(format!(
                 "Provider: {}",
                 provider_label(self.provider_index)
@@ -339,7 +461,10 @@ impl TuiApp {
             View::Targets => self.handle_targets(key),
             View::TargetAdd => self.handle_target_add(key),
             View::TargetRemove => self.handle_target_remove(key),
-            View::TokenSetup => self.handle_token_setup(key),
+            View::TokenMenu => self.handle_token_menu(key),
+            View::TokenList => self.handle_token_list(key),
+            View::TokenSet => self.handle_token_set(key),
+            View::TokenValidate => self.handle_token_validate(key),
             View::Service => self.handle_service(key),
             View::AuditLog => self.handle_audit_log(key),
             View::Message => self.handle_message(key),
@@ -365,14 +490,8 @@ impl TuiApp {
                 }
                 1 => self.view = View::Targets,
                 2 => {
-                    self.view = View::TokenSetup;
-                    self.input_fields = vec![
-                        InputField::new("Scope (space-separated)"),
-                        InputField::new("Host (optional)"),
-                        InputField::with_mask("Token"),
-                    ];
-                    self.input_index = 0;
-                    self.provider_index = 0;
+                    self.view = View::TokenMenu;
+                    self.token_menu_index = 0;
                 }
                 3 => self.view = View::Service,
                 4 => self.view = View::AuditLog,
@@ -545,9 +664,56 @@ impl TuiApp {
         Ok(false)
     }
 
-    fn handle_token_setup(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
+    fn handle_token_menu(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
         match key.code {
             KeyCode::Esc => self.view = View::Main,
+            KeyCode::Down => self.token_menu_index = (self.token_menu_index + 1) % 4,
+            KeyCode::Up => {
+                if self.token_menu_index == 0 {
+                    self.token_menu_index = 3;
+                } else {
+                    self.token_menu_index -= 1;
+                }
+            }
+            KeyCode::Enter => match self.token_menu_index {
+                0 => self.view = View::TokenList,
+                1 => {
+                    self.view = View::TokenSet;
+                    self.input_fields = vec![
+                        InputField::new("Scope (space-separated)"),
+                        InputField::new("Host (optional)"),
+                        InputField::with_mask("Token"),
+                    ];
+                    self.input_index = 0;
+                    self.provider_index = 0;
+                }
+                2 => {
+                    self.view = View::TokenValidate;
+                    self.input_fields = vec![
+                        InputField::new("Scope (space-separated)"),
+                        InputField::new("Host (optional)"),
+                    ];
+                    self.input_index = 0;
+                    self.provider_index = 0;
+                }
+                _ => self.view = View::Main,
+            },
+            _ => {}
+        }
+        Ok(false)
+    }
+
+    fn handle_token_list(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
+        match key.code {
+            KeyCode::Esc => self.view = View::TokenMenu,
+            _ => {}
+        }
+        Ok(false)
+    }
+
+    fn handle_token_set(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
+        match key.code {
+            KeyCode::Esc => self.view = View::TokenMenu,
             KeyCode::Tab => self.input_index = (self.input_index + 1) % self.input_fields.len(),
             KeyCode::Left => self.provider_index = self.provider_index.saturating_sub(1),
             KeyCode::Right => {
@@ -569,6 +735,14 @@ impl TuiApp {
                     return Ok(false);
                 }
                 auth::set_pat(&account, &token)?;
+                let validation = self.validate_token(provider.clone(), scope.clone(), Some(host.clone()));
+                let validation_message = match &validation {
+                    Ok(record) => {
+                        self.token_validation.insert(account.clone(), record.clone());
+                        record.display()
+                    }
+                    Err(err) => format!("validation failed: {err}"),
+                };
                 let audit_id = self.audit.record_with_context(
                     "tui.token.set",
                     AuditStatus::Ok,
@@ -582,7 +756,76 @@ impl TuiApp {
                     None,
                     None,
                 )?;
-                self.message = format!("Token stored for {account}. Audit ID: {audit_id}");
+                self.message = format!(
+                    "Token stored for {account}. {validation_message}. Audit ID: {audit_id}"
+                );
+                self.view = View::Message;
+            }
+            _ => self.handle_text_input(key),
+        }
+        Ok(false)
+    }
+
+    fn handle_token_validate(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
+        match key.code {
+            KeyCode::Esc => self.view = View::TokenMenu,
+            KeyCode::Tab => self.input_index = (self.input_index + 1) % self.input_fields.len(),
+            KeyCode::Left => self.provider_index = self.provider_index.saturating_sub(1),
+            KeyCode::Right => {
+                self.provider_index = (self.provider_index + 1).min(2);
+            }
+            KeyCode::Enter => {
+                let provider = provider_kind(self.provider_index);
+                let spec = spec_for(provider.clone());
+                let scope_raw = self.input_fields[0].value.trim();
+                let scope = spec
+                    .parse_scope(scope_raw.split_whitespace().map(|s| s.to_string()).collect())
+                    .context("invalid scope")?;
+                let host = optional_text(&self.input_fields[1].value);
+                let host = host_or_default(host.as_deref(), spec.as_ref());
+                let account = spec.account_key(&host, &scope)?;
+                let validation = self.validate_token(provider.clone(), scope.clone(), Some(host.clone()));
+                match validation {
+                    Ok(record) => {
+                        self.token_validation.insert(account.clone(), record.clone());
+                        let status = record.display();
+                        let audit_status = match record.status {
+                            TokenValidationStatus::Ok => AuditStatus::Ok,
+                            TokenValidationStatus::MissingScopes(_) => AuditStatus::Failed,
+                            TokenValidationStatus::Unsupported => AuditStatus::Skipped,
+                        };
+                        let audit_id = self.audit.record_with_context(
+                            "tui.token.validate",
+                            audit_status,
+                            Some("tui"),
+                            AuditContext {
+                                provider: Some(provider.as_prefix().to_string()),
+                                scope: Some(scope.segments().join("/")),
+                                repo_id: None,
+                                path: None,
+                            },
+                            None,
+                            None,
+                        )?;
+                        self.message = format!("{status}. Audit ID: {audit_id}");
+                    }
+                    Err(err) => {
+                        let _ = self.audit.record_with_context(
+                            "tui.token.validate",
+                            AuditStatus::Failed,
+                            Some("tui"),
+                            AuditContext {
+                                provider: Some(provider.as_prefix().to_string()),
+                                scope: Some(scope.segments().join("/")),
+                                repo_id: None,
+                                path: None,
+                            },
+                            None,
+                            Some(&err.to_string()),
+                        );
+                        self.message = format!("Validation failed: {err}");
+                    }
+                }
                 self.view = View::Message;
             }
             _ => self.handle_text_input(key),
@@ -699,12 +942,111 @@ impl TuiApp {
             .unwrap();
         base_dir.join(format!("audit-{date}.jsonl"))
     }
+
+    fn token_entries(&self) -> Vec<TokenEntry> {
+        let mut entries = Vec::new();
+        let mut seen = HashSet::new();
+        for target in &self.config.targets {
+            let spec = spec_for(target.provider.clone());
+            let host = host_or_default(target.host.as_deref(), spec.as_ref());
+            let account = match spec.account_key(&host, &target.scope) {
+                Ok(account) => account,
+                Err(_) => continue,
+            };
+            if !seen.insert(account.clone()) {
+                continue;
+            }
+            let present = auth::get_pat(&account).is_ok();
+            let validation = self.token_validation.get(&account).cloned();
+            entries.push(TokenEntry {
+                account,
+                provider: target.provider.clone(),
+                scope: target.scope.segments().join("/"),
+                host,
+                present,
+                validation,
+            });
+        }
+        entries
+    }
+
+    fn validate_token(
+        &self,
+        provider: ProviderKind,
+        scope: mirror_core::model::ProviderScope,
+        host: Option<String>,
+    ) -> anyhow::Result<TokenValidation> {
+        let runtime_target = mirror_core::model::ProviderTarget {
+            provider: provider.clone(),
+            scope: scope.clone(),
+            host,
+        };
+        let registry = ProviderRegistry::new();
+        let adapter = registry.provider(provider.clone())?;
+        let scopes = adapter.token_scopes(&runtime_target)?;
+        let help = pat_help(provider.clone());
+        let status = match scopes {
+            Some(scopes) => {
+                let missing: Vec<&str> = help
+                    .scopes
+                    .iter()
+                    .copied()
+                    .filter(|required| !scopes.iter().any(|s| s == required))
+                    .collect();
+                if missing.is_empty() {
+                    TokenValidationStatus::Ok
+                } else {
+                    TokenValidationStatus::MissingScopes(missing.iter().map(|s| s.to_string()).collect())
+                }
+            }
+            None => TokenValidationStatus::Unsupported,
+        };
+        Ok(TokenValidation {
+            status,
+            at: validation_timestamp(),
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AuditFilter {
     All,
     Failures,
+}
+
+#[derive(Clone)]
+struct TokenEntry {
+    account: String,
+    provider: ProviderKind,
+    scope: String,
+    host: String,
+    present: bool,
+    validation: Option<TokenValidation>,
+}
+
+#[derive(Clone)]
+struct TokenValidation {
+    status: TokenValidationStatus,
+    at: String,
+}
+
+impl TokenValidation {
+    fn display(&self) -> String {
+        match &self.status {
+            TokenValidationStatus::Ok => format!("verified ok at {}", self.at),
+            TokenValidationStatus::MissingScopes(scopes) => {
+                format!("missing scopes ({}) at {}", scopes.join(", "), self.at)
+            }
+            TokenValidationStatus::Unsupported => format!("validation unsupported at {}", self.at),
+        }
+    }
+}
+
+#[derive(Clone)]
+enum TokenValidationStatus {
+    Ok,
+    MissingScopes(Vec<String>),
+    Unsupported,
 }
 
 fn provider_kind(index: usize) -> ProviderKind {
@@ -756,6 +1098,12 @@ fn read_audit_lines(path: &std::path::Path, filter: AuditFilter) -> anyhow::Resu
     Ok(lines)
 }
 
+fn validation_timestamp() -> String {
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]").unwrap())
+        .unwrap_or_else(|_| "unknown".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -786,6 +1134,8 @@ mod tests {
             input_index: 0,
             input_fields: Vec::new(),
             provider_index: 0,
+            token_menu_index: 0,
+            token_validation: HashMap::new(),
             audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
             audit_filter: AuditFilter::All,
         };
@@ -816,5 +1166,38 @@ mod tests {
         let lines = read_audit_lines(&path, AuditFilter::Failures).unwrap();
         assert_eq!(lines.len(), 1);
         assert!(lines[0].contains("\"status\":\"failed\""));
+    }
+
+    #[test]
+    fn token_menu_enter_moves_to_set_view() {
+        let tmp = TempDir::new().unwrap();
+        let mut app = TuiApp {
+            config_path: std::path::PathBuf::from("/tmp/config.json"),
+            config: AppConfigV2::default(),
+            view: View::TokenMenu,
+            menu_index: 0,
+            message: String::new(),
+            input_index: 0,
+            input_fields: Vec::new(),
+            provider_index: 0,
+            token_menu_index: 1,
+            token_validation: HashMap::new(),
+            audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
+            audit_filter: AuditFilter::All,
+        };
+        let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
+        app.handle_token_menu(key).unwrap();
+        assert_eq!(app.view, View::TokenSet);
+    }
+
+    #[test]
+    fn token_validation_display_reports_missing_scopes() {
+        let validation = TokenValidation {
+            status: TokenValidationStatus::MissingScopes(vec!["repo".to_string(), "read:org".to_string()]),
+            at: "2026-02-04 12:00:00".to_string(),
+        };
+        let message = validation.display();
+        assert!(message.contains("missing scopes"));
+        assert!(message.contains("repo"));
     }
 }

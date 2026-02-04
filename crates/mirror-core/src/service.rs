@@ -10,6 +10,8 @@ use std::process::Command;
 const SERVICE_NAME: &str = "git-project-sync";
 #[cfg(target_os = "linux")]
 const SYSTEMD_UNIT_NAME: &str = "git-project-sync.service";
+#[cfg(target_os = "linux")]
+const SYSTEMD_TIMER_NAME: &str = "git-project-sync.timer";
 #[cfg(target_os = "macos")]
 const LAUNCHD_LABEL: &str = "com.git-project-sync.daemon";
 

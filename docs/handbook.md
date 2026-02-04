@@ -208,6 +208,12 @@ System tray UI:
 mirror-cli tray
 ```
 
+Note: build with tray feature to enable the tray UI:
+
+```bash
+cargo build --release --features tray
+```
+
 Dashboard TUI:
 
 ```bash

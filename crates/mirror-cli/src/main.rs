@@ -1666,8 +1666,10 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
         let _guard = install::acquire_install_lock()?;
         let delayed_start = if args.non_interactive {
             args.delayed_start
+        } else if let Some(value) = args.delayed_start {
+            Some(value)
         } else {
-            args.delayed_start.or_else(|| prompt_delay_seconds()?)
+            prompt_delay_seconds()?
         };
         let path_choice = match args.path {
             Some(choice) => choice.into(),

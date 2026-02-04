@@ -92,6 +92,12 @@ The tray menu can open a dashboard TUI or trigger a sync. You can also launch th
 mirror-cli tui --dashboard
 ```
 
+Note: the tray UI requires building with the `tray` feature:
+
+```bash
+cargo build --release --features tray
+```
+
 ## Scope Shapes
 
 - Azure DevOps: `<org>` or `<org>/<project>`

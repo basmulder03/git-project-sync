@@ -1518,7 +1518,7 @@ mod tests {
             config_path: std::path::PathBuf::from("/tmp/config.json"),
             config: AppConfigV2::default(),
             view: View::Main,
-            menu_index: 6,
+            menu_index: 7,
             message: String::new(),
             input_index: 0,
             input_fields: Vec::new(),
@@ -1612,7 +1612,6 @@ mod tests {
             audit_filter: AuditFilter::All,
             validation_message: None,
             show_target_stats: false,
-            install_step: 0,
         };
         assert!(app.form_hint().is_some());
     }

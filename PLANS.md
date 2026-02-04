@@ -128,12 +128,12 @@
 - [x] Prototype one provider flow (feature-flagged)
 - [x] Document security implications and fallback to PATs
 
-## Milestone 31 — AzDO OAuth Flow Completion (planned)
+## Milestone 31 — AzDO OAuth Flow Completion (completed)
 
-- [ ] Extend AzDO provider with OAuth device-code flow endpoints and token exchange helpers
-- [ ] Add CLI command for AzDO OAuth login with clear scope/permission prompts
-- [ ] Persist AzDO OAuth tokens in keyring; add refresh/expiry handling
-- [ ] Add tests for device flow happy path and expiry/refresh behavior (mocked)
+- [x] Extend AzDO provider with OAuth device-code flow endpoints and token exchange helpers
+- [x] Add CLI command for AzDO OAuth login with clear scope/permission prompts
+- [x] Persist AzDO OAuth tokens in keyring; add refresh/expiry handling
+- [x] Add tests for device flow happy path and expiry/refresh behavior (mocked)
 
 ## Milestone 32 — PAT Management Screens (planned)
 

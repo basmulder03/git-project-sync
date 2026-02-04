@@ -407,7 +407,6 @@ fn main() -> anyhow::Result<()> {
             println!();
             return Ok(());
         }
-        let _guard = install::acquire_install_lock()?;
         return tui::run_tui(&audit, tui::StartView::Install);
     }
 
@@ -1655,7 +1654,6 @@ fn handle_cache_prune(args: CachePruneArgs, audit: &AuditLogger) -> anyhow::Resu
 fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     let result: anyhow::Result<()> = (|| {
         if args.tui {
-            let _guard = install::acquire_install_lock()?;
             return tui::run_tui(audit, tui::StartView::Install);
         }
         let _guard = install::acquire_install_lock()?;

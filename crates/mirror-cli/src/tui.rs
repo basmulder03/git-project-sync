@@ -1,6 +1,6 @@
 use anyhow::Context;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
+    event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -216,6 +216,14 @@ impl TuiApp {
         self.ensure_install_guard()?;
         self.view = View::Install;
         self.prepare_install_form();
+        self.drain_input_events()?;
+        Ok(())
+    }
+
+    fn drain_input_events(&self) -> anyhow::Result<()> {
+        while event::poll(Duration::from_millis(0))? {
+            let _ = event::read()?;
+        }
         Ok(())
     }
 
@@ -624,6 +632,9 @@ impl TuiApp {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
+        if key.kind != KeyEventKind::Press {
+            return Ok(false);
+        }
         match self.view {
             View::Main => self.handle_main(key),
             View::Dashboard => self.handle_dashboard(key),

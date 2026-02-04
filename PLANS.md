@@ -12,6 +12,9 @@
 
 - [x] Replace installer mutex with lockfile under data_local
 - [x] Gate TUI installer entry with lock guard + release on exit
+- [x] Remove redundant CLI lock acquisition before starting TUI install view
+- [x] Drain pending input events when entering install view (prevents auto-install)
+- [x] Ignore non-press key events in TUI to prevent double-handling
 - [ ] Consider follow-up: update docs to mention installer lock behavior
 
 ## Milestone 38 — Build Fix (in progress)

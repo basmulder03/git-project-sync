@@ -314,8 +314,6 @@ fn run_command(binary: &str, args: &[&str], context_label: &str) -> anyhow::Resu
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[cfg(target_os = "linux")]
     #[test]
     fn systemd_unit_includes_daemon_args() {

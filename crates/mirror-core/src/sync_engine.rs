@@ -1,5 +1,5 @@
 use crate::archive::{archive_repo, remove_repo};
-use crate::cache::{RepoCache, RepoInventoryEntry, RepoInventoryRepo, SyncStatus, SyncSummarySnapshot};
+use crate::cache::{RepoCache, RepoInventoryEntry, RepoInventoryRepo, SyncSummarySnapshot};
 use crate::config::target_id;
 use crate::deleted::{DeletedRepoAction, MissingRemotePolicy, detect_deleted_repos};
 use crate::git_sync::{SyncOutcome, sync_repo};
@@ -650,7 +650,7 @@ fn emit_sync_status(
     let entry = cache
         .target_sync_status
         .entry(state.target_key.clone())
-        .or_insert_with(SyncStatus::default);
+        .or_default();
     entry.in_progress = in_progress;
     entry.last_action = Some(action.as_str().to_string());
     entry.last_repo = repo_name.map(|value| value.to_string());

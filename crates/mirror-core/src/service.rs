@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{bail, Context};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use directories::BaseDirs;
 #[cfg(target_os = "macos")]
@@ -28,7 +28,7 @@ pub fn install_service(exec_path: &Path) -> anyhow::Result<()> {
 pub fn install_service_with_delay(exec_path: &Path, delay_seconds: Option<u64>) -> anyhow::Result<()> {
     #[cfg(target_os = "linux")]
     {
-        return install_systemd(exec_path, delay_seconds);
+        install_systemd(exec_path, delay_seconds)
     }
     #[cfg(target_os = "macos")]
     {
@@ -47,7 +47,7 @@ pub fn install_service_with_delay(exec_path: &Path, delay_seconds: Option<u64>) 
 pub fn uninstall_service() -> anyhow::Result<()> {
     #[cfg(target_os = "linux")]
     {
-        return uninstall_systemd();
+        uninstall_systemd()
     }
     #[cfg(target_os = "macos")]
     {
@@ -70,7 +70,7 @@ pub fn service_exists() -> anyhow::Result<bool> {
     }
     #[cfg(target_os = "linux")]
     {
-        return Ok(systemd_unit_path()?.exists() || systemd_timer_path()?.exists());
+        Ok(systemd_unit_path()?.exists() || systemd_timer_path()?.exists())
     }
     #[cfg(target_os = "macos")]
     {
@@ -89,7 +89,7 @@ pub fn service_running() -> anyhow::Result<bool> {
     }
     #[cfg(target_os = "linux")]
     {
-        return systemd_service_running();
+        systemd_service_running()
     }
     #[cfg(target_os = "macos")]
     {
@@ -125,7 +125,7 @@ pub fn service_status() -> anyhow::Result<ServiceStatusInfo> {
     {
         let installed = service_exists().unwrap_or(false);
         let running = service_running().unwrap_or(false);
-        return Ok(ServiceStatusInfo {
+        Ok(ServiceStatusInfo {
             installed,
             running,
             last_run_time: None,
@@ -137,7 +137,7 @@ pub fn service_status() -> anyhow::Result<ServiceStatusInfo> {
             start_date: None,
             run_as_user: None,
             task_to_run: None,
-        });
+        })
     }
     #[cfg(target_os = "macos")]
     {
@@ -183,7 +183,7 @@ pub fn start_service_now() -> anyhow::Result<()> {
             "/TN".to_string(),
             SERVICE_NAME.to_string(),
         ])?;
-        return Ok(());
+        Ok(())
     }
     #[cfg(target_os = "linux")]
     {
@@ -200,7 +200,7 @@ pub fn start_service_now() -> anyhow::Result<()> {
                 "start systemd user service",
             )?;
         }
-        return Ok(());
+        Ok(())
     }
     #[cfg(target_os = "macos")]
     {
@@ -227,7 +227,7 @@ pub fn uninstall_service_if_exists() -> anyhow::Result<()> {
     }
     #[cfg(target_os = "linux")]
     {
-        return uninstall_systemd();
+        uninstall_systemd()
     }
     #[cfg(target_os = "macos")]
     {
@@ -721,6 +721,13 @@ fn run_command(binary: &str, args: &[&str], context_label: &str) -> anyhow::Resu
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
+    #[cfg(target_os = "linux")]
+    use super::{systemd_timer_contents, systemd_unit_contents};
+    #[cfg(target_os = "macos")]
+    use super::launchd_plist_contents;
+
     #[cfg(target_os = "linux")]
     #[test]
     fn systemd_unit_includes_daemon_args() {

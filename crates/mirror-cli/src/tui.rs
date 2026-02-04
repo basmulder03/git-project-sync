@@ -1943,10 +1943,10 @@ fn last_sync_error(audit: &AuditLogger, target_id: &str) -> anyhow::Result<Strin
         if !line.contains(&format!("\"repo_id\":\"{target_id}\"")) {
             continue;
         }
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
-            if let Some(error) = value.get("error").and_then(|v| v.as_str()) {
-                return Ok(error.to_string());
-            }
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(line)
+            && let Some(error) = value.get("error").and_then(|v| v.as_str())
+        {
+            return Ok(error.to_string());
         }
     }
     Ok(String::new())

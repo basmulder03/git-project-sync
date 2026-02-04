@@ -18,6 +18,7 @@
 - [x] Add Windows admin check with clear error before service install
 - [x] Add Unix/macOS permission preflight with sudo guidance when dirs aren't writable
 - [x] Use Windows Service APIs for install (avoid sc.exe quoting issues)
+- [x] Suppress external command output during TUI install (prevents UI corruption)
 - [ ] Consider follow-up: update docs to mention installer lock behavior
 
 ## Milestone 38 — Build Fix (in progress)

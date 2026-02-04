@@ -2,7 +2,7 @@ use anyhow::Context;
 use directories::{ProjectDirs, BaseDirs};
 use mirror_core::lockfile::LockFile;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -86,6 +86,8 @@ fn add_path_windows(dir: &Path) -> anyhow::Result<String> {
     let updated = build_path_update(&current, &dir_str);
     Command::new("setx")
         .args(["PATH", &updated])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .context("update PATH with setx")?;
     Ok("Updated user PATH (restart shell to apply)".to_string())

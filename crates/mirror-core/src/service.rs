@@ -10,7 +10,7 @@ use std::io::ErrorKind;
 use std::path::Path;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 #[cfg(target_os = "windows")]
 use std::ffi::OsString;
 #[cfg(target_os = "windows")]
@@ -372,11 +372,12 @@ fn uninstall_windows() -> anyhow::Result<()> {
 
 #[cfg(target_os = "windows")]
 fn windows_service_exists() -> anyhow::Result<bool> {
-    let status = Command::new("sc.exe")
-        .args(["query", SERVICE_NAME])
-        .status()
-        .with_context(|| format!("query windows service {SERVICE_NAME}"))?;
-    Ok(status.success())
+    let manager =
+        ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)?;
+    match manager.open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS) {
+        Ok(_service) => Ok(true),
+        Err(_err) => Ok(false),
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -397,6 +398,8 @@ fn set_delayed_auto_start() -> anyhow::Result<()> {
 fn ensure_windows_admin() -> anyhow::Result<()> {
     let status = Command::new("net")
         .args(["session"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .context("check Windows admin privileges")?;
     if !status.success() {
@@ -411,6 +414,8 @@ Run this command from an Administrator PowerShell and try again."
 fn run_command(binary: &str, args: &[&str], context_label: &str) -> anyhow::Result<()> {
     let status = Command::new(binary)
         .args(args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .with_context(|| format!("run {binary} for {context_label}"))?;
     if !status.success() {

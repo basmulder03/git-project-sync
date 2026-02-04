@@ -108,6 +108,12 @@ pub struct ServiceStatusInfo {
     pub last_run_time: Option<String>,
     pub last_result: Option<String>,
     pub next_run_time: Option<String>,
+    pub task_state: Option<String>,
+    pub schedule_type: Option<String>,
+    pub start_time: Option<String>,
+    pub start_date: Option<String>,
+    pub run_as_user: Option<String>,
+    pub task_to_run: Option<String>,
 }
 
 pub fn service_status() -> anyhow::Result<ServiceStatusInfo> {
@@ -125,6 +131,12 @@ pub fn service_status() -> anyhow::Result<ServiceStatusInfo> {
             last_run_time: None,
             last_result: None,
             next_run_time: None,
+            task_state: None,
+            schedule_type: None,
+            start_time: None,
+            start_date: None,
+            run_as_user: None,
+            task_to_run: None,
         });
     }
     #[cfg(target_os = "macos")]
@@ -137,6 +149,12 @@ pub fn service_status() -> anyhow::Result<ServiceStatusInfo> {
             last_run_time: None,
             last_result: None,
             next_run_time: None,
+            task_state: None,
+            schedule_type: None,
+            start_time: None,
+            start_date: None,
+            run_as_user: None,
+            task_to_run: None,
         });
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
@@ -147,6 +165,12 @@ pub fn service_status() -> anyhow::Result<ServiceStatusInfo> {
             last_run_time: None,
             last_result: None,
             next_run_time: None,
+            task_state: None,
+            schedule_type: None,
+            start_time: None,
+            start_date: None,
+            run_as_user: None,
+            task_to_run: None,
         })
     }
 }
@@ -532,6 +556,12 @@ fn windows_task_status() -> anyhow::Result<ServiceStatusInfo> {
                 last_run_time: None,
                 last_result: None,
                 next_run_time: None,
+                task_state: None,
+                schedule_type: None,
+                start_time: None,
+                start_date: None,
+                run_as_user: None,
+                task_to_run: None,
             });
         }
     };
@@ -539,6 +569,12 @@ fn windows_task_status() -> anyhow::Result<ServiceStatusInfo> {
     let mut last_run_time = None;
     let mut last_result = None;
     let mut next_run_time = None;
+    let mut task_state = None;
+    let mut schedule_type = None;
+    let mut start_time = None;
+    let mut start_date = None;
+    let mut run_as_user = None;
+    let mut task_to_run = None;
     for line in output.lines() {
         let line = line.trim();
         if let Some(value) = line.strip_prefix("Status:") {
@@ -558,6 +594,36 @@ fn windows_task_status() -> anyhow::Result<ServiceStatusInfo> {
             if !value.is_empty() && value != "N/A" {
                 next_run_time = Some(value.to_string());
             }
+        } else if let Some(value) = line.strip_prefix("Scheduled Task State:") {
+            let value = value.trim();
+            if !value.is_empty() && value != "N/A" {
+                task_state = Some(value.to_string());
+            }
+        } else if let Some(value) = line.strip_prefix("Schedule Type:") {
+            let value = value.trim();
+            if !value.is_empty() && value != "N/A" {
+                schedule_type = Some(value.to_string());
+            }
+        } else if let Some(value) = line.strip_prefix("Start Time:") {
+            let value = value.trim();
+            if !value.is_empty() && value != "N/A" {
+                start_time = Some(value.to_string());
+            }
+        } else if let Some(value) = line.strip_prefix("Start Date:") {
+            let value = value.trim();
+            if !value.is_empty() && value != "N/A" {
+                start_date = Some(value.to_string());
+            }
+        } else if let Some(value) = line.strip_prefix("Run As User:") {
+            let value = value.trim();
+            if !value.is_empty() && value != "N/A" {
+                run_as_user = Some(value.to_string());
+            }
+        } else if let Some(value) = line.strip_prefix("Task To Run:") {
+            let value = value.trim();
+            if !value.is_empty() && value != "N/A" {
+                task_to_run = Some(value.to_string());
+            }
         }
     }
     let running = status
@@ -570,6 +636,12 @@ fn windows_task_status() -> anyhow::Result<ServiceStatusInfo> {
         last_run_time,
         last_result,
         next_run_time,
+        task_state,
+        schedule_type,
+        start_time,
+        start_date,
+        run_as_user,
+        task_to_run,
     })
 }
 

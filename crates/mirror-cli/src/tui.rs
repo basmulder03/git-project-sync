@@ -418,6 +418,24 @@ impl TuiApp {
                 lines.push(Line::from(Span::raw(format!("Last result: {value}"))));
             }
             if cfg!(target_os = "windows") {
+                if let Some(value) = status.service_task_state.as_deref() {
+                    lines.push(Line::from(Span::raw(format!("Task state: {value}"))));
+                }
+                if let Some(value) = status.service_schedule_type.as_deref() {
+                    lines.push(Line::from(Span::raw(format!("Schedule type: {value}"))));
+                }
+                if let Some(value) = status.service_start_date.as_deref() {
+                    lines.push(Line::from(Span::raw(format!("Start date: {value}"))));
+                }
+                if let Some(value) = status.service_start_time.as_deref() {
+                    lines.push(Line::from(Span::raw(format!("Start time: {value}"))));
+                }
+                if let Some(value) = status.service_run_as.as_deref() {
+                    lines.push(Line::from(Span::raw(format!("Run as: {value}"))));
+                }
+                if let Some(value) = status.service_task_to_run.as_deref() {
+                    lines.push(Line::from(Span::raw(format!("Task command: {value}"))));
+                }
                 lines.push(Line::from(Span::raw("Task name: git-project-sync")));
             }
             lines.push(Line::from(Span::raw(format!(
@@ -524,6 +542,24 @@ impl TuiApp {
                 lines.push(Line::from(Span::raw(format!("Last result: {value}"))));
             }
             if cfg!(target_os = "windows") {
+                if let Some(value) = status.service_task_state.as_deref() {
+                    lines.push(Line::from(Span::raw(format!("Task state: {value}"))));
+                }
+                if let Some(value) = status.service_schedule_type.as_deref() {
+                    lines.push(Line::from(Span::raw(format!("Schedule type: {value}"))));
+                }
+                if let Some(value) = status.service_start_date.as_deref() {
+                    lines.push(Line::from(Span::raw(format!("Start date: {value}"))));
+                }
+                if let Some(value) = status.service_start_time.as_deref() {
+                    lines.push(Line::from(Span::raw(format!("Start time: {value}"))));
+                }
+                if let Some(value) = status.service_run_as.as_deref() {
+                    lines.push(Line::from(Span::raw(format!("Run as: {value}"))));
+                }
+                if let Some(value) = status.service_task_to_run.as_deref() {
+                    lines.push(Line::from(Span::raw(format!("Task command: {value}"))));
+                }
                 lines.push(Line::from(Span::raw("Task name: git-project-sync")));
             }
             lines.push(Line::from(Span::raw(format!(

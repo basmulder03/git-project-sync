@@ -45,6 +45,12 @@ pub struct InstallStatus {
     pub service_last_run: Option<String>,
     pub service_last_result: Option<String>,
     pub service_next_run: Option<String>,
+    pub service_task_state: Option<String>,
+    pub service_schedule_type: Option<String>,
+    pub service_start_time: Option<String>,
+    pub service_start_date: Option<String>,
+    pub service_run_as: Option<String>,
+    pub service_task_to_run: Option<String>,
     pub path_in_env: bool,
 }
 
@@ -203,6 +209,12 @@ pub fn install_status() -> anyhow::Result<InstallStatus> {
         service_last_run: service_status.as_ref().and_then(|s| s.last_run_time.clone()),
         service_last_result: service_status.as_ref().and_then(|s| s.last_result.clone()),
         service_next_run: service_status.as_ref().and_then(|s| s.next_run_time.clone()),
+        service_task_state: service_status.as_ref().and_then(|s| s.task_state.clone()),
+        service_schedule_type: service_status.as_ref().and_then(|s| s.schedule_type.clone()),
+        service_start_time: service_status.as_ref().and_then(|s| s.start_time.clone()),
+        service_start_date: service_status.as_ref().and_then(|s| s.start_date.clone()),
+        service_run_as: service_status.as_ref().and_then(|s| s.run_as_user.clone()),
+        service_task_to_run: service_status.as_ref().and_then(|s| s.task_to_run.clone()),
         path_in_env,
     })
 }

@@ -10,6 +10,7 @@
 - [x] Use Windows Task Scheduler instead of Windows Service (fix 1053)
 - [x] Distinguish install vs update flow in installer output
 - [x] Show install status (version/time) inline on install page
+- [x] Expand install status with task scheduler diagnostics
 
 ## Milestone 44 — Sync Status UX (in progress)
 

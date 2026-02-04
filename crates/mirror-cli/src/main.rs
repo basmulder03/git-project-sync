@@ -1763,6 +1763,24 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
                 println!("Last result: {value}");
             }
             if cfg!(target_os = "windows") {
+                if let Some(value) = status.service_task_state.as_deref() {
+                    println!("Task state: {value}");
+                }
+                if let Some(value) = status.service_schedule_type.as_deref() {
+                    println!("Schedule type: {value}");
+                }
+                if let Some(value) = status.service_start_date.as_deref() {
+                    println!("Start date: {value}");
+                }
+                if let Some(value) = status.service_start_time.as_deref() {
+                    println!("Start time: {value}");
+                }
+                if let Some(value) = status.service_run_as.as_deref() {
+                    println!("Run as: {value}");
+                }
+                if let Some(value) = status.service_task_to_run.as_deref() {
+                    println!("Task command: {value}");
+                }
                 println!("Task name: git-project-sync");
             }
             println!(

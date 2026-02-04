@@ -1,7 +1,7 @@
 use anyhow::Context;
 use clap::{Parser, ValueEnum, CommandFactory};
 use mirror_core::cache::{
-    RepoCacheEntry, backoff_until, update_target_failure, update_target_success,
+    RepoCache, RepoCacheEntry, backoff_until, update_target_failure, update_target_success,
 };
 use mirror_core::config::{
     AppConfigV2, TargetConfig, default_cache_path, default_config_path, default_lock_path,
@@ -30,6 +30,7 @@ use tracing_subscriber::EnvFilter;
 mod tray;
 mod install;
 mod tui;
+mod repo_overview;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -266,6 +267,8 @@ struct CacheArgs {
 enum CacheCommands {
     #[command(about = "Prune cache entries for missing targets")]
     Prune(CachePruneArgs),
+    #[command(about = "Show cached repo overview tree")]
+    Overview(CacheOverviewArgs),
 }
 
 #[derive(Parser)]
@@ -274,6 +277,16 @@ struct CachePruneArgs {
     config: Option<PathBuf>,
     #[arg(long)]
     cache: Option<PathBuf>,
+}
+
+#[derive(Parser)]
+struct CacheOverviewArgs {
+    #[arg(long)]
+    config: Option<PathBuf>,
+    #[arg(long)]
+    cache: Option<PathBuf>,
+    #[arg(long)]
+    refresh: bool,
 }
 
 #[derive(Parser)]
@@ -1327,6 +1340,7 @@ fn handle_webhook_register(args: WebhookRegisterArgs, audit: &AuditLogger) -> an
 fn handle_cache(args: CacheArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     match args.command {
         CacheCommands::Prune(args) => handle_cache_prune(args, audit),
+        CacheCommands::Overview(args) => handle_cache_overview(args, audit),
     }
 }
 
@@ -1711,6 +1725,65 @@ fn handle_cache_prune(args: CachePruneArgs, audit: &AuditLogger) -> anyhow::Resu
             "cache.prune",
             AuditStatus::Failed,
             Some("cache.prune"),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+
+    result
+}
+
+fn handle_cache_overview(args: CacheOverviewArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = (|| {
+        let config_path = args.config.unwrap_or(default_config_path()?);
+        let cache_path = args.cache.unwrap_or(default_cache_path()?);
+        let (config, migrated) = load_or_migrate(&config_path)?;
+        if migrated {
+            config.save(&config_path)?;
+        }
+        if args.refresh {
+            let _ = repo_overview::refresh_repo_status(&cache_path)?;
+        }
+        let cache = RepoCache::load(&cache_path).unwrap_or_default();
+        let root = config.root.as_deref();
+        let tree = repo_overview::build_repo_tree(cache.repos.iter(), root);
+        let lines = repo_overview::render_repo_tree_lines(&tree, &cache, &cache.repo_status);
+
+        let root_label = root
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "<unset>".to_string());
+        println!("Root: {root_label}");
+        let last_refresh = cache
+            .repo_status
+            .values()
+            .map(|status| status.checked_at)
+            .max()
+            .map(repo_overview::format_epoch_label)
+            .unwrap_or_else(|| "never".to_string());
+        println!("Status refresh: {last_refresh}");
+        if lines.is_empty() {
+            println!("No repos in cache yet.");
+        } else {
+            for line in lines {
+                println!("{line}");
+            }
+        }
+        let audit_id = audit.record(
+            "cache.overview",
+            AuditStatus::Ok,
+            Some("cache.overview"),
+            None,
+            None,
+        )?;
+        println!("Audit ID: {audit_id}");
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "cache.overview",
+            AuditStatus::Failed,
+            Some("cache.overview"),
             None,
             Some(&err.to_string()),
         );

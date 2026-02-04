@@ -9,6 +9,7 @@ pub mod lockfile;
 pub mod model;
 pub mod provider;
 pub mod paths;
+pub mod repo_status;
 pub mod scheduler;
 pub mod service;
 pub mod sync_engine;

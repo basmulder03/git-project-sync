@@ -62,6 +62,14 @@
 - [x] Fix Windows service start call type annotation
 - [x] Re-run build to confirm
 
+## Milestone 49 — TUI Provider Mgmt + Repo Overview (in progress)
+
+- [x] Add provider-specific selection + hints in TUI target/token forms (GitHub/GitLab)
+- [x] Add repo status cache + local status computation (branch/ahead/behind/last touched)
+- [x] Add TUI repo overview tree view (folder structure with status columns)
+- [x] Add tests for repo status + tree rendering helpers
+- [x] Document assumptions and follow-ups
+
 ## Milestone 39 — High-Severity Fixes (in progress)
 
 - [x] Support GitHub user-scope targets (fallback from org endpoint)
@@ -126,3 +134,4 @@
 - Docs alignment: spec-first, concise edits only.
 - Roadmap focus: Azure DevOps depth first, then provider parity, then sync safety.
 - Installer lock: use data_local lockfile to enforce single installer across CLI/TUI.
+- Repo overview: cache-only repo source, local git status only, 10-minute TTL refresh with manual override.

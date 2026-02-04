@@ -10,6 +10,8 @@ use mirror_core::config::{
     default_cache_path, default_config_path, load_or_migrate, target_id, AppConfigV2, TargetConfig,
 };
 use mirror_core::model::ProviderKind;
+use mirror_core::repo_status::RepoLocalStatus;
+use crate::repo_overview;
 use mirror_providers::auth;
 use mirror_providers::spec::{host_or_default, pat_help, spec_for};
 use mirror_providers::ProviderRegistry;
@@ -33,6 +35,8 @@ pub enum StartView {
     Dashboard,
     Install,
 }
+
+const REPO_STATUS_TTL_SECS: u64 = 600;
 
 pub fn run_tui(audit: &AuditLogger, start_view: StartView) -> anyhow::Result<()> {
     enable_raw_mode().context("enable raw mode")?;
@@ -81,6 +85,7 @@ fn run_app(
         }
 
         app.poll_install_events()?;
+        app.poll_repo_status_events()?;
     }
 
     Ok(())
@@ -94,6 +99,7 @@ enum View {
     SyncStatus,
     InstallStatus,
     ConfigRoot,
+    RepoOverview,
     Targets,
     TargetAdd,
     TargetRemove,
@@ -163,6 +169,11 @@ struct TuiApp {
     audit_filter: AuditFilter,
     validation_message: Option<String>,
     show_target_stats: bool,
+    repo_status: HashMap<String, RepoLocalStatus>,
+    repo_status_last_refresh: Option<u64>,
+    repo_status_refreshing: bool,
+    repo_status_rx: Option<mpsc::Receiver<Result<HashMap<String, RepoLocalStatus>, String>>>,
+    repo_overview_message: Option<String>,
     install_guard: Option<crate::install::InstallGuard>,
     install_rx: Option<mpsc::Receiver<InstallEvent>>,
     install_progress: Option<InstallProgressState>,
@@ -196,6 +207,11 @@ impl TuiApp {
             audit_filter: AuditFilter::All,
             validation_message: None,
             show_target_stats: false,
+            repo_status: HashMap::new(),
+            repo_status_last_refresh: None,
+            repo_status_refreshing: false,
+            repo_status_rx: None,
+            repo_overview_message: None,
             install_guard: None,
             install_rx: None,
             install_progress: None,
@@ -259,6 +275,7 @@ impl TuiApp {
             View::SyncStatus => self.draw_sync_status(frame, layout[1]),
             View::InstallStatus => self.draw_install_status(frame, layout[1]),
             View::ConfigRoot => self.draw_config_root(frame, layout[1]),
+            View::RepoOverview => self.draw_repo_overview(frame, layout[1]),
             View::Targets => self.draw_targets(frame, layout[1]),
             View::TargetAdd => self.draw_form(frame, layout[1], "Add Target"),
             View::TargetRemove => self.draw_form(frame, layout[1], "Remove Target"),
@@ -285,6 +302,7 @@ impl TuiApp {
             View::SyncStatus => "Enter/Esc: back".to_string(),
             View::InstallStatus => "Enter/Esc: back".to_string(),
             View::ConfigRoot => "Enter: save | Esc: back".to_string(),
+            View::RepoOverview => "r: refresh | Esc: back".to_string(),
             View::Targets => "a: add | d: remove | Esc: back".to_string(),
             View::TargetAdd | View::TargetRemove | View::TokenSet | View::TokenValidate => {
                 "Tab: next field | Enter: submit | Esc: back".to_string()
@@ -299,14 +317,17 @@ impl TuiApp {
     }
 
     fn draw_main(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
-        let items = ["Dashboard",
+        let items = [
+            "Dashboard",
             "Installer",
             "Config",
             "Targets",
             "Tokens",
             "Service",
             "Audit Log",
-            "Quit"];
+            "Repo Overview",
+            "Quit",
+        ];
         let list_items: Vec<ListItem> = items
             .iter()
             .enumerate()
@@ -794,6 +815,48 @@ impl TuiApp {
         frame.render_widget(widget, area);
     }
 
+    fn draw_repo_overview(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let cache_path = default_cache_path().ok();
+        let cache = cache_path
+            .as_ref()
+            .and_then(|path| RepoCache::load(path).ok())
+            .unwrap_or_default();
+        let root = self.config.root.as_deref();
+        let root_label = root
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "<unset>".to_string());
+        let last_refresh = self
+            .repo_status_last_refresh
+            .map(epoch_to_label)
+            .unwrap_or_else(|| "never".to_string());
+
+        let mut lines = vec![
+            Line::from(Span::raw("Context: Repo overview (cache)")),
+            Line::from(Span::raw(format!("Root: {root_label}"))),
+            Line::from(Span::raw(format!("Status refresh: {last_refresh}"))),
+        ];
+        if let Some(message) = self.repo_overview_message.as_deref() {
+            lines.push(Line::from(Span::raw(message)));
+        } else if self.repo_status_refreshing {
+            lines.push(Line::from(Span::raw("Refreshing repo status...")));
+        }
+        lines.push(Line::from(Span::raw("")));
+
+        if cache.repos.is_empty() {
+            lines.push(Line::from(Span::raw("No repos in cache yet.")));
+        } else {
+            let tree = repo_overview::build_repo_tree(cache.repos.iter(), root);
+            for line in repo_overview::render_repo_tree_lines(&tree, &cache, &self.repo_status) {
+                lines.push(Line::from(Span::raw(line)));
+            }
+        }
+
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(Block::default().borders(Borders::ALL).title("Repo Overview"));
+        frame.render_widget(widget, area);
+    }
+
     fn draw_targets(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         let mut items: Vec<ListItem> = Vec::new();
         items.push(ListItem::new(Line::from(Span::raw(
@@ -834,11 +897,11 @@ impl TuiApp {
             lines.push(Line::from(Span::raw(format!("Tip: {hint}"))));
             lines.push(Line::from(Span::raw("")));
         }
-        if matches!(self.view, View::TargetAdd | View::TokenSet) {
-            lines.push(Line::from(Span::raw(format!(
-                "Provider: {}",
-                provider_label(self.provider_index)
+        if matches!(self.view, View::TargetAdd | View::TokenSet | View::TokenValidate) {
+            lines.push(Line::from(Span::raw(provider_selector_line(
+                self.provider_index,
             ))));
+            lines.push(Line::from(Span::raw("Tip: Use Left/Right to change provider")));
             lines.push(Line::from(Span::raw("")));
         }
         if let Some(message) = self.validation_message.as_deref() {
@@ -875,6 +938,7 @@ impl TuiApp {
             View::Dashboard => self.handle_dashboard(key),
             View::Install => self.handle_install(key),
             View::ConfigRoot => self.handle_config_root(key),
+            View::RepoOverview => self.handle_repo_overview(key),
             View::Targets => self.handle_targets(key),
             View::TargetAdd => self.handle_target_add(key),
             View::TargetRemove => self.handle_target_remove(key),
@@ -894,10 +958,10 @@ impl TuiApp {
     fn handle_main(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
         match key.code {
             KeyCode::Char('q') => return Ok(true),
-            KeyCode::Down => self.menu_index = (self.menu_index + 1) % 8,
+            KeyCode::Down => self.menu_index = (self.menu_index + 1) % 9,
             KeyCode::Up => {
                 if self.menu_index == 0 {
-                    self.menu_index = 7;
+                    self.menu_index = 8;
                 } else {
                     self.menu_index -= 1;
                 }
@@ -922,6 +986,12 @@ impl TuiApp {
                 }
                 5 => self.view = View::Service,
                 6 => self.view = View::AuditLog,
+                7 => {
+                    if let Err(err) = self.enter_repo_overview() {
+                        self.message = format!("Repo overview unavailable: {err}");
+                        self.view = View::Message;
+                    }
+                }
                 _ => return Ok(true),
             },
             _ => {}
@@ -1032,6 +1102,17 @@ impl TuiApp {
             _ => {
                 self.handle_text_input(key);
             }
+        }
+        Ok(false)
+    }
+
+    fn handle_repo_overview(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
+        match key.code {
+            KeyCode::Esc => self.view = View::Main,
+            KeyCode::Char('r') => {
+                self.start_repo_status_refresh()?;
+            }
+            _ => {}
         }
         Ok(false)
     }
@@ -1536,6 +1617,81 @@ impl TuiApp {
         Ok(())
     }
 
+    fn poll_repo_status_events(&mut self) -> anyhow::Result<()> {
+        let Some(rx) = self.repo_status_rx.take() else {
+            return Ok(());
+        };
+        let mut done = false;
+        while let Ok(result) = rx.try_recv() {
+            self.repo_status_refreshing = false;
+            match result {
+                Ok(statuses) => {
+                    self.update_repo_status_cache(statuses);
+                    let refreshed = self
+                        .repo_status_last_refresh
+                        .map(epoch_to_label)
+                        .unwrap_or_else(|| "unknown".to_string());
+                    self.repo_overview_message =
+                        Some(format!("Repo status refreshed at {refreshed}"));
+                }
+                Err(err) => {
+                    self.repo_overview_message = Some(format!("Repo status refresh failed: {err}"));
+                }
+            }
+            done = true;
+        }
+        if !done {
+            self.repo_status_rx = Some(rx);
+        }
+        Ok(())
+    }
+
+    fn enter_repo_overview(&mut self) -> anyhow::Result<()> {
+        self.view = View::RepoOverview;
+        self.repo_overview_message = None;
+        self.load_repo_status_from_cache();
+        if self.repo_status_is_stale() {
+            self.start_repo_status_refresh()?;
+        }
+        Ok(())
+    }
+
+    fn load_repo_status_from_cache(&mut self) {
+        if let Ok(cache_path) = default_cache_path()
+            && let Ok(cache) = RepoCache::load(&cache_path)
+        {
+            self.update_repo_status_cache(cache.repo_status);
+        }
+    }
+
+    fn update_repo_status_cache(&mut self, statuses: HashMap<String, RepoLocalStatus>) {
+        self.repo_status_last_refresh = statuses.values().map(|s| s.checked_at).max();
+        self.repo_status = statuses;
+    }
+
+    fn repo_status_is_stale(&self) -> bool {
+        match self.repo_status_last_refresh {
+            Some(timestamp) => current_epoch_seconds().saturating_sub(timestamp) > REPO_STATUS_TTL_SECS,
+            None => true,
+        }
+    }
+
+    fn start_repo_status_refresh(&mut self) -> anyhow::Result<()> {
+        if self.repo_status_refreshing {
+            return Ok(());
+        }
+        let cache_path = default_cache_path()?;
+        let (tx, rx) = mpsc::channel::<Result<HashMap<String, RepoLocalStatus>, String>>();
+        self.repo_status_rx = Some(rx);
+        self.repo_status_refreshing = true;
+        self.repo_overview_message = Some("Refreshing repo status...".to_string());
+        thread::spawn(move || {
+            let result = repo_overview::refresh_repo_status(&cache_path).map_err(|err| err.to_string());
+            let _ = tx.send(result);
+        });
+        Ok(())
+    }
+
 fn handle_text_input(&mut self, key: KeyEvent) {
     if self.input_fields.is_empty() {
         return;
@@ -1578,10 +1734,15 @@ fn handle_text_input(&mut self, key: KeyEvent) {
 
     fn form_hint(&self) -> Option<&'static str> {
         match self.view {
-            View::TargetAdd => Some("Scope uses space-separated segments (org project)"),
+            View::TargetAdd => {
+                let provider = provider_kind(self.provider_index);
+                Some(provider_scope_hint(provider))
+            }
             View::TargetRemove => Some("Find target ids on the Targets screen"),
-            View::TokenSet => Some("Scope uses space-separated segments (org project)"),
-            View::TokenValidate => Some("Host optional; defaults to provider host"),
+            View::TokenSet | View::TokenValidate => {
+                let provider = provider_kind(self.provider_index);
+                Some(provider_scope_hint_with_host(provider))
+            }
             _ => None,
         }
     }
@@ -1851,6 +2012,39 @@ fn provider_label(index: usize) -> &'static str {
     }
 }
 
+fn provider_selector_line(index: usize) -> String {
+    let labels = ["azure-devops", "github", "gitlab"];
+    let mut parts = Vec::with_capacity(labels.len());
+    for (idx, label) in labels.iter().enumerate() {
+        if idx == index {
+            parts.push(format!("[{label}]"));
+        } else {
+            parts.push(label.to_string());
+        }
+    }
+    format!("Provider: {}", parts.join(" "))
+}
+
+fn provider_scope_hint(provider: ProviderKind) -> &'static str {
+    match provider {
+        ProviderKind::AzureDevOps => "Scope uses space-separated segments (org project)",
+        ProviderKind::GitHub => "Scope uses a single segment (org or user)",
+        ProviderKind::GitLab => "Scope uses space-separated group/subgroup segments",
+    }
+}
+
+fn provider_scope_hint_with_host(provider: ProviderKind) -> &'static str {
+    match provider {
+        ProviderKind::AzureDevOps => {
+            "Scope uses space-separated segments (org project). Host optional."
+        }
+        ProviderKind::GitHub => "Scope uses a single segment (org or user). Host optional.",
+        ProviderKind::GitLab => {
+            "Scope uses space-separated group/subgroup segments. Host optional."
+        }
+    }
+}
+
 fn optional_text(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -1998,7 +2192,7 @@ mod tests {
             config_path: std::path::PathBuf::from("/tmp/config.json"),
             config: AppConfigV2::default(),
             view: View::Main,
-            menu_index: 7,
+            menu_index: 8,
             message: String::new(),
             input_index: 0,
             input_fields: Vec::new(),
@@ -2009,6 +2203,11 @@ mod tests {
             audit_filter: AuditFilter::All,
             validation_message: None,
             show_target_stats: false,
+            repo_status: HashMap::new(),
+            repo_status_last_refresh: None,
+            repo_status_refreshing: false,
+            repo_status_rx: None,
+            repo_overview_message: None,
             install_guard: None,
             install_rx: None,
             install_progress: None,
@@ -2061,6 +2260,11 @@ mod tests {
             audit_filter: AuditFilter::All,
             validation_message: None,
             show_target_stats: false,
+            repo_status: HashMap::new(),
+            repo_status_last_refresh: None,
+            repo_status_refreshing: false,
+            repo_status_rx: None,
+            repo_overview_message: None,
             install_guard: None,
             install_rx: None,
             install_progress: None,
@@ -2100,6 +2304,11 @@ mod tests {
             audit_filter: AuditFilter::All,
             validation_message: None,
             show_target_stats: false,
+            repo_status: HashMap::new(),
+            repo_status_last_refresh: None,
+            repo_status_refreshing: false,
+            repo_status_rx: None,
+            repo_overview_message: None,
             install_guard: None,
             install_rx: None,
             install_progress: None,

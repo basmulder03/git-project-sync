@@ -1,4 +1,5 @@
 use crate::model::{ProviderKind, ProviderScope};
+use crate::repo_status::RepoLocalStatus;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -11,6 +12,8 @@ pub struct RepoCache {
     pub repos: HashMap<String, RepoCacheEntry>,
     #[serde(default)]
     pub repo_inventory: HashMap<String, RepoInventoryEntry>,
+    #[serde(default)]
+    pub repo_status: HashMap<String, RepoLocalStatus>,
     #[serde(default)]
     pub target_last_success: HashMap<String, u64>,
     #[serde(default)]
@@ -28,6 +31,7 @@ impl RepoCache {
             last_sync: HashMap::new(),
             repos: HashMap::new(),
             repo_inventory: HashMap::new(),
+            repo_status: HashMap::new(),
             target_last_success: HashMap::new(),
             target_backoff_until: HashMap::new(),
             target_backoff_attempts: HashMap::new(),
@@ -104,6 +108,7 @@ fn migrate_v1(json: serde_json::Value) -> anyhow::Result<RepoCache> {
         last_sync: v1.last_sync,
         repos: v1.repos,
         repo_inventory: HashMap::new(),
+        repo_status: HashMap::new(),
         target_last_success: HashMap::new(),
         target_backoff_until: HashMap::new(),
         target_backoff_attempts: HashMap::new(),

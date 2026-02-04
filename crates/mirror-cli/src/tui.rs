@@ -367,6 +367,65 @@ impl TuiApp {
             Line::from(Span::raw("Context: Install daemon and optionally register PATH")),
             Line::from(Span::raw("")),
         ];
+        if let Ok(status) = crate::install::install_status() {
+            let service_label = if cfg!(target_os = "windows") {
+                "Scheduled task"
+            } else {
+                "Service"
+            };
+            lines.push(Line::from(Span::raw(format!(
+                "Installed: {}",
+                if status.installed { "yes" } else { "no" }
+            ))));
+            lines.push(Line::from(Span::raw(format!(
+                "Action: {}",
+                if status.installed { "Update existing install" } else { "Install new" }
+            ))));
+            lines.push(Line::from(Span::raw(format!(
+                "Path: {}",
+                status
+                    .installed_path
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "(unknown)".to_string())
+            ))));
+            if let Some(value) = status.installed_version.as_deref() {
+                lines.push(Line::from(Span::raw(format!("Installed version: {value}"))));
+            }
+            if let Some(value) = status.installed_at {
+                lines.push(Line::from(Span::raw(format!(
+                    "Installed at: {}",
+                    epoch_to_label(value)
+                ))));
+            }
+            lines.push(Line::from(Span::raw(format!(
+                "{} installed: {}",
+                service_label,
+                if status.service_installed { "yes" } else { "no" }
+            ))));
+            lines.push(Line::from(Span::raw(format!(
+                "{} running: {}",
+                service_label,
+                if status.service_running { "yes" } else { "no" }
+            ))));
+            if let Some(value) = status.service_last_run.as_deref() {
+                lines.push(Line::from(Span::raw(format!("Last run: {value}"))));
+            }
+            if let Some(value) = status.service_next_run.as_deref() {
+                lines.push(Line::from(Span::raw(format!("Next run: {value}"))));
+            }
+            if let Some(value) = status.service_last_result.as_deref() {
+                lines.push(Line::from(Span::raw(format!("Last result: {value}"))));
+            }
+            if cfg!(target_os = "windows") {
+                lines.push(Line::from(Span::raw("Task name: git-project-sync")));
+            }
+            lines.push(Line::from(Span::raw(format!(
+                "PATH contains install dir (current shell): {}",
+                if status.path_in_env { "yes" } else { "no" }
+            ))));
+            lines.push(Line::from(Span::raw("")));
+        }
         for (idx, field) in self.input_fields.iter().enumerate() {
             let label = if idx == self.input_index {
                 format!("> {}: {}", field.label, field.display_value())
@@ -436,6 +495,15 @@ impl TuiApp {
                 "Manifest present: {}",
                 if status.manifest_present { "yes" } else { "no" }
             ))));
+            if let Some(value) = status.installed_version.as_deref() {
+                lines.push(Line::from(Span::raw(format!("Installed version: {value}"))));
+            }
+            if let Some(value) = status.installed_at {
+                lines.push(Line::from(Span::raw(format!(
+                    "Installed at: {}",
+                    epoch_to_label(value)
+                ))));
+            }
             lines.push(Line::from(Span::raw(format!(
                 "{} installed: {}",
                 service_label,

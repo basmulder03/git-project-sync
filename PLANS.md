@@ -8,6 +8,8 @@
 - [x] Update CLI/TUI messaging for install location
 - [x] Update docs + acceptance notes for replace/update behavior
 - [x] Use Windows Task Scheduler instead of Windows Service (fix 1053)
+- [x] Distinguish install vs update flow in installer output
+- [x] Show install status (version/time) inline on install page
 
 ## Milestone 44 — Sync Status UX (in progress)
 

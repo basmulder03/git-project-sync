@@ -38,6 +38,8 @@ pub struct InstallStatus {
     pub installed: bool,
     pub installed_path: Option<PathBuf>,
     pub manifest_present: bool,
+    pub installed_version: Option<String>,
+    pub installed_at: Option<u64>,
     pub service_installed: bool,
     pub service_running: bool,
     pub service_last_run: Option<String>,
@@ -55,6 +57,8 @@ pub fn perform_install_with_progress(
     options: InstallOptions,
     progress: Option<&dyn Fn(InstallProgress)>,
 ) -> anyhow::Result<InstallReport> {
+    let status = install_status().ok();
+    let is_update = status.as_ref().map(|s| s.installed).unwrap_or(false);
     let total = if matches!(options.path_choice, PathChoice::Add) {
         5
     } else {
@@ -62,7 +66,12 @@ pub fn perform_install_with_progress(
     };
     let mut step = 0;
     step += 1;
-    report_progress(progress, step, total, "Preparing install");
+    report_progress(
+        progress,
+        step,
+        total,
+        if is_update { "Preparing update" } else { "Preparing install" },
+    );
     mirror_core::service::uninstall_service_if_exists().ok();
     let install_path = default_install_path(exec_path)?;
     step += 1;
@@ -70,15 +79,27 @@ pub fn perform_install_with_progress(
         progress,
         step,
         total,
-        &format!("Installing binary to {}", install_path.display()),
+        &format!(
+            "{} binary to {}",
+            if is_update { "Updating" } else { "Installing" },
+            install_path.display()
+        ),
     );
-    let install_message = install_binary(exec_path, &install_path)?;
+    let install_message = install_binary(exec_path, &install_path, is_update)?;
     step += 1;
-    report_progress(progress, step, total, "Installing service");
+    report_progress(
+        progress,
+        step,
+        total,
+        if is_update { "Updating service" } else { "Installing service" },
+    );
     mirror_core::service::install_service_with_delay(&install_path, options.delayed_start)?;
+    let service_action = if is_update { "updated" } else { "installed" };
     let service = match options.delayed_start {
-        Some(delay) if delay > 0 => format!("{} installed with delayed start ({delay}s)", service_label()),
-        _ => format!("{} installed", service_label()),
+        Some(delay) if delay > 0 => {
+            format!("{} {service_action} with delayed start ({delay}s)", service_label())
+        }
+        _ => format!("{} {service_action}", service_label()),
     };
     let path = match options.path_choice {
         PathChoice::Add => {
@@ -154,6 +175,8 @@ pub fn install_status() -> anyhow::Result<InstallStatus> {
     let manifest = read_manifest()?;
     let installed_path = manifest.as_ref().map(|m| m.installed_path.clone());
     let manifest_present = manifest.is_some();
+    let installed_version = manifest.as_ref().map(|m| m.installed_version.clone());
+    let installed_at = manifest.as_ref().map(|m| m.installed_at);
     let marker_present = marker_path()?.exists();
     let installed = installed_path
         .as_ref()
@@ -173,6 +196,8 @@ pub fn install_status() -> anyhow::Result<InstallStatus> {
         installed,
         installed_path,
         manifest_present,
+        installed_version,
+        installed_at,
         service_installed,
         service_running,
         service_last_run: service_status.as_ref().and_then(|s| s.last_run_time.clone()),
@@ -215,10 +240,11 @@ struct InstallManifest {
 
 const INSTALL_MANIFEST_VERSION: u32 = 1;
 
-fn install_binary(exec_path: &Path, install_path: &Path) -> anyhow::Result<String> {
+fn install_binary(exec_path: &Path, install_path: &Path, is_update: bool) -> anyhow::Result<String> {
     if install_path == exec_path {
         return Ok(format!(
-            "Install location already active at {}",
+            "{} location already active at {}",
+            if is_update { "Update" } else { "Install" },
             install_path.display()
         ));
     }
@@ -240,7 +266,11 @@ fn install_binary(exec_path: &Path, install_path: &Path) -> anyhow::Result<Strin
         fs::remove_file(install_path).context("remove previous installed binary")?;
     }
     fs::rename(&tmp_path, install_path).context("move binary into install location")?;
-    Ok(format!("Installed to {}", install_path.display()))
+    Ok(format!(
+        "{} to {}",
+        if is_update { "Updated" } else { "Installed" },
+        install_path.display()
+    ))
 }
 
 fn default_install_path(exec_path: &Path) -> anyhow::Result<PathBuf> {

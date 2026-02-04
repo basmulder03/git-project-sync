@@ -345,6 +345,8 @@ struct InstallArgs {
     #[arg(long)]
     start: bool,
     #[arg(long)]
+    update: bool,
+    #[arg(long)]
     delayed_start: Option<u64>,
     #[arg(long, value_enum)]
     path: Option<PathChoiceValue>,
@@ -1735,6 +1737,12 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
                 "Manifest present: {}",
                 if status.manifest_present { "yes" } else { "no" }
             );
+            if let Some(value) = status.installed_version.as_deref() {
+                println!("Installed version: {value}");
+            }
+            if let Some(value) = status.installed_at {
+                println!("Installed at: {}", epoch_to_label(value));
+            }
             println!(
                 "{} installed: {}",
                 service_label,
@@ -1762,6 +1770,14 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
                 if status.path_in_env { "yes" } else { "no" }
             );
             return Ok(());
+        }
+        if args.update {
+            let status = install::install_status()?;
+            if !status.installed {
+                anyhow::bail!(
+                    "update requested but no existing install was found (run `mirror-cli install` first)"
+                );
+            }
         }
         if args.tui {
             return tui::run_tui(audit, tui::StartView::Install);

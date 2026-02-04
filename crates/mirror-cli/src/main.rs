@@ -13,7 +13,7 @@ use mirror_core::model::{ProviderKind, ProviderTarget};
 #[cfg(test)]
 use mirror_core::model::ProviderScope;
 use mirror_core::scheduler::{bucket_for_repo_id, current_day_bucket};
-use mirror_core::sync_engine::{SyncSummary, RunSyncOptions, run_sync_filtered};
+use mirror_core::sync_engine::{SyncAction, SyncProgress, SyncSummary, RunSyncOptions, run_sync_filtered};
 use mirror_providers::auth;
 use crate::install::{InstallOptions, PathChoice};
 use mirror_providers::azure_devops::{AZDO_DEFAULT_OAUTH_SCOPE, AzureDevOpsProvider};
@@ -24,6 +24,7 @@ use reqwest::StatusCode;
 use reqwest::blocking::Client;
 use serde::Deserialize;
 use std::io::{self, Write};
+use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use tracing_subscriber::EnvFilter;
 mod tray;
@@ -183,6 +184,8 @@ struct SyncArgs {
     include_archived: bool,
     #[arg(long)]
     verify: bool,
+    #[arg(long)]
+    status: bool,
     #[arg(long)]
     non_interactive: bool,
     #[arg(long, value_enum, default_value = "prompt")]
@@ -896,6 +899,20 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                 host: target.host.clone(),
             };
             let include_archived = args.include_archived;
+            let target_label = format!(
+                "{}:{}",
+                target.provider.as_prefix(),
+                target.scope.segments().join("/")
+            );
+            let last_len = Cell::new(0usize);
+            let progress_fn = |progress: SyncProgress| {
+                render_sync_progress(&target_label, &last_len, progress);
+            };
+            let progress: Option<&dyn Fn(SyncProgress)> = if args.status {
+                Some(&progress_fn)
+            } else {
+                None
+            };
             let summary = if let Some(repo_name) = args.repo.as_ref() {
                 let repo_name = repo_name.clone();
                 let filter = move |remote: &mirror_core::model::RemoteRepo| {
@@ -907,6 +924,7 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                     missing_policy: policy,
                     missing_decider: decider,
                     repo_filter: Some(&filter),
+                    progress,
                     detect_missing: false,
                     refresh: args.refresh,
                     verify: args.verify,
@@ -921,6 +939,7 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                     missing_policy: policy,
                     missing_decider: decider,
                     repo_filter: Some(&filter),
+                    progress,
                     detect_missing: true,
                     refresh: args.refresh,
                     verify: args.verify,
@@ -1769,6 +1788,38 @@ fn render_progress_bar(step: usize, total: usize, width: usize) -> String {
     format!("[{}{}]", "#".repeat(filled), "-".repeat(empty))
 }
 
+fn render_sync_progress(target_label: &str, last_len: &Cell<usize>, progress: SyncProgress) {
+    let total = progress.total_repos;
+    let processed = progress.processed_repos.min(total);
+    let bar = render_progress_bar(processed, total, 20);
+    let repo = progress
+        .repo_name
+        .as_deref()
+        .or(progress.repo_id.as_deref())
+        .unwrap_or("-");
+    let line = format!(
+        "{} {}/{} {} action={} repo={}",
+        target_label,
+        processed,
+        total,
+        bar,
+        progress.action.as_str(),
+        repo
+    );
+    let prev_len = last_len.get();
+    if line.len() < prev_len {
+        print!("\r{line}{}", " ".repeat(prev_len - line.len()));
+    } else {
+        print!("\r{line}");
+    }
+    let _ = io::stdout().flush();
+    last_len.set(line.len());
+    if !progress.in_progress || matches!(progress.action, SyncAction::Done) {
+        println!();
+        last_len.set(0);
+    }
+}
+
 fn prompt_delay_seconds() -> anyhow::Result<Option<u64>> {
     println!("Delayed start on boot? Enter seconds or leave empty:");
     let mut input = String::new();
@@ -1844,6 +1895,7 @@ fn run_sync_job(
             missing_policy: policy,
             missing_decider: None,
             repo_filter: Some(&bucketed),
+            progress: None,
             detect_missing: true,
             refresh: false,
             verify: false,

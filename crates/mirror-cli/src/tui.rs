@@ -5,6 +5,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use mirror_core::audit::{AuditContext, AuditLogger, AuditStatus};
+use mirror_core::cache::{RepoCache, SyncSummarySnapshot};
 use mirror_core::config::{
     default_cache_path, default_config_path, load_or_migrate, target_id, AppConfigV2, TargetConfig,
 };
@@ -90,6 +91,7 @@ enum View {
     Main,
     Dashboard,
     Install,
+    SyncStatus,
     InstallStatus,
     ConfigRoot,
     Targets,
@@ -254,6 +256,7 @@ impl TuiApp {
             View::Main => self.draw_main(frame, layout[1]),
             View::Dashboard => self.draw_dashboard(frame, layout[1]),
             View::Install => self.draw_install(frame, layout[1]),
+            View::SyncStatus => self.draw_sync_status(frame, layout[1]),
             View::InstallStatus => self.draw_install_status(frame, layout[1]),
             View::ConfigRoot => self.draw_config_root(frame, layout[1]),
             View::Targets => self.draw_targets(frame, layout[1]),
@@ -277,8 +280,9 @@ impl TuiApp {
     fn footer_text(&self) -> String {
         match self.view {
             View::Main => "Up/Down: navigate | Enter: select | q: quit".to_string(),
-            View::Dashboard => "t: toggle targets | Esc: back".to_string(),
+            View::Dashboard => "t: toggle targets | s: sync status | Esc: back".to_string(),
             View::Install => "Tab: next | Enter: run install | s: status | Esc: back".to_string(),
+            View::SyncStatus => "Enter/Esc: back".to_string(),
             View::InstallStatus => "Enter/Esc: back".to_string(),
             View::ConfigRoot => "Enter: save | Esc: back".to_string(),
             View::Targets => "a: add | d: remove | Esc: back".to_string(),
@@ -445,6 +449,31 @@ impl TuiApp {
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .block(Block::default().borders(Borders::ALL).title("Installer Status"));
+        frame.render_widget(widget, area);
+    }
+
+    fn draw_sync_status(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let mut lines = vec![
+            Line::from(Span::raw("Context: Sync status by target")),
+            Line::from(Span::raw("")),
+        ];
+        match self.sync_status_lines() {
+            Ok(mut status_lines) => {
+                if status_lines.is_empty() {
+                    lines.push(Line::from(Span::raw("No targets configured.")));
+                } else {
+                    lines.append(&mut status_lines);
+                }
+            }
+            Err(err) => {
+                lines.push(Line::from(Span::raw(format!(
+                    "Failed to load sync status: {err}"
+                ))));
+            }
+        }
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(Block::default().borders(Borders::ALL).title("Sync Status"));
         frame.render_widget(widget, area);
     }
 
@@ -735,6 +764,7 @@ impl TuiApp {
             View::Message => self.handle_message(key),
             View::InstallProgress => self.handle_install_progress(key),
             View::InstallStatus => self.handle_install_status(key),
+            View::SyncStatus => self.handle_sync_status(key),
         }
     }
 
@@ -841,6 +871,9 @@ impl TuiApp {
             KeyCode::Esc => self.view = View::Main,
             KeyCode::Char('t') => {
                 self.show_target_stats = !self.show_target_stats;
+            }
+            KeyCode::Char('s') => {
+                self.view = View::SyncStatus;
             }
             _ => {}
         }
@@ -1321,6 +1354,14 @@ impl TuiApp {
         Ok(false)
     }
 
+    fn handle_sync_status(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
+        match key.code {
+            KeyCode::Enter | KeyCode::Esc => self.view = View::Dashboard,
+            _ => {}
+        }
+        Ok(false)
+    }
+
     fn poll_install_events(&mut self) -> anyhow::Result<()> {
         let Some(rx) = self.install_rx.take() else {
             return Ok(());
@@ -1546,6 +1587,59 @@ fn handle_text_input(&mut self, key: KeyEvent) {
             audit_entries,
             targets,
         }
+    }
+
+    fn sync_status_lines(&self) -> anyhow::Result<Vec<Line<'_>>> {
+        let cache_path = default_cache_path()?;
+        let cache = RepoCache::load(&cache_path).unwrap_or_default();
+        let empty_summary = SyncSummarySnapshot::default();
+        let mut lines = Vec::new();
+        for target in &self.config.targets {
+            let label = format!(
+                "{} | {}",
+                target.provider.as_prefix(),
+                target.scope.segments().join("/")
+            );
+            let status = cache.target_sync_status.get(&target.id);
+            let state = status
+                .map(|s| if s.in_progress { "running" } else { "idle" })
+                .unwrap_or("idle");
+            let action = status
+                .and_then(|s| s.last_action.as_deref())
+                .unwrap_or("unknown");
+            let repo = status
+                .and_then(|s| s.last_repo.as_deref())
+                .unwrap_or("-");
+            let updated = status
+                .map(|s| epoch_to_label(s.last_updated))
+                .unwrap_or_else(|| "unknown".to_string());
+            let summary = status.map(|s| &s.summary).unwrap_or(&empty_summary);
+            let total = status.map(|s| s.total_repos).unwrap_or(0);
+            let processed = status.map(|s| s.processed_repos).unwrap_or(0);
+            let bar = progress_bar(processed.min(total), total, 20);
+            lines.push(Line::from(Span::raw(format!(
+                "{} | {} | {} | {} | {}",
+                label, state, action, repo, updated
+            ))));
+            lines.push(Line::from(Span::raw(format!(
+                "progress: {}/{} {}",
+                processed, total, bar
+            ))));
+            lines.push(Line::from(Span::raw(format!(
+                "counts: cl={} ff={} up={} dirty={} div={} fail={} missA={} missR={} missS={}",
+                summary.cloned,
+                summary.fast_forwarded,
+                summary.up_to_date,
+                summary.dirty,
+                summary.diverged,
+                summary.failed,
+                summary.missing_archived,
+                summary.missing_removed,
+                summary.missing_skipped
+            ))));
+            lines.push(Line::from(Span::raw("")));
+        }
+        Ok(lines)
     }
 
     fn audit_log_count(&self) -> usize {

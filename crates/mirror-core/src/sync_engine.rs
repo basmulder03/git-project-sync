@@ -1,5 +1,5 @@
 use crate::archive::{archive_repo, remove_repo};
-use crate::cache::{RepoCache, RepoInventoryEntry, RepoInventoryRepo};
+use crate::cache::{RepoCache, RepoInventoryEntry, RepoInventoryRepo, SyncStatus, SyncSummarySnapshot};
 use crate::config::target_id;
 use crate::deleted::{DeletedRepoAction, MissingRemotePolicy, detect_deleted_repos};
 use crate::git_sync::{SyncOutcome, sync_repo};
@@ -10,12 +10,60 @@ use anyhow::Context;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::{info, warn};
 
 pub type MissingDecider =
     dyn Fn(&crate::cache::RepoCacheEntry) -> anyhow::Result<DeletedRepoAction>;
 pub type RepoFilter = dyn Fn(&RemoteRepo) -> bool;
+pub type SyncProgressReporter<'a> = dyn Fn(SyncProgress) + 'a;
+
+#[derive(Clone, Copy, Debug)]
+pub enum SyncAction {
+    Starting,
+    Syncing,
+    Cloned,
+    FastForwarded,
+    UpToDate,
+    Dirty,
+    Diverged,
+    Failed,
+    MissingArchived,
+    MissingRemoved,
+    MissingSkipped,
+    Done,
+}
+
+impl SyncAction {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SyncAction::Starting => "starting",
+            SyncAction::Syncing => "syncing",
+            SyncAction::Cloned => "cloned",
+            SyncAction::FastForwarded => "fast_forwarded",
+            SyncAction::UpToDate => "up_to_date",
+            SyncAction::Dirty => "dirty",
+            SyncAction::Diverged => "diverged",
+            SyncAction::Failed => "failed",
+            SyncAction::MissingArchived => "missing_archived",
+            SyncAction::MissingRemoved => "missing_removed",
+            SyncAction::MissingSkipped => "missing_skipped",
+            SyncAction::Done => "done",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SyncProgress {
+    pub target_id: String,
+    pub total_repos: usize,
+    pub processed_repos: usize,
+    pub action: SyncAction,
+    pub repo_id: Option<String>,
+    pub repo_name: Option<String>,
+    pub summary: SyncSummary,
+    pub in_progress: bool,
+}
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SyncSummary {
@@ -65,21 +113,23 @@ pub fn run_sync(
 }
 
 #[derive(Clone, Copy)]
-pub struct RunSyncOptions<'a, 'b> {
+pub struct RunSyncOptions<'a, 'b, 'c> {
     pub missing_policy: MissingRemotePolicy,
     pub missing_decider: Option<&'a MissingDecider>,
     pub repo_filter: Option<&'b RepoFilter>,
+    pub progress: Option<&'c SyncProgressReporter<'c>>,
     pub detect_missing: bool,
     pub refresh: bool,
     pub verify: bool,
 }
 
-impl Default for RunSyncOptions<'_, '_> {
+impl Default for RunSyncOptions<'_, '_, '_> {
     fn default() -> Self {
         Self {
             missing_policy: MissingRemotePolicy::Skip,
             missing_decider: None,
             repo_filter: None,
+            progress: None,
             detect_missing: true,
             refresh: false,
             verify: false,
@@ -92,13 +142,37 @@ pub fn run_sync_filtered(
     target: &ProviderTarget,
     root: &Path,
     cache_path: &Path,
-    options: RunSyncOptions<'_, '_>,
+    options: RunSyncOptions<'_, '_, '_>,
 ) -> anyhow::Result<SyncSummary> {
     provider
         .validate_auth(target)
         .context("validate provider auth")?;
     let mut cache = RepoCache::load(cache_path).context("load cache")?;
     let mut summary = SyncSummary::default();
+    let target_key = target_id(
+        target.provider.clone(),
+        target.host.as_deref(),
+        &target.scope,
+    );
+    let mut status_state = StatusEmitterState {
+        target_key,
+        last_status_flush: Instant::now(),
+        status_dirty: false,
+        total_repos: 0,
+        processed_repos: 0,
+    };
+
+    emit_sync_status(
+        &mut cache,
+        cache_path,
+        options.progress,
+        &mut status_state,
+        SyncAction::Starting,
+        None,
+        None,
+        true,
+        summary,
+    )?;
 
     info!(
         provider = %target.provider,
@@ -110,20 +184,70 @@ pub fn run_sync_filtered(
         load_repos_with_cache(provider, target, &mut cache, options.refresh)?;
     if options.detect_missing && !used_cache {
         let current_ids: HashSet<String> = repos.iter().map(|repo| repo.id.clone()).collect();
+        let mut missing_events: Vec<(DeletedRepoAction, String, String)> = Vec::new();
+        let mut on_missing = |action: DeletedRepoAction, repo: &crate::deleted::DeletedRepo| {
+            missing_events.push((
+                action,
+                repo.repo_id.to_string(),
+                repo.entry.name.clone(),
+            ));
+        };
         let missing_summary = handle_missing_repos(
             &mut cache,
             root,
             &current_ids,
             options.missing_policy,
             options.missing_decider,
+            Some(&mut on_missing),
         )?;
         summary.record_missing(missing_summary);
+        for (action, repo_id, repo_name) in missing_events {
+            let sync_action = match action {
+                DeletedRepoAction::Archive => SyncAction::MissingArchived,
+                DeletedRepoAction::Remove => SyncAction::MissingRemoved,
+                DeletedRepoAction::Skip => SyncAction::MissingSkipped,
+            };
+            emit_sync_status(
+                &mut cache,
+                cache_path,
+                options.progress,
+                &mut status_state,
+                sync_action,
+                Some(&repo_name),
+                Some(&repo_id),
+                true,
+                summary,
+            )?;
+        }
     }
     if let Some(filter) = options.repo_filter {
         repos.retain(|repo| filter(repo));
     }
+    status_state.total_repos = repos.len();
+    emit_sync_status(
+        &mut cache,
+        cache_path,
+        options.progress,
+        &mut status_state,
+        SyncAction::Syncing,
+        None,
+        None,
+        true,
+        summary,
+    )?;
 
     for repo in repos {
+        emit_sync_status(
+            &mut cache,
+            cache_path,
+            options.progress,
+            &mut status_state,
+            SyncAction::Syncing,
+            Some(&repo.name),
+            Some(&repo.id),
+            true,
+            summary,
+        )?;
         let path = repo_path(root, &repo.provider, &repo.scope, &repo.name);
         if let Some(entry) = cache.repos.get(&repo.id) {
             let cached_path = PathBuf::from(&entry.path);
@@ -165,6 +289,18 @@ pub fn run_sync_filtered(
             Ok(outcome) => outcome,
             Err(err) => {
                 summary.failed += 1;
+                status_state.processed_repos += 1;
+                emit_sync_status(
+                    &mut cache,
+                    cache_path,
+                    options.progress,
+                    &mut status_state,
+                    SyncAction::Failed,
+                    Some(&repo.name),
+                    Some(&repo.id),
+                    true,
+                    summary,
+                )?;
                 warn!(
                     provider = %repo.provider,
                     scope = ?repo.scope,
@@ -193,6 +329,18 @@ pub fn run_sync_filtered(
             "repo sync outcome"
         );
         summary.record(outcome);
+        status_state.processed_repos += 1;
+        emit_sync_status(
+            &mut cache,
+            cache_path,
+            options.progress,
+            &mut status_state,
+            action_from_outcome(outcome),
+            Some(&repo.name),
+            Some(&repo.id),
+            true,
+            summary,
+        )?;
 
         cache.record_repo(
             repo.id.clone(),
@@ -209,6 +357,17 @@ pub fn run_sync_filtered(
         }
     }
 
+    emit_sync_status(
+        &mut cache,
+        cache_path,
+        options.progress,
+        &mut status_state,
+        SyncAction::Done,
+        None,
+        None,
+        false,
+        summary,
+    )?;
     cache.save(cache_path).context("save cache")?;
     Ok(summary)
 }
@@ -307,6 +466,86 @@ fn cache_is_valid(entry: &RepoInventoryEntry, now: u64) -> bool {
     now.saturating_sub(entry.fetched_at) <= TTL_SECS
 }
 
+fn action_from_outcome(outcome: SyncOutcome) -> SyncAction {
+    match outcome {
+        SyncOutcome::Cloned => SyncAction::Cloned,
+        SyncOutcome::FastForwarded => SyncAction::FastForwarded,
+        SyncOutcome::UpToDate => SyncAction::UpToDate,
+        SyncOutcome::Dirty => SyncAction::Dirty,
+        SyncOutcome::Diverged => SyncAction::Diverged,
+    }
+}
+
+fn summary_snapshot(summary: SyncSummary) -> SyncSummarySnapshot {
+    SyncSummarySnapshot {
+        cloned: summary.cloned,
+        fast_forwarded: summary.fast_forwarded,
+        up_to_date: summary.up_to_date,
+        dirty: summary.dirty,
+        diverged: summary.diverged,
+        failed: summary.failed,
+        missing_archived: summary.missing_archived,
+        missing_removed: summary.missing_removed,
+        missing_skipped: summary.missing_skipped,
+    }
+}
+
+struct StatusEmitterState {
+    target_key: String,
+    last_status_flush: Instant,
+    status_dirty: bool,
+    total_repos: usize,
+    processed_repos: usize,
+}
+
+fn emit_sync_status(
+    cache: &mut RepoCache,
+    cache_path: &Path,
+    progress: Option<&SyncProgressReporter<'_>>,
+    state: &mut StatusEmitterState,
+    action: SyncAction,
+    repo_name: Option<&str>,
+    repo_id: Option<&str>,
+    in_progress: bool,
+    summary: SyncSummary,
+) -> anyhow::Result<()> {
+    let entry = cache
+        .target_sync_status
+        .entry(state.target_key.clone())
+        .or_insert_with(SyncStatus::default);
+    entry.in_progress = in_progress;
+    entry.last_action = Some(action.as_str().to_string());
+    entry.last_repo = repo_name.map(|value| value.to_string());
+    entry.last_repo_id = repo_id.map(|value| value.to_string());
+    entry.last_updated = current_timestamp_secs();
+    entry.total_repos = state.total_repos;
+    entry.processed_repos = state.processed_repos;
+    entry.summary = summary_snapshot(summary);
+    state.status_dirty = true;
+
+    if let Some(progress) = progress {
+        progress(SyncProgress {
+            target_id: state.target_key.clone(),
+            total_repos: state.total_repos,
+            processed_repos: state.processed_repos,
+            action,
+            repo_id: repo_id.map(|value| value.to_string()),
+            repo_name: repo_name.map(|value| value.to_string()),
+            summary,
+            in_progress,
+        });
+    }
+
+    if state.status_dirty
+        && (!in_progress || state.last_status_flush.elapsed() >= Duration::from_millis(500))
+    {
+        cache.save(cache_path).context("save cache")?;
+        state.status_dirty = false;
+        state.last_status_flush = Instant::now();
+    }
+    Ok(())
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 struct MissingSummary {
     archived: u32,
@@ -320,6 +559,7 @@ fn handle_missing_repos(
     current_repo_ids: &HashSet<String>,
     policy: MissingRemotePolicy,
     decider: Option<&MissingDecider>,
+    mut on_action: Option<&mut dyn FnMut(DeletedRepoAction, &crate::deleted::DeletedRepo)>,
 ) -> anyhow::Result<MissingSummary> {
     let missing = detect_deleted_repos(cache, current_repo_ids);
     if missing.is_empty() {
@@ -345,6 +585,9 @@ fn handle_missing_repos(
                     path = %destination.display(),
                     "archived missing repo"
                 );
+                if let Some(callback) = on_action.as_mut() {
+                    callback(DeletedRepoAction::Archive, &repo);
+                }
                 remove_ids.push(repo.repo_id.to_string());
                 summary.archived += 1;
             }
@@ -361,6 +604,9 @@ fn handle_missing_repos(
                     repo_id = %repo.repo_id,
                     "removed missing repo"
                 );
+                if let Some(callback) = on_action.as_mut() {
+                    callback(DeletedRepoAction::Remove, &repo);
+                }
                 remove_ids.push(repo.repo_id.to_string());
                 summary.removed += 1;
             }
@@ -371,6 +617,9 @@ fn handle_missing_repos(
                     repo_id = %repo.repo_id,
                     "skipped missing repo"
                 );
+                if let Some(callback) = on_action.as_mut() {
+                    callback(DeletedRepoAction::Skip, &repo);
+                }
                 summary.skipped += 1;
             }
         }

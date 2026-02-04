@@ -17,6 +17,8 @@ pub struct RepoCache {
     pub target_backoff_until: HashMap<String, u64>,
     #[serde(default)]
     pub target_backoff_attempts: HashMap<String, u32>,
+    #[serde(default)]
+    pub target_sync_status: HashMap<String, SyncStatus>,
 }
 
 impl RepoCache {
@@ -29,6 +31,7 @@ impl RepoCache {
             target_last_success: HashMap::new(),
             target_backoff_until: HashMap::new(),
             target_backoff_attempts: HashMap::new(),
+            target_sync_status: HashMap::new(),
         }
     }
 
@@ -104,6 +107,7 @@ fn migrate_v1(json: serde_json::Value) -> anyhow::Result<RepoCache> {
         target_last_success: HashMap::new(),
         target_backoff_until: HashMap::new(),
         target_backoff_attempts: HashMap::new(),
+        target_sync_status: HashMap::new(),
     })
 }
 
@@ -120,6 +124,7 @@ pub fn prune_cache_for_targets(path: &Path, target_ids: &[String]) -> anyhow::Re
     cache.target_last_success.retain(|key, _| target_ids.contains(key));
     cache.target_backoff_until.retain(|key, _| target_ids.contains(key));
     cache.target_backoff_attempts.retain(|key, _| target_ids.contains(key));
+    cache.target_sync_status.retain(|key, _| target_ids.contains(key));
     cache.save(path)?;
     Ok(removed)
 }
@@ -148,6 +153,34 @@ pub struct RepoInventoryRepo {
     pub archived: bool,
     pub provider: ProviderKind,
     pub scope: ProviderScope,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct SyncSummarySnapshot {
+    pub cloned: u32,
+    pub fast_forwarded: u32,
+    pub up_to_date: u32,
+    pub dirty: u32,
+    pub diverged: u32,
+    pub failed: u32,
+    pub missing_archived: u32,
+    pub missing_removed: u32,
+    pub missing_skipped: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct SyncStatus {
+    pub in_progress: bool,
+    pub last_action: Option<String>,
+    pub last_repo: Option<String>,
+    pub last_repo_id: Option<String>,
+    pub last_updated: u64,
+    #[serde(default)]
+    pub total_repos: usize,
+    #[serde(default)]
+    pub processed_repos: usize,
+    #[serde(default)]
+    pub summary: SyncSummarySnapshot,
 }
 
 pub fn update_target_success(
@@ -213,6 +246,22 @@ mod tests {
         cache.target_last_success.insert("target-1".into(), 1);
         cache.target_backoff_until.insert("target-2".into(), 2);
         cache.target_backoff_attempts.insert("target-2".into(), 3);
+        cache.target_sync_status.insert(
+            "target-1".into(),
+            SyncStatus {
+                in_progress: true,
+                last_action: Some("syncing".to_string()),
+                last_repo: Some("Repo One".to_string()),
+                last_repo_id: Some("repo-1".to_string()),
+                last_updated: 10,
+                total_repos: 5,
+                processed_repos: 2,
+                summary: SyncSummarySnapshot {
+                    cloned: 1,
+                    ..SyncSummarySnapshot::default()
+                },
+            },
+        );
         cache.record_repo(
             "repo-1".into(),
             "Repo One".into(),
@@ -241,6 +290,7 @@ mod tests {
         let loaded = RepoCache::load(&path).unwrap();
         assert_eq!(loaded.version, 2);
         assert!(loaded.last_sync.contains_key("repo-1"));
+        assert!(loaded.target_sync_status.contains_key("target-1"));
     }
 
     #[test]
@@ -262,12 +312,22 @@ mod tests {
                 repos: Vec::new(),
             },
         );
+        cache.target_sync_status.insert(
+            "keep".into(),
+            SyncStatus::default(),
+        );
+        cache.target_sync_status.insert(
+            "drop".into(),
+            SyncStatus::default(),
+        );
         cache.save(&path).unwrap();
         let removed = prune_cache_for_targets(&path, &vec!["keep".into()]).unwrap();
         assert_eq!(removed, 1);
         let loaded = RepoCache::load(&path).unwrap();
         assert!(loaded.repo_inventory.contains_key("keep"));
         assert!(!loaded.repo_inventory.contains_key("drop"));
+        assert!(loaded.target_sync_status.contains_key("keep"));
+        assert!(!loaded.target_sync_status.contains_key("drop"));
     }
 
     #[test]

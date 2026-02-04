@@ -8,6 +8,13 @@
 - [x] Update CLI/TUI messaging for install location
 - [x] Update docs + acceptance notes for replace/update behavior
 
+## Milestone 44 — Sync Status UX (in progress)
+
+- [x] Add sync progress callbacks in core (per-repo current action)
+- [x] Persist sync status + last action in cache
+- [x] CLI sync `--status` progress bar with current action/repo
+- [x] TUI Sync Status view with live status from cache
+
 ## Milestone 42 — Installer Single-Instance Fix (in progress)
 
 - [x] Replace installer mutex with lockfile under data_local

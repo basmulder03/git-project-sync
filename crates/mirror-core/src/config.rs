@@ -65,7 +65,7 @@ pub fn default_cache_path() -> anyhow::Result<PathBuf> {
 pub fn default_lock_path() -> anyhow::Result<PathBuf> {
     let project = ProjectDirs::from("com", "git-project-sync", "git-project-sync")
         .context("resolve project dirs")?;
-    Ok(project.runtime_dir().unwrap_or(project.cache_dir()).join("mirror.lock"))
+    Ok(project.data_local_dir().join("mirror.lock"))
 }
 
 pub fn load_or_migrate(path: &Path) -> anyhow::Result<(AppConfigV2, bool)> {

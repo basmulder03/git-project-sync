@@ -826,7 +826,7 @@ impl TuiApp {
                 }
                 let scope_label = scope.segments().join("/");
                 self.config.targets.push(TargetConfig {
-                    id,
+                    id: id.clone(),
                     provider: provider.clone(),
                     scope: scope.clone(),
                     host,
@@ -841,7 +841,7 @@ impl TuiApp {
                     AuditContext {
                         provider: Some(provider.as_prefix().to_string()),
                         scope: Some(scope_label),
-                        repo_id: Some(self.config.targets.last().unwrap().id.clone()),
+                        repo_id: Some(id.clone()),
                         path: None,
                     },
                     None,

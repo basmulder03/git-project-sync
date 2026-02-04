@@ -19,6 +19,11 @@
 - [x] Add daemon backoff on repeated failures
 - [x] Improve lockfile held detection on Windows
 
+## Milestone 41 — Low-Severity Fixes (in progress)
+
+- [x] Use stable lock file location under data_local
+- [x] Avoid TUI target add audit relying on list tail
+
 ## Milestone 12 — Architecture cleanup (completed)
 
 - [x] Add provider spec registry to centralize host/scope/account logic

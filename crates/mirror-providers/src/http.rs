@@ -32,6 +32,36 @@ where
     bail!("request failed after retries");
 }
 
+pub fn send_with_retry_allow_statuses<F>(
+    mut build: F,
+    allowed: &[StatusCode],
+) -> anyhow::Result<Response>
+where
+    F: FnMut() -> RequestBuilder,
+{
+    let max_attempts = 3;
+    for attempt in 1..=max_attempts {
+        let response = build().send().context("send request")?;
+        let status = response.status();
+        if status.is_success() || allowed.contains(&status) {
+            return Ok(response);
+        }
+        if is_retryable(status)
+            && attempt < max_attempts {
+                let delay = retry_delay_from_headers(response.headers());
+                let _ = response.bytes();
+                if let Some(delay) = delay {
+                    sleep(delay);
+                    continue;
+                }
+                sleep(Duration::from_secs(1));
+                continue;
+            }
+        return Err(response.error_for_status().unwrap_err().into());
+    }
+    bail!("request failed after retries");
+}
+
 fn is_retryable(status: StatusCode) -> bool {
     matches!(status, StatusCode::TOO_MANY_REQUESTS | StatusCode::SERVICE_UNAVAILABLE)
 }

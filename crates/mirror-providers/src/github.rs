@@ -9,7 +9,7 @@ use reqwest::header::HeaderMap;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use tracing::info;
-use crate::http::send_with_retry;
+use crate::http::{send_with_retry, send_with_retry_allow_statuses};
 use serde_json::json;
 
 pub struct GitHubProvider {
@@ -100,7 +100,10 @@ impl GitHubProvider {
             .get(url)
             .header("User-Agent", "git-project-sync")
             .bearer_auth(token);
-        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
+        let response = send_with_retry_allow_statuses(
+            || builder.try_clone().expect("clone request"),
+            &[StatusCode::NOT_FOUND],
+        )
             .context("call GitHub list repos")?;
         let status = response.status();
         if status == StatusCode::NOT_FOUND {
@@ -303,7 +306,10 @@ impl RepoProvider for GitHubProvider {
             .header("User-Agent", "git-project-sync")
             .bearer_auth(token.as_str())
             .json(&body);
-        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
+        let response = send_with_retry_allow_statuses(
+            || builder.try_clone().expect("clone request"),
+            &[StatusCode::NOT_FOUND],
+        )
             .context("call GitHub webhook register")?;
         if response.status() == StatusCode::NOT_FOUND {
             anyhow::bail!("GitHub org not found or webhooks unsupported for user scopes");

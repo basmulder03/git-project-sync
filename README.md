@@ -78,6 +78,12 @@ Run a sync:
 mirror-cli sync
 ```
 
+Live status for sync:
+
+```bash
+mirror-cli sync --status
+```
+
 ## Tray + Dashboard
 
 Run the system tray UI:
@@ -91,6 +97,10 @@ The tray menu can open a dashboard TUI or trigger a sync. You can also launch th
 ```bash
 mirror-cli tui --dashboard
 ```
+
+In the TUI:
+- Dashboard view: press `s` for Sync Status
+- Installer view: press `s` for Installer Status
 
 Note: the tray UI requires building with the `tray` feature:
 
@@ -174,6 +184,14 @@ Optional flags:
 
 - `--delayed-start <seconds>`: delay startup on boot (OS-native where supported)
 - `--path <add|skip>`: opt-in PATH registration
+- `--status`: show install status (path, task/service state, PATH)
+
+Windows task helpers (when installed):
+
+```bash
+schtasks /Query /TN git-project-sync
+schtasks /Run /TN git-project-sync
+```
 
 Default launch behavior:
 
@@ -186,7 +204,7 @@ Notes:
 - Re-running `mirror-cli install` replaces the existing install in place.
 - Linux: installs a systemd user service
 - macOS: installs a LaunchAgent
-- Windows: installs a Windows service
+- Windows: installs a Scheduled Task (Task Scheduler)
 - Only one installer can run at a time (guarded by a lock file under the OS app data directory).
 
 ## Troubleshooting

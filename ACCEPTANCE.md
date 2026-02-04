@@ -11,7 +11,7 @@
 7) Service install/uninstall:
    - Linux: `service install` creates user systemd unit and enables it; `service uninstall` disables and removes it.
    - macOS: `service install` writes LaunchAgent and loads it; `service uninstall` unloads and removes it.
-   - Windows: `service install` creates and starts the service; `service uninstall` stops and deletes it.
+   - Windows: `service install` creates a Scheduled Task; `service uninstall` removes it.
 8) For an existing repo with a missing or mismatched `origin` URL, rerun sync and verify origin is reset to the expected remote URL.
 9) Run any command (e.g., `sync`) and verify a new JSONL audit entry is appended under the OS data directory `audit/` folder, including failures when commands error.
 10) Run `health --provider <provider> --scope <scope>` and verify a success/failure message plus a new audit entry.
@@ -32,8 +32,12 @@
 25) Trigger an OAuth error (expired code or access denied) and confirm troubleshooting guidance in README/SPEC aligns with the CLI error.
 26) Open the TUI: verify Config and Token screens show guidance text and validation feedback when submitting empty/invalid values.
 27) Build with `--features tray`, run `tray`, and verify the system tray icon shows actions for dashboard and sync; open dashboard and confirm core stats render.
-28) Run `install` and confirm the daemon service is installed; verify delayed start when `--delayed-start` is provided.
+28) Run `install` and confirm the daemon service/task is installed; verify delayed start when `--delayed-start` is provided.
 29) Run `install --tui` and confirm the installer screen runs the same flow.
 30) Run `install --path add` and confirm PATH registration message is shown.
 31) Run `mirror-cli` with no args: if not installed, installer opens; if installed, help is shown.
 32) Re-run `install` with a newer binary and confirm it replaces the existing install in the OS default location and restarts the service using that path.
+33) Run `install --status` and confirm it prints install path, service/task state, and PATH status.
+34) Run `sync --status` and confirm live progress output and final summary.
+35) In the TUI dashboard, press `s` to open Sync Status and confirm current action/repo/counts are shown.
+36) Run `sync` and confirm per-repo audit entries are created (e.g., `sync.repo` or `daemon.sync.repo`).

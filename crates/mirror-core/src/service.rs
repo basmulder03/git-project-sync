@@ -5,6 +5,8 @@ use directories::BaseDirs;
 use directories::ProjectDirs;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::fs;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use std::io::ErrorKind;
 use std::path::Path;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::path::PathBuf;
@@ -86,6 +88,7 @@ pub fn uninstall_service_if_exists() -> anyhow::Result<()> {
 #[cfg(target_os = "linux")]
 fn install_systemd(exec_path: &Path, delay_seconds: Option<u64>) -> anyhow::Result<()> {
     let unit_path = systemd_unit_path()?;
+    ensure_dir_writable(unit_path.parent(), "systemd user dir")?;
     let unit = systemd_unit_contents(exec_path);
     if let Some(parent) = unit_path.parent() {
         fs::create_dir_all(parent).context("create systemd user dir")?;
@@ -98,6 +101,7 @@ fn install_systemd(exec_path: &Path, delay_seconds: Option<u64>) -> anyhow::Resu
     )?;
     if let Some(delay) = delay_seconds.filter(|value| *value > 0) {
         let timer_path = systemd_timer_path()?;
+        ensure_dir_writable(timer_path.parent(), "systemd user dir")?;
         let timer = systemd_timer_contents(delay);
         fs::write(&timer_path, timer).context("write systemd timer")?;
         run_command(
@@ -196,6 +200,8 @@ WantedBy=timers.target\n"
 fn install_launchd(exec_path: &Path, delay_seconds: Option<u64>) -> anyhow::Result<()> {
     let plist_path = launchd_plist_path()?;
     let log_dir = launchd_log_dir()?;
+    ensure_dir_writable(plist_path.parent(), "launchd agents dir")?;
+    ensure_dir_writable(Some(&log_dir), "launchd log dir")?;
     let plist = launchd_plist_contents(exec_path, delay_seconds)?;
     if let Some(parent) = plist_path.parent() {
         fs::create_dir_all(parent).context("create launchd agents dir")?;
@@ -284,8 +290,32 @@ fn launchd_log_dir() -> anyhow::Result<PathBuf> {
     Ok(project.data_local_dir().join("logs"))
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn ensure_dir_writable(path: Option<&Path>, label: &str) -> anyhow::Result<()> {
+    let Some(path) = path else { return Ok(()); };
+    fs::create_dir_all(path)
+        .with_context(|| format!("create {label} at {}", path.display()))?;
+    let probe = path.join(".mirror_cli_perm_check");
+    match fs::write(&probe, b"") {
+        Ok(()) => {
+            let _ = fs::remove_file(&probe);
+            Ok(())
+        }
+        Err(err) if err.kind() == ErrorKind::PermissionDenied => {
+            bail!(
+                "{label} is not writable at {}. \
+If you intended a system-wide install, run with sudo (not yet supported). \
+Otherwise, check your home directory permissions.",
+                path.display()
+            )
+        }
+        Err(err) => Err(err).with_context(|| format!("write permission check for {label}")),
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn install_windows(exec_path: &Path, delay_seconds: Option<u64>) -> anyhow::Result<()> {
+    ensure_windows_admin()?;
     let exec = exec_path.to_string_lossy();
     let bin_path = format!("\"{exec}\" daemon --missing-remote skip");
     let start_mode = if delay_seconds.unwrap_or(0) > 0 {
@@ -330,6 +360,21 @@ fn windows_service_exists() -> anyhow::Result<bool> {
         .status()
         .with_context(|| format!("query windows service {SERVICE_NAME}"))?;
     Ok(status.success())
+}
+
+#[cfg(target_os = "windows")]
+fn ensure_windows_admin() -> anyhow::Result<()> {
+    let status = Command::new("net")
+        .args(["session"])
+        .status()
+        .context("check Windows admin privileges")?;
+    if !status.success() {
+        bail!(
+            "Windows service installation requires an elevated (Administrator) shell. \
+Run this command from an Administrator PowerShell and try again."
+        );
+    }
+    Ok(())
 }
 
 fn run_command(binary: &str, args: &[&str], context_label: &str) -> anyhow::Result<()> {

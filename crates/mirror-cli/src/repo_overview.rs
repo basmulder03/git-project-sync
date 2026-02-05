@@ -13,6 +13,18 @@ pub struct RepoTreeLeaf {
     pub id: String,
 }
 
+#[derive(Clone)]
+pub struct OverviewRow {
+    pub id: String,
+    pub depth: usize,
+    pub name: String,
+    pub branch: Option<String>,
+    pub pulled: Option<String>,
+    pub ahead_behind: Option<String>,
+    pub touched: Option<String>,
+    pub is_leaf: bool,
+}
+
 pub fn refresh_repo_status(cache_path: &Path) -> anyhow::Result<HashMap<String, RepoLocalStatus>> {
     let mut cache = RepoCache::load(cache_path).unwrap_or_default();
     let mut statuses = HashMap::new();
@@ -71,6 +83,16 @@ pub fn render_repo_tree_lines(
     lines
 }
 
+pub fn render_repo_tree_rows(
+    node: &RepoTreeNode,
+    cache: &RepoCache,
+    status: &HashMap<String, RepoLocalStatus>,
+) -> Vec<OverviewRow> {
+    let mut rows = Vec::new();
+    render_repo_tree_with_rows(node, 0, "", &mut rows, cache, status);
+    rows
+}
+
 fn render_repo_tree(
     node: &RepoTreeNode,
     depth: usize,
@@ -106,6 +128,66 @@ fn render_repo_tree(
         } else {
             lines.push(format!("{indent}{name}/"));
             render_repo_tree(child, depth + 1, lines, cache, status);
+        }
+    }
+}
+
+fn render_repo_tree_with_rows(
+    node: &RepoTreeNode,
+    depth: usize,
+    prefix: &str,
+    rows: &mut Vec<OverviewRow>,
+    cache: &RepoCache,
+    status: &HashMap<String, RepoLocalStatus>,
+) {
+    for (name, child) in &node.children {
+        let indent = "  ".repeat(depth);
+        let id = if prefix.is_empty() {
+            name.to_string()
+        } else {
+            format!("{prefix}/{name}")
+        };
+        if let Some(leaf) = &child.leaf {
+            let status = status.get(&leaf.id);
+            let branch = status
+                .and_then(|value| value.head_branch.as_deref())
+                .unwrap_or("unknown");
+            let pulled = cache
+                .last_sync
+                .get(&leaf.id)
+                .and_then(|value| parse_epoch_string(value))
+                .map(format_epoch_label)
+                .unwrap_or_else(|| "never".to_string());
+            let ahead_behind = status
+                .and_then(|value| value.ahead.zip(value.behind))
+                .map(|(ahead, behind)| format!("+{ahead}/-{behind}"))
+                .unwrap_or_else(|| "unknown".to_string());
+            let touched = status
+                .and_then(|value| value.head_commit_time)
+                .map(format_epoch_label)
+                .unwrap_or_else(|| "unknown".to_string());
+            rows.push(OverviewRow {
+                id,
+                depth,
+                name: format!("{indent}{name}"),
+                branch: Some(branch.to_string()),
+                pulled: Some(pulled),
+                ahead_behind: Some(ahead_behind),
+                touched: Some(touched),
+                is_leaf: true,
+            });
+        } else {
+            rows.push(OverviewRow {
+                id: id.clone(),
+                depth,
+                name: format!("{indent}{name}/"),
+                branch: None,
+                pulled: None,
+                ahead_behind: None,
+                touched: None,
+                is_leaf: false,
+            });
+            render_repo_tree_with_rows(child, depth + 1, &id, rows, cache, status);
         }
     }
 }

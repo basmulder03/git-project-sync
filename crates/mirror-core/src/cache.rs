@@ -30,12 +30,18 @@ pub struct RepoCache {
     pub update_last_version: Option<String>,
     #[serde(default)]
     pub update_last_source: Option<String>,
+    #[serde(default)]
+    pub token_last_check: Option<u64>,
+    #[serde(default)]
+    pub token_last_source: Option<String>,
+    #[serde(default)]
+    pub token_status: HashMap<String, TokenStatus>,
 }
 
 impl RepoCache {
     pub fn new() -> Self {
         Self {
-            version: 3,
+            version: 4,
             last_sync: HashMap::new(),
             repos: HashMap::new(),
             repo_inventory: HashMap::new(),
@@ -48,6 +54,9 @@ impl RepoCache {
             update_last_result: None,
             update_last_version: None,
             update_last_source: None,
+            token_last_check: None,
+            token_last_source: None,
+            token_status: HashMap::new(),
         }
     }
 
@@ -58,7 +67,8 @@ impl RepoCache {
         let data = fs::read_to_string(path)?;
         let json: serde_json::Value = serde_json::from_str(&data)?;
         match json.get("version").and_then(|value| value.as_u64()) {
-            Some(3) => Ok(serde_json::from_value(json)?),
+            Some(4) => Ok(serde_json::from_value(json)?),
+            Some(3) => Ok(migrate_v3(json)?),
             Some(2) => Ok(migrate_v2(json)?),
             Some(1) | None => Ok(migrate_v1(json)?),
             Some(other) => anyhow::bail!("unsupported cache version {other}"),
@@ -136,10 +146,37 @@ struct RepoCacheV2 {
     target_sync_status: HashMap<String, SyncStatus>,
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+struct RepoCacheV3 {
+    version: u32,
+    last_sync: HashMap<String, String>,
+    repos: HashMap<String, RepoCacheEntry>,
+    #[serde(default)]
+    repo_inventory: HashMap<String, RepoInventoryEntry>,
+    #[serde(default)]
+    repo_status: HashMap<String, RepoLocalStatus>,
+    #[serde(default)]
+    target_last_success: HashMap<String, u64>,
+    #[serde(default)]
+    target_backoff_until: HashMap<String, u64>,
+    #[serde(default)]
+    target_backoff_attempts: HashMap<String, u32>,
+    #[serde(default)]
+    target_sync_status: HashMap<String, SyncStatus>,
+    #[serde(default)]
+    update_last_check: Option<u64>,
+    #[serde(default)]
+    update_last_result: Option<String>,
+    #[serde(default)]
+    update_last_version: Option<String>,
+    #[serde(default)]
+    update_last_source: Option<String>,
+}
+
 fn migrate_v1(json: serde_json::Value) -> anyhow::Result<RepoCache> {
     let v1: RepoCacheV1 = serde_json::from_value(json)?;
     Ok(RepoCache {
-        version: 3,
+        version: 4,
         last_sync: v1.last_sync,
         repos: v1.repos,
         repo_inventory: HashMap::new(),
@@ -152,13 +189,16 @@ fn migrate_v1(json: serde_json::Value) -> anyhow::Result<RepoCache> {
         update_last_result: None,
         update_last_version: None,
         update_last_source: None,
+        token_last_check: None,
+        token_last_source: None,
+        token_status: HashMap::new(),
     })
 }
 
 fn migrate_v2(json: serde_json::Value) -> anyhow::Result<RepoCache> {
     let v2: RepoCacheV2 = serde_json::from_value(json)?;
     Ok(RepoCache {
-        version: 3,
+        version: 4,
         last_sync: v2.last_sync,
         repos: v2.repos,
         repo_inventory: v2.repo_inventory,
@@ -171,6 +211,31 @@ fn migrate_v2(json: serde_json::Value) -> anyhow::Result<RepoCache> {
         update_last_result: None,
         update_last_version: None,
         update_last_source: None,
+        token_last_check: None,
+        token_last_source: None,
+        token_status: HashMap::new(),
+    })
+}
+
+fn migrate_v3(json: serde_json::Value) -> anyhow::Result<RepoCache> {
+    let v3: RepoCacheV3 = serde_json::from_value(json)?;
+    Ok(RepoCache {
+        version: 4,
+        last_sync: v3.last_sync,
+        repos: v3.repos,
+        repo_inventory: v3.repo_inventory,
+        repo_status: v3.repo_status,
+        target_last_success: v3.target_last_success,
+        target_backoff_until: v3.target_backoff_until,
+        target_backoff_attempts: v3.target_backoff_attempts,
+        target_sync_status: v3.target_sync_status,
+        update_last_check: v3.update_last_check,
+        update_last_result: v3.update_last_result,
+        update_last_version: v3.update_last_version,
+        update_last_source: v3.update_last_source,
+        token_last_check: None,
+        token_last_source: None,
+        token_status: HashMap::new(),
     })
 }
 
@@ -254,6 +319,13 @@ pub struct SyncStatus {
     pub summary: SyncSummarySnapshot,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TokenStatus {
+    pub last_checked: u64,
+    pub status: String,
+    pub error: Option<String>,
+}
+
 pub fn update_target_success(path: &Path, target_key: &str, now: u64) -> anyhow::Result<()> {
     let mut cache = RepoCache::load(path)?;
     cache.record_target_success(target_key.to_string(), now);
@@ -268,6 +340,13 @@ pub fn update_target_failure(path: &Path, target_key: &str, now: u64) -> anyhow:
 
 pub fn backoff_until(cache: &RepoCache, target_key: &str) -> Option<u64> {
     cache.target_backoff_until.get(target_key).copied()
+}
+
+pub fn token_check_due(cache: &RepoCache, now: u64, interval_secs: u64) -> bool {
+    match cache.token_last_check {
+        Some(last) => now.saturating_sub(last) >= interval_secs,
+        None => true,
+    }
 }
 
 pub fn update_check_due(cache: &RepoCache, now: u64, interval_secs: u64) -> bool {
@@ -288,6 +367,15 @@ pub fn record_update_check(
     cache.update_last_result = Some(result);
     cache.update_last_version = latest_version;
     cache.update_last_source = Some(source.to_string());
+}
+
+pub fn record_token_check(cache: &mut RepoCache, now: u64, source: &str) {
+    cache.token_last_check = Some(now);
+    cache.token_last_source = Some(source.to_string());
+}
+
+pub fn record_token_status(cache: &mut RepoCache, account: String, status: TokenStatus) {
+    cache.token_status.insert(account, status);
 }
 
 fn compute_backoff_delay(attempts: u32) -> u64 {
@@ -371,7 +459,7 @@ mod tests {
         fs::write(&path, data).unwrap();
 
         let loaded = RepoCache::load(&path).unwrap();
-        assert_eq!(loaded.version, 3);
+        assert_eq!(loaded.version, 4);
         assert!(loaded.last_sync.contains_key("repo-1"));
         assert!(loaded.target_sync_status.is_empty());
     }

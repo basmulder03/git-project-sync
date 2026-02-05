@@ -16,3 +16,8 @@ pub fn set_pat(account: &str, token: &str) -> anyhow::Result<()> {
     let entry = Entry::new(SERVICE, account).context("open keyring entry")?;
     entry.set_password(token).context("write PAT to keyring")
 }
+
+pub fn delete_pat(account: &str) -> anyhow::Result<()> {
+    let entry = Entry::new(SERVICE, account).context("open keyring entry")?;
+    entry.delete_password().context("delete PAT from keyring")
+}

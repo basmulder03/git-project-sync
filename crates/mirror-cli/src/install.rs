@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
@@ -55,7 +56,19 @@ pub struct InstallStatus {
 }
 
 pub struct InstallGuard {
-    _lock: LockFile,
+    lock: Arc<LockFile>,
+}
+
+static INSTALL_LOCK: OnceLock<Mutex<Option<Arc<LockFile>>>> = OnceLock::new();
+
+impl Drop for InstallGuard {
+    fn drop(&mut self) {
+        let cell = INSTALL_LOCK.get_or_init(|| Mutex::new(None));
+        let mut guard = cell.lock().expect("install lock mutex");
+        if Arc::strong_count(&self.lock) == 2 {
+            *guard = None;
+        }
+    }
 }
 
 pub fn perform_install_with_progress(
@@ -336,10 +349,17 @@ fn build_install_dir_unix(base: &Path) -> PathBuf {
 }
 
 pub fn acquire_install_lock() -> anyhow::Result<InstallGuard> {
+    let cell = INSTALL_LOCK.get_or_init(|| Mutex::new(None));
+    let mut guard = cell.lock().expect("install lock mutex");
+    if let Some(lock) = guard.as_ref() {
+        return Ok(InstallGuard { lock: lock.clone() });
+    }
     let path = install_lock_path()?;
     let lock = LockFile::try_acquire(&path)?
         .ok_or_else(|| anyhow::anyhow!("installer already running"))?;
-    Ok(InstallGuard { _lock: lock })
+    let lock = Arc::new(lock);
+    *guard = Some(lock.clone());
+    Ok(InstallGuard { lock })
 }
 
 pub fn is_installed() -> anyhow::Result<bool> {

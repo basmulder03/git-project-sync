@@ -1,18 +1,33 @@
 name: Release
 
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      bump:
+        description: "Semver bump type (major, minor, patch)"
+        required: true
+        default: patch
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
 
 permissions:
   contents: write
 
 jobs:
   version:
-    name: Read Version
+    name: Compute Version
     runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     outputs:
+      bump: ${{ steps.bump.outputs.bump }}
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
       should_release: ${{ steps.version.outputs.should_release }}
@@ -21,39 +36,53 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Read Cargo version
+      - name: Resolve bump type
+        id: bump
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            BUMP="${{ inputs.bump }}"
+          else
+            BRANCH="${{ github.event.pull_request.head.ref }}"
+            case "$BRANCH" in
+              release/major/*) BUMP="major" ;;
+              release/minor/*) BUMP="minor" ;;
+              release/patch/*) BUMP="patch" ;;
+              *)
+                echo "Unsupported branch name: $BRANCH"
+                echo "Expected release/{major|minor|patch}/*"
+                exit 1
+                ;;
+            esac
+          fi
+          echo "bump=$BUMP" >> $GITHUB_OUTPUT
+      - name: Compute next version
         id: version
         run: |
-          VERSION=$(rg -m1 '^version = "' crates/mirror-cli/Cargo.toml | sed -E 's/version = "([^"]+)"/\1/')
+          BUMP="${{ steps.bump.outputs.bump }}"
+          LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n 1)
+          if [ -z "$LAST_TAG" ]; then
+            LAST_TAG="v0.0.0"
+          fi
+          BASE="${LAST_TAG#v}"
+          IFS='.' read -r MA MI PA <<< "$BASE"
+          case "$BUMP" in
+            major) MA=$((MA+1)); MI=0; PA=0 ;;
+            minor) MI=$((MI+1)); PA=0 ;;
+            patch) PA=$((PA+1)) ;;
+          esac
+          VERSION="${MA}.${MI}.${PA}"
           TAG="v$VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-          LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n 1)
-          echo "last_tag=$LAST_TAG" >> $GITHUB_OUTPUT
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists. Skipping release."
             echo "should_release=false" >> $GITHUB_OUTPUT
           else
             echo "should_release=true" >> $GITHUB_OUTPUT
           fi
-      - name: Ensure version bumped
-        if: steps.version.outputs.should_release == 'true'
-        run: |
-          LAST_TAG="${{ steps.version.outputs.last_tag }}"
-          CURRENT="v${{ steps.version.outputs.version }}"
-          if [ -z "$LAST_TAG" ]; then
-            echo "No prior tags found; proceeding with first release."
-            exit 0
-          fi
-          HIGHEST=$(printf "%s\n%s\n" "$LAST_TAG" "$CURRENT" | sort -V | tail -n 1)
-          if [ "$HIGHEST" != "$CURRENT" ]; then
-            echo "Release version $CURRENT is not greater than latest tag $LAST_TAG."
-            echo "Bump the version in crates/mirror-cli/Cargo.toml before releasing."
-            exit 1
-          fi
 
   release:
-    name: Create Release
+    name: Tag and Release
     needs: version
     if: needs.version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
@@ -62,6 +91,40 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Update version in Cargo.toml
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          version = "${{ needs.version.outputs.version }}"
+          paths = [
+            Path("crates/mirror-cli/Cargo.toml"),
+            Path("crates/mirror-core/Cargo.toml"),
+            Path("crates/mirror-providers/Cargo.toml"),
+          ]
+          for path in paths:
+            content = path.read_text()
+            updated = []
+            replaced = False
+            for line in content.splitlines():
+              if line.startswith("version = ") and not replaced:
+                updated.append(f'version = "{version}"')
+                replaced = True
+              else:
+                updated.append(line)
+            if not replaced:
+              raise SystemExit(f"Failed to update version line in {path}")
+            path.write_text("\n".join(updated) + "\n")
+          PY
+      - name: Commit version bump
+        run: |
+          git add crates/mirror-cli/Cargo.toml crates/mirror-core/Cargo.toml crates/mirror-providers/Cargo.toml
+          git commit -m "chore(release): ${{ needs.version.outputs.tag }}"
+          git push origin HEAD:main
       - name: Create tag
         run: |
           git tag "${{ needs.version.outputs.tag }}"

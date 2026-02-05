@@ -1,4 +1,6 @@
-use anyhow::{Context, bail};
+use anyhow::Context;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use anyhow::bail;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use directories::BaseDirs;
 #[cfg(target_os = "macos")]
@@ -69,7 +71,7 @@ pub fn uninstall_service() -> anyhow::Result<()> {
 pub fn service_exists() -> anyhow::Result<bool> {
     #[cfg(target_os = "windows")]
     {
-        return windows_service_exists();
+        windows_service_exists()
     }
     #[cfg(target_os = "linux")]
     {
@@ -88,7 +90,7 @@ pub fn service_exists() -> anyhow::Result<bool> {
 pub fn service_running() -> anyhow::Result<bool> {
     #[cfg(target_os = "windows")]
     {
-        return windows_service_running();
+        windows_service_running()
     }
     #[cfg(target_os = "linux")]
     {
@@ -122,7 +124,7 @@ pub struct ServiceStatusInfo {
 pub fn service_status() -> anyhow::Result<ServiceStatusInfo> {
     #[cfg(target_os = "windows")]
     {
-        return windows_task_status();
+        windows_task_status()
     }
     #[cfg(target_os = "linux")]
     {
@@ -721,7 +723,7 @@ fn run_schtasks_output(args: &[String]) -> anyhow::Result<String> {
 
 #[cfg(target_os = "windows")]
 fn schtasks_delay(delay_seconds: u64) -> String {
-    let minutes = (delay_seconds + 59) / 60;
+    let minutes = delay_seconds.div_ceil(60);
     let hours = minutes / 60;
     let mins = minutes % 60;
     format!("{:04}:{:02}", hours, mins)
@@ -743,6 +745,7 @@ fn run_command(binary: &str, args: &[&str], context_label: &str) -> anyhow::Resu
 
 #[cfg(test)]
 mod tests {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use std::path::Path;
 
     #[cfg(target_os = "macos")]

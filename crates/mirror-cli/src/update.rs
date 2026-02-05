@@ -16,15 +16,12 @@ pub const UPDATE_REPO_ENV: &str = "GIT_PROJECT_SYNC_UPDATE_REPO";
 pub struct ReleaseAsset {
     pub name: String,
     pub url: String,
-    pub size: u64,
 }
 
 #[derive(Clone, Debug)]
 pub struct UpdateCheck {
-    pub repo: String,
     pub current: Version,
     pub latest: Version,
-    pub tag: String,
     pub release_url: Option<String>,
     pub is_newer: bool,
     pub asset: Option<ReleaseAsset>,
@@ -41,7 +38,6 @@ struct ReleaseResponse {
 struct ReleaseAssetResponse {
     name: String,
     browser_download_url: String,
-    size: u64,
 }
 
 pub fn resolve_repo(override_repo: Option<&str>) -> String {
@@ -94,17 +90,14 @@ pub fn check_for_update(override_repo: Option<&str>) -> anyhow::Result<UpdateChe
             .map(|asset| ReleaseAsset {
                 name: asset.name.clone(),
                 url: asset.browser_download_url.clone(),
-                size: asset.size,
             })
     } else {
         None
     };
 
     Ok(UpdateCheck {
-        repo,
         current,
         latest,
-        tag: release.tag_name,
         release_url: release.html_url,
         is_newer,
         asset,

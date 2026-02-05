@@ -327,7 +327,7 @@ mod tests {
             .target_sync_status
             .insert("drop".into(), SyncStatus::default());
         cache.save(&path).unwrap();
-        let removed = prune_cache_for_targets(&path, &vec!["keep".into()]).unwrap();
+        let removed = prune_cache_for_targets(&path, &["keep".into()]).unwrap();
         assert_eq!(removed, 1);
         let loaded = RepoCache::load(&path).unwrap();
         assert!(loaded.repo_inventory.contains_key("keep"));

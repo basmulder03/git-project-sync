@@ -17,7 +17,7 @@ mod imp {
             return Ok(());
         }
         let _ = audit.record("tray.start", AuditStatus::Ok, Some("tray"), None, None)?;
-        let event_loop = EventLoop::new();
+        let event_loop = EventLoop::new()?;
         let menu = Menu::new();
         let open_dashboard = MenuItem::new("Open Dashboard", true, None);
         let open_tui = MenuItem::new("Open TUI", true, None);
@@ -59,15 +59,12 @@ mod imp {
         let sync_now_id = sync_now.id();
         let quit_id = quit.id();
 
-        event_loop.run(move |event, _, control_flow| {
-            *control_flow = ControlFlow::Wait;
+        event_loop.run(move |event, target| {
+            target.set_control_flow(ControlFlow::Wait);
             match event {
                 Event::NewEvents(StartCause::Init) => {}
                 Event::UserEvent(_) => {}
                 Event::WindowEvent { .. } => {}
-                Event::MainEventsCleared => {}
-                Event::RedrawEventsCleared => {}
-                Event::LoopDestroyed => {}
                 Event::AboutToWait => {
                     while let Ok(event) = menu_receiver.try_recv() {
                         if event.id == open_dashboard_id {
@@ -124,13 +121,15 @@ mod imp {
                                 None,
                                 None,
                             );
-                            *control_flow = ControlFlow::Exit;
+                            target.exit();
                         }
                     }
                 }
+                Event::LoopExiting => {}
                 _ => {}
             }
-        });
+        })?;
+        Ok(())
     }
 
     fn is_headless() -> bool {

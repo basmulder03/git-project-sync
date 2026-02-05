@@ -637,6 +637,7 @@ enum RepoEvent {
     },
 }
 
+#[allow(clippy::too_many_arguments)]
 fn emit_sync_status(
     cache: &mut RepoCache,
     cache_path: &Path,
@@ -692,6 +693,7 @@ struct MissingSummary {
     skipped: u32,
 }
 
+#[allow(clippy::type_complexity)]
 fn handle_missing_repos(
     cache: &mut RepoCache,
     root: &Path,

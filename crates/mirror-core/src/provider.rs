@@ -8,7 +8,10 @@ pub trait RepoProvider {
     fn health_check(&self, target: &ProviderTarget) -> anyhow::Result<()> {
         self.validate_auth(target)
     }
-    fn auth_for_target(&self, _target: &ProviderTarget) -> anyhow::Result<Option<crate::model::RepoAuth>> {
+    fn auth_for_target(
+        &self,
+        _target: &ProviderTarget,
+    ) -> anyhow::Result<Option<crate::model::RepoAuth>> {
         Ok(None)
     }
     fn token_scopes(&self, _target: &ProviderTarget) -> anyhow::Result<Option<Vec<String>>> {

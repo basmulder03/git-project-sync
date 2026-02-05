@@ -81,20 +81,21 @@ pub fn check_for_update(override_repo: Option<&str>) -> anyhow::Result<UpdateChe
         .context("latest release request failed")?;
     let release: ReleaseResponse = response.json().context("parse release response")?;
 
-    let current = Version::parse(env!("CARGO_PKG_VERSION"))
-        .context("parse current version")?;
+    let current = Version::parse(env!("CARGO_PKG_VERSION")).context("parse current version")?;
     let latest = parse_version(&release.tag_name)?;
     let is_newer = latest > current;
 
     let asset = if is_newer {
         let target = expected_asset_name();
-        release.assets.iter().find(|asset| asset.name == target).map(|asset| {
-            ReleaseAsset {
+        release
+            .assets
+            .iter()
+            .find(|asset| asset.name == target)
+            .map(|asset| ReleaseAsset {
                 name: asset.name.clone(),
                 url: asset.browser_download_url.clone(),
                 size: asset.size,
-            }
-        })
+            })
     } else {
         None
     };

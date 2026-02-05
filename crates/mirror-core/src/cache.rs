@@ -87,7 +87,10 @@ impl RepoCache {
     }
 
     pub fn record_target_failure(&mut self, target_key: String, now: u64) {
-        let attempts = self.target_backoff_attempts.entry(target_key.clone()).or_insert(0);
+        let attempts = self
+            .target_backoff_attempts
+            .entry(target_key.clone())
+            .or_insert(0);
         *attempts = attempts.saturating_add(1);
         let delay = compute_backoff_delay(*attempts);
         self.target_backoff_until
@@ -126,10 +129,18 @@ pub fn prune_cache_for_targets(path: &Path, target_ids: &[String]) -> anyhow::Re
         }
         keep
     });
-    cache.target_last_success.retain(|key, _| target_ids.contains(key));
-    cache.target_backoff_until.retain(|key, _| target_ids.contains(key));
-    cache.target_backoff_attempts.retain(|key, _| target_ids.contains(key));
-    cache.target_sync_status.retain(|key, _| target_ids.contains(key));
+    cache
+        .target_last_success
+        .retain(|key, _| target_ids.contains(key));
+    cache
+        .target_backoff_until
+        .retain(|key, _| target_ids.contains(key));
+    cache
+        .target_backoff_attempts
+        .retain(|key, _| target_ids.contains(key));
+    cache
+        .target_sync_status
+        .retain(|key, _| target_ids.contains(key));
     cache.save(path)?;
     Ok(removed)
 }
@@ -188,21 +199,13 @@ pub struct SyncStatus {
     pub summary: SyncSummarySnapshot,
 }
 
-pub fn update_target_success(
-    path: &Path,
-    target_key: &str,
-    now: u64,
-) -> anyhow::Result<()> {
+pub fn update_target_success(path: &Path, target_key: &str, now: u64) -> anyhow::Result<()> {
     let mut cache = RepoCache::load(path)?;
     cache.record_target_success(target_key.to_string(), now);
     cache.save(path)
 }
 
-pub fn update_target_failure(
-    path: &Path,
-    target_key: &str,
-    now: u64,
-) -> anyhow::Result<()> {
+pub fn update_target_failure(path: &Path, target_key: &str, now: u64) -> anyhow::Result<()> {
     let mut cache = RepoCache::load(path)?;
     cache.record_target_failure(target_key.to_string(), now);
     cache.save(path)
@@ -317,14 +320,12 @@ mod tests {
                 repos: Vec::new(),
             },
         );
-        cache.target_sync_status.insert(
-            "keep".into(),
-            SyncStatus::default(),
-        );
-        cache.target_sync_status.insert(
-            "drop".into(),
-            SyncStatus::default(),
-        );
+        cache
+            .target_sync_status
+            .insert("keep".into(), SyncStatus::default());
+        cache
+            .target_sync_status
+            .insert("drop".into(), SyncStatus::default());
         cache.save(&path).unwrap();
         let removed = prune_cache_for_targets(&path, &vec!["keep".into()]).unwrap();
         assert_eq!(removed, 1);
@@ -341,7 +342,11 @@ mod tests {
         cache.record_target_failure("target-1".into(), 100);
         let until = cache.target_backoff_until.get("target-1").copied().unwrap();
         assert!(until >= 160);
-        let attempts = cache.target_backoff_attempts.get("target-1").copied().unwrap();
+        let attempts = cache
+            .target_backoff_attempts
+            .get("target-1")
+            .copied()
+            .unwrap();
         assert_eq!(attempts, 1);
     }
 
@@ -351,7 +356,10 @@ mod tests {
         cache.target_backoff_until.insert("target-1".into(), 200);
         cache.target_backoff_attempts.insert("target-1".into(), 2);
         cache.record_target_success("target-1".into(), 300);
-        assert_eq!(cache.target_last_success.get("target-1").copied(), Some(300));
+        assert_eq!(
+            cache.target_last_success.get("target-1").copied(),
+            Some(300)
+        );
         assert!(!cache.target_backoff_until.contains_key("target-1"));
         assert!(!cache.target_backoff_attempts.contains_key("target-1"));
     }

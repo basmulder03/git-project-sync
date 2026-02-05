@@ -1,5 +1,5 @@
 use mirror_core::cache::{RepoCache, RepoCacheEntry};
-use mirror_core::repo_status::{compute_repo_status, RepoLocalStatus};
+use mirror_core::repo_status::{RepoLocalStatus, compute_repo_status};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Component, Path};
 
@@ -32,7 +32,9 @@ where
     let mut tree = RepoTreeNode::default();
     for (repo_id, entry) in entries {
         let path = Path::new(&entry.path);
-        let rel = root.and_then(|root| path.strip_prefix(root).ok()).unwrap_or(path);
+        let rel = root
+            .and_then(|root| path.strip_prefix(root).ok())
+            .unwrap_or(path);
         let components: Vec<String> = rel
             .components()
             .filter_map(|component| match component {

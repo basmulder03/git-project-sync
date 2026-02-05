@@ -86,11 +86,7 @@ pub fn load_or_migrate(path: &Path) -> anyhow::Result<(AppConfigV2, bool)> {
     }
 }
 
-pub fn target_id(
-    provider: ProviderKind,
-    host: Option<&str>,
-    scope: &ProviderScope,
-) -> String {
+pub fn target_id(provider: ProviderKind, host: Option<&str>, scope: &ProviderScope) -> String {
     let host = host.unwrap_or("<default>");
     let payload = format!(
         "{}:{}:{}",

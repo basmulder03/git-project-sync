@@ -148,7 +148,11 @@ mod imp {
             for x in 0..16 {
                 let idx = (y * 16 + x) * 4;
                 let is_border = x == 0 || y == 0 || x == 15 || y == 15;
-                let color = if is_border { (20, 20, 20) } else { (66, 135, 245) };
+                let color = if is_border {
+                    (20, 20, 20)
+                } else {
+                    (66, 135, 245)
+                };
                 bytes[idx] = color.0;
                 bytes[idx + 1] = color.1;
                 bytes[idx + 2] = color.2;

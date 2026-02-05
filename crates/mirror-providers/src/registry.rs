@@ -1,11 +1,11 @@
 use mirror_core::model::ProviderKind;
 use mirror_core::provider::ProviderSpec;
 
+use crate::RepoProvider;
 use crate::azure_devops::AzureDevOpsProvider;
 use crate::github::GitHubProvider;
 use crate::gitlab::GitLabProvider;
 use crate::spec::{AzureDevOpsSpec, GitHubSpec, GitLabSpec};
-use crate::RepoProvider;
 
 pub struct ProviderRegistry;
 

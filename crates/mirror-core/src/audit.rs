@@ -5,8 +5,8 @@ use serde_json::Value;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 
 const MAX_BYTES: u64 = 10 * 1024 * 1024;
@@ -194,10 +194,11 @@ fn next_audit_path(base_dir: &Path, date: &str, max_bytes: u64) -> anyhow::Resul
         };
         let path = base_dir.join(name);
         if let Ok(metadata) = fs::metadata(&path)
-            && metadata.len() >= max_bytes {
-                suffix += 1;
-                continue;
-            }
+            && metadata.len() >= max_bytes
+        {
+            suffix += 1;
+            continue;
+        }
         return Ok(path);
     }
 }

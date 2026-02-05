@@ -1,14 +1,16 @@
+use crate::repo_overview;
+use crate::update;
 use anyhow::Context;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use mirror_core::audit::{AuditContext, AuditLogger, AuditStatus};
 use mirror_core::cache::{RepoCache, SyncSummarySnapshot};
 use mirror_core::config::{
-    default_cache_path, default_config_path, default_lock_path, load_or_migrate, target_id,
-    AppConfigV2, TargetConfig,
+    AppConfigV2, TargetConfig, default_cache_path, default_config_path, default_lock_path,
+    load_or_migrate, target_id,
 };
 use mirror_core::deleted::MissingRemotePolicy;
 use mirror_core::lockfile::LockFile;
@@ -16,12 +18,10 @@ use mirror_core::model::ProviderKind;
 use mirror_core::model::ProviderTarget;
 use mirror_core::model::RemoteRepo;
 use mirror_core::repo_status::RepoLocalStatus;
-use mirror_core::sync_engine::{run_sync_filtered, RunSyncOptions, SyncSummary};
-use crate::repo_overview;
-use crate::update;
+use mirror_core::sync_engine::{RunSyncOptions, SyncSummary, run_sync_filtered};
+use mirror_providers::ProviderRegistry;
 use mirror_providers::auth;
 use mirror_providers::spec::{host_or_default, pat_help, spec_for};
-use mirror_providers::ProviderRegistry;
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
@@ -30,8 +30,8 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
-use std::io::{self, Stdout};
 use std::collections::{HashMap, HashSet};
+use std::io::{self, Stdout};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -83,9 +83,10 @@ fn run_app(
 
         if event::poll(timeout)?
             && let Event::Key(key) = event::read()?
-                && app.handle_key(key)? {
-                    break;
-                }
+            && app.handle_key(key)?
+        {
+            break;
+        }
 
         if last_tick.elapsed() >= tick_rate {
             last_tick = Instant::now();
@@ -286,7 +287,11 @@ impl TuiApp {
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .margin(1)
-            .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(3)])
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(0),
+                Constraint::Length(3),
+            ])
             .split(frame.size());
 
         let header = Paragraph::new("Git Project Sync — Terminal UI")
@@ -324,8 +329,12 @@ impl TuiApp {
     fn footer_text(&self) -> String {
         match self.view {
             View::Main => "Up/Down: navigate | Enter: select | q: quit".to_string(),
-            View::Dashboard => "t: toggle targets | s: sync status | r: sync now | Esc: back".to_string(),
-            View::Install => "Tab: next | Enter: run install | s: status | u: update | Esc: back".to_string(),
+            View::Dashboard => {
+                "t: toggle targets | s: sync status | r: sync now | Esc: back".to_string()
+            }
+            View::Install => {
+                "Tab: next | Enter: run install | s: status | u: update | Esc: back".to_string()
+            }
             View::UpdatePrompt => "y: apply update | n: cancel | Esc: back".to_string(),
             View::UpdateProgress => "Updating... please wait".to_string(),
             View::SyncStatus => "Enter/Esc: back".to_string(),
@@ -369,8 +378,8 @@ impl TuiApp {
                 ListItem::new(line)
             })
             .collect();
-        let list = List::new(list_items)
-            .block(Block::default().borders(Borders::ALL).title("Main Menu"));
+        let list =
+            List::new(list_items).block(Block::default().borders(Borders::ALL).title("Main Menu"));
         frame.render_widget(list, area);
     }
 
@@ -382,7 +391,10 @@ impl TuiApp {
             Line::from(Span::raw(format!("Targets: {} total", stats.total_targets))),
             Line::from(Span::raw(format!("Healthy: {}", stats.healthy_targets))),
             Line::from(Span::raw(format!("Backoff: {}", stats.backoff_targets))),
-            Line::from(Span::raw(format!("No recent success: {}", stats.no_success_targets))),
+            Line::from(Span::raw(format!(
+                "No recent success: {}",
+                stats.no_success_targets
+            ))),
             Line::from(Span::raw(format!(
                 "Last sync: {}",
                 stats.last_sync.unwrap_or_else(|| "unknown".to_string())
@@ -403,9 +415,7 @@ impl TuiApp {
             }
         } else {
             lines.push(Line::from(Span::raw("")));
-            lines.push(Line::from(Span::raw(
-                "Press t to show per-target status",
-            )));
+            lines.push(Line::from(Span::raw("Press t to show per-target status")));
         }
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
@@ -415,7 +425,9 @@ impl TuiApp {
 
     fn draw_install(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         let mut lines = vec![
-            Line::from(Span::raw("Context: Install daemon and optionally register PATH")),
+            Line::from(Span::raw(
+                "Context: Install daemon and optionally register PATH",
+            )),
             Line::from(Span::raw("")),
         ];
         if let Ok(status) = crate::install::install_status() {
@@ -430,7 +442,11 @@ impl TuiApp {
             ))));
             lines.push(Line::from(Span::raw(format!(
                 "Action: {}",
-                if status.installed { "Update existing install" } else { "Install new" }
+                if status.installed {
+                    "Update existing install"
+                } else {
+                    "Install new"
+                }
             ))));
             lines.push(Line::from(Span::raw(format!(
                 "Path: {}",
@@ -452,7 +468,11 @@ impl TuiApp {
             lines.push(Line::from(Span::raw(format!(
                 "{} installed: {}",
                 service_label,
-                if status.service_installed { "yes" } else { "no" }
+                if status.service_installed {
+                    "yes"
+                } else {
+                    "no"
+                }
             ))));
             lines.push(Line::from(Span::raw(format!(
                 "{} running: {}",
@@ -603,7 +623,11 @@ impl TuiApp {
             lines.push(Line::from(Span::raw(format!(
                 "{} installed: {}",
                 service_label,
-                if status.service_installed { "yes" } else { "no" }
+                if status.service_installed {
+                    "yes"
+                } else {
+                    "no"
+                }
             ))));
             lines.push(Line::from(Span::raw(format!(
                 "{} running: {}",
@@ -647,9 +671,11 @@ impl TuiApp {
         } else {
             lines.push(Line::from(Span::raw("Status unavailable.")));
         }
-        let widget = Paragraph::new(lines)
-            .wrap(Wrap { trim: false })
-            .block(Block::default().borders(Borders::ALL).title("Installer Status"));
+        let widget = Paragraph::new(lines).wrap(Wrap { trim: false }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Installer Status"),
+        );
         frame.render_widget(widget, area);
     }
 
@@ -689,9 +715,16 @@ impl TuiApp {
             "Context: Audit log entries (newest first)",
         ))));
         list_items.push(ListItem::new(Line::from(Span::raw(""))));
-        list_items.extend(lines.into_iter().map(|line| ListItem::new(Line::from(Span::raw(line)))));
-        let list = List::new(list_items)
-            .block(Block::default().borders(Borders::ALL).title("Audit Log Viewer"));
+        list_items.extend(
+            lines
+                .into_iter()
+                .map(|line| ListItem::new(Line::from(Span::raw(line)))),
+        );
+        let list = List::new(list_items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Audit Log Viewer"),
+        );
         frame.render_widget(list, area);
     }
 
@@ -708,8 +741,11 @@ impl TuiApp {
                 ListItem::new(line)
             })
             .collect();
-        let list = List::new(list_items)
-            .block(Block::default().borders(Borders::ALL).title("Token Management"));
+        let list = List::new(list_items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Token Management"),
+        );
         frame.render_widget(list, area);
     }
 
@@ -726,11 +762,7 @@ impl TuiApp {
             ))));
         } else {
             for entry in entries {
-                let status = if entry.present {
-                    "stored"
-                } else {
-                    "missing"
-                };
+                let status = if entry.present { "stored" } else { "missing" };
                 let validation = entry
                     .validation
                     .as_ref()
@@ -747,8 +779,8 @@ impl TuiApp {
                 )))));
             }
         }
-        let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL).title("Token List"));
+        let list =
+            List::new(items).block(Block::default().borders(Borders::ALL).title("Token List"));
         frame.render_widget(list, area);
     }
 
@@ -767,7 +799,9 @@ impl TuiApp {
             "Required scopes: {}",
             help.scopes.join(", ")
         ))));
-        lines.push(Line::from(Span::raw("Tip: Scope uses space-separated segments.")));
+        lines.push(Line::from(Span::raw(
+            "Tip: Scope uses space-separated segments.",
+        )));
         if let Some(message) = self.validation_message.as_deref() {
             lines.push(Line::from(Span::raw("")));
             lines.push(Line::from(Span::raw(format!("Validation: {message}"))));
@@ -781,9 +815,11 @@ impl TuiApp {
             };
             lines.push(Line::from(Span::raw(label)));
         }
-        let widget = Paragraph::new(lines)
-            .wrap(Wrap { trim: false })
-            .block(Block::default().borders(Borders::ALL).title("Set/Update Token"));
+        let widget = Paragraph::new(lines).wrap(Wrap { trim: false }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Set/Update Token"),
+        );
         frame.render_widget(widget, area);
     }
 
@@ -801,7 +837,9 @@ impl TuiApp {
             "Required scopes: {}",
             help.scopes.join(", ")
         ))));
-        lines.push(Line::from(Span::raw("Tip: Host optional; defaults to provider host.")));
+        lines.push(Line::from(Span::raw(
+            "Tip: Host optional; defaults to provider host.",
+        )));
         if let Some(message) = self.validation_message.as_deref() {
             lines.push(Line::from(Span::raw("")));
             lines.push(Line::from(Span::raw(format!("Validation: {message}"))));
@@ -815,9 +853,11 @@ impl TuiApp {
             };
             lines.push(Line::from(Span::raw(label)));
         }
-        let widget = Paragraph::new(lines)
-            .wrap(Wrap { trim: false })
-            .block(Block::default().borders(Borders::ALL).title("Validate Token"));
+        let widget = Paragraph::new(lines).wrap(Wrap { trim: false }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Validate Token"),
+        );
         frame.render_widget(widget, area);
     }
 
@@ -836,9 +876,11 @@ impl TuiApp {
             Line::from(Span::raw("Press i to install")),
             Line::from(Span::raw("Press u to uninstall")),
         ];
-        let widget = Paragraph::new(lines)
-            .wrap(Wrap { trim: false })
-            .block(Block::default().borders(Borders::ALL).title("Service Installer"));
+        let widget = Paragraph::new(lines).wrap(Wrap { trim: false }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Service Installer"),
+        );
         frame.render_widget(widget, area);
     }
 
@@ -853,7 +895,9 @@ impl TuiApp {
             Line::from(Span::raw("Context: Select the mirror root folder")),
             Line::from(Span::raw(format!("Current root: {current}"))),
             Line::from(Span::raw("")),
-            Line::from(Span::raw("Tip: Use an absolute path (e.g. /path/to/mirrors)")),
+            Line::from(Span::raw(
+                "Tip: Use an absolute path (e.g. /path/to/mirrors)",
+            )),
         ];
         if let Some(message) = self.validation_message.as_deref() {
             lines.push(Line::from(Span::raw("")));
@@ -862,7 +906,8 @@ impl TuiApp {
         lines.push(Line::from(Span::raw("")));
         lines.push(Line::from(Span::raw("New root:")));
         lines.push(Line::from(Span::raw(
-            self.input_fields.first()
+            self.input_fields
+                .first()
                 .map(|f| f.display_value())
                 .unwrap_or_default(),
         )));
@@ -908,9 +953,11 @@ impl TuiApp {
             }
         }
 
-        let widget = Paragraph::new(lines)
-            .wrap(Wrap { trim: false })
-            .block(Block::default().borders(Borders::ALL).title("Repo Overview"));
+        let widget = Paragraph::new(lines).wrap(Wrap { trim: false }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Repo Overview"),
+        );
         frame.render_widget(widget, area);
     }
 
@@ -929,7 +976,10 @@ impl TuiApp {
             ))));
         } else {
             for target in &self.config.targets {
-                let host = target.host.clone().unwrap_or_else(|| "(default)".to_string());
+                let host = target
+                    .host
+                    .clone()
+                    .unwrap_or_else(|| "(default)".to_string());
                 items.push(ListItem::new(Line::from(Span::raw(format!(
                     "{} | {} | {} | {}",
                     target.id,
@@ -939,8 +989,7 @@ impl TuiApp {
                 )))));
             }
         }
-        let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL).title("Targets"));
+        let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Targets"));
         frame.render_widget(list, area);
     }
 
@@ -954,11 +1003,16 @@ impl TuiApp {
             lines.push(Line::from(Span::raw(format!("Tip: {hint}"))));
             lines.push(Line::from(Span::raw("")));
         }
-        if matches!(self.view, View::TargetAdd | View::TokenSet | View::TokenValidate) {
+        if matches!(
+            self.view,
+            View::TargetAdd | View::TokenSet | View::TokenValidate
+        ) {
             lines.push(Line::from(Span::raw(provider_selector_line(
                 self.provider_index,
             ))));
-            lines.push(Line::from(Span::raw("Tip: Use Left/Right to change provider")));
+            lines.push(Line::from(Span::raw(
+                "Tip: Use Left/Right to change provider",
+            )));
             lines.push(Line::from(Span::raw("")));
         }
         if let Some(message) = self.validation_message.as_deref() {
@@ -1081,7 +1135,8 @@ impl TuiApp {
                     match delay_raw.parse::<u64>() {
                         Ok(value) => Some(value),
                         Err(_) => {
-                            self.validation_message = Some("Delayed start must be a number.".to_string());
+                            self.validation_message =
+                                Some("Delayed start must be a number.".to_string());
                             return Ok(false);
                         }
                     }
@@ -1145,7 +1200,10 @@ impl TuiApp {
         match key.code {
             KeyCode::Esc => self.view = View::Main,
             KeyCode::Enter => {
-                let value = self.input_fields.first().map(|f| f.value.trim().to_string());
+                let value = self
+                    .input_fields
+                    .first()
+                    .map(|f| f.value.trim().to_string());
                 if let Some(path) = value {
                     if path.is_empty() {
                         self.validation_message = Some("Root path cannot be empty.".to_string());
@@ -1377,7 +1435,9 @@ impl TuiApp {
     }
 
     fn handle_token_list(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
-        if key.code == KeyCode::Esc { self.view = View::TokenMenu }
+        if key.code == KeyCode::Esc {
+            self.view = View::TokenMenu
+        }
         Ok(false)
     }
 
@@ -1419,10 +1479,12 @@ impl TuiApp {
                     return Ok(false);
                 }
                 auth::set_pat(&account, &token)?;
-                let validation = self.validate_token(provider.clone(), scope.clone(), Some(host.clone()));
+                let validation =
+                    self.validate_token(provider.clone(), scope.clone(), Some(host.clone()));
                 let validation_message = match &validation {
                     Ok(record) => {
-                        self.token_validation.insert(account.clone(), record.clone());
+                        self.token_validation
+                            .insert(account.clone(), record.clone());
                         record.display()
                     }
                     Err(err) => format!("validation failed: {err}"),
@@ -1481,10 +1543,12 @@ impl TuiApp {
                 let host = optional_text(&self.input_fields[1].value);
                 let host = host_or_default(host.as_deref(), spec.as_ref());
                 let account = spec.account_key(&host, &scope)?;
-                let validation = self.validate_token(provider.clone(), scope.clone(), Some(host.clone()));
+                let validation =
+                    self.validate_token(provider.clone(), scope.clone(), Some(host.clone()));
                 match validation {
                     Ok(record) => {
-                        self.token_validation.insert(account.clone(), record.clone());
+                        self.token_validation
+                            .insert(account.clone(), record.clone());
                         let status = record.display();
                         self.validation_message = None;
                         let audit_status = match record.status {
@@ -1670,9 +1734,9 @@ impl TuiApp {
         while let Ok(event) = rx.try_recv() {
             match event {
                 InstallEvent::Progress(progress) => {
-                    let state = self.install_progress.get_or_insert_with(|| {
-                        InstallProgressState::new(progress.total)
-                    });
+                    let state = self
+                        .install_progress
+                        .get_or_insert_with(|| InstallProgressState::new(progress.total));
                     state.update(progress);
                 }
                 InstallEvent::Done(result) => {
@@ -1798,8 +1862,9 @@ impl TuiApp {
                                 self.message_return_view = self.update_return_view;
                                 self.view = View::Message;
                             } else if check.asset.is_none() {
-                                self.message = "Update available but no asset found for this platform."
-                                    .to_string();
+                                self.message =
+                                    "Update available but no asset found for this platform."
+                                        .to_string();
                                 self.message_return_view = self.update_return_view;
                                 self.view = View::Message;
                             } else {
@@ -1822,10 +1887,8 @@ impl TuiApp {
                 UpdateEvent::Done(result) => {
                     match result {
                         Ok(report) => {
-                            self.message = format!(
-                                "{}\n{}\n{}",
-                                report.install, report.service, report.path
-                            );
+                            self.message =
+                                format!("{}\n{}\n{}", report.install, report.service, report.path);
                         }
                         Err(err) => {
                             self.message = format!("Update failed: {err}");
@@ -1868,7 +1931,9 @@ impl TuiApp {
 
     fn repo_status_is_stale(&self) -> bool {
         match self.repo_status_last_refresh {
-            Some(timestamp) => current_epoch_seconds().saturating_sub(timestamp) > REPO_STATUS_TTL_SECS,
+            Some(timestamp) => {
+                current_epoch_seconds().saturating_sub(timestamp) > REPO_STATUS_TTL_SECS
+            }
             None => true,
         }
     }
@@ -1883,7 +1948,8 @@ impl TuiApp {
         self.repo_status_refreshing = true;
         self.repo_overview_message = Some("Refreshing repo status...".to_string());
         thread::spawn(move || {
-            let result = repo_overview::refresh_repo_status(&cache_path).map_err(|err| err.to_string());
+            let result =
+                repo_overview::refresh_repo_status(&cache_path).map_err(|err| err.to_string());
             let _ = tx.send(result);
         });
         Ok(())
@@ -1903,14 +1969,19 @@ impl TuiApp {
     }
 
     fn start_update_apply(&mut self, check: update::UpdateCheck) -> anyhow::Result<()> {
-        self.update_progress = Some(UpdateProgressState { messages: vec!["Starting update...".to_string()] });
+        self.update_progress = Some(UpdateProgressState {
+            messages: vec!["Starting update...".to_string()],
+        });
         self.view = View::UpdateProgress;
         let (tx, rx) = mpsc::channel::<UpdateEvent>();
         self.update_rx = Some(rx);
         thread::spawn(move || {
-            let result = update::apply_update_with_progress(&check, Some(&|message| {
-                let _ = tx.send(UpdateEvent::Progress(message.to_string()));
-            }))
+            let result = update::apply_update_with_progress(
+                &check,
+                Some(&|message| {
+                    let _ = tx.send(UpdateEvent::Progress(message.to_string()));
+                }),
+            )
             .map_err(|err| err.to_string());
             let _ = tx.send(UpdateEvent::Done(result));
         });
@@ -1973,27 +2044,27 @@ impl TuiApp {
         Ok(())
     }
 
-fn handle_text_input(&mut self, key: KeyEvent) {
-    if self.input_fields.is_empty() {
-        return;
+    fn handle_text_input(&mut self, key: KeyEvent) {
+        if self.input_fields.is_empty() {
+            return;
+        }
+        let field = &mut self.input_fields[self.input_index];
+        match key.code {
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                field.value.clear();
+                self.validation_message = None;
+            }
+            KeyCode::Backspace => {
+                field.pop();
+                self.validation_message = None;
+            }
+            KeyCode::Char(ch) => {
+                field.push(ch);
+                self.validation_message = None;
+            }
+            _ => {}
+        }
     }
-    let field = &mut self.input_fields[self.input_index];
-    match key.code {
-        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            field.value.clear();
-            self.validation_message = None;
-        }
-        KeyCode::Backspace => {
-            field.pop();
-            self.validation_message = None;
-        }
-        KeyCode::Char(ch) => {
-            field.push(ch);
-            self.validation_message = None;
-        }
-        _ => {}
-    }
-}
 
     fn audit_log_path(&self) -> std::path::PathBuf {
         let base_dir = self.audit.base_dir();
@@ -2081,7 +2152,9 @@ fn handle_text_input(&mut self, key: KeyEvent) {
                 if missing.is_empty() {
                     TokenValidationStatus::Ok
                 } else {
-                    TokenValidationStatus::MissingScopes(missing.iter().map(|s| s.to_string()).collect())
+                    TokenValidationStatus::MissingScopes(
+                        missing.iter().map(|s| s.to_string()).collect(),
+                    )
                 }
             }
             None => TokenValidationStatus::Unsupported,
@@ -2172,9 +2245,7 @@ fn handle_text_input(&mut self, key: KeyEvent) {
             let action = status
                 .and_then(|s| s.last_action.as_deref())
                 .unwrap_or("unknown");
-            let repo = status
-                .and_then(|s| s.last_repo.as_deref())
-                .unwrap_or("-");
+            let repo = status.and_then(|s| s.last_repo.as_deref()).unwrap_or("-");
             let updated = status
                 .map(|s| epoch_to_label(s.last_updated))
                 .unwrap_or_else(|| "unknown".to_string());
@@ -2383,7 +2454,9 @@ struct UpdateProgressState {
 
 impl UpdateProgressState {
     fn new() -> Self {
-        Self { messages: vec!["Checking for updates...".to_string()] }
+        Self {
+            messages: vec!["Checking for updates...".to_string()],
+        }
     }
 }
 
@@ -2562,7 +2635,10 @@ fn last_sync_error(audit: &AuditLogger, target_id: &str) -> anyhow::Result<Strin
 
 fn validation_timestamp() -> String {
     time::OffsetDateTime::now_utc()
-        .format(&time::format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]").unwrap())
+        .format(
+            &time::format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]")
+                .unwrap(),
+        )
         .unwrap_or_else(|_| "unknown".to_string())
 }
 
@@ -2596,7 +2672,10 @@ mod tests {
     #[test]
     fn split_labels_parses_list() {
         let labels = split_labels("a, b, ,c");
-        assert_eq!(labels, vec!["a".to_string(), "b".to_string(), "c".to_string()]);
+        assert_eq!(
+            labels,
+            vec!["a".to_string(), "b".to_string(), "c".to_string()]
+        );
     }
 
     #[test]
@@ -2706,7 +2785,10 @@ mod tests {
     #[test]
     fn token_validation_display_reports_missing_scopes() {
         let validation = TokenValidation {
-            status: TokenValidationStatus::MissingScopes(vec!["repo".to_string(), "read:org".to_string()]),
+            status: TokenValidationStatus::MissingScopes(vec![
+                "repo".to_string(),
+                "read:org".to_string(),
+            ]),
             at: "2026-02-04 12:00:00".to_string(),
         };
         let message = validation.display();

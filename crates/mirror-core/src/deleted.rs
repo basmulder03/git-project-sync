@@ -32,10 +32,7 @@ pub fn detect_deleted_repos<'a>(
             if current_repo_ids.contains(repo_id) {
                 None
             } else {
-                Some(DeletedRepo {
-                    repo_id,
-                    entry,
-                })
+                Some(DeletedRepo { repo_id, entry })
             }
         })
         .collect()

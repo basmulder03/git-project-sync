@@ -186,6 +186,10 @@ struct TuiApp {
     repo_status_refreshing: bool,
     repo_status_rx: Option<mpsc::Receiver<Result<HashMap<String, RepoLocalStatus>, String>>>,
     repo_overview_message: Option<String>,
+    repo_overview_selected: usize,
+    repo_overview_scroll: usize,
+    repo_overview_collapsed: HashSet<String>,
+    repo_overview_compact: bool,
     sync_running: bool,
     sync_rx: Option<mpsc::Receiver<Result<SyncSummary, String>>>,
     install_guard: Option<crate::install::InstallGuard>,
@@ -197,6 +201,9 @@ struct TuiApp {
     update_prompt: Option<update::UpdateCheck>,
     update_return_view: View,
     message_return_view: View,
+    audit_scroll: usize,
+    audit_search: String,
+    audit_search_active: bool,
 }
 
 impl TuiApp {
@@ -231,6 +238,10 @@ impl TuiApp {
             repo_status_refreshing: false,
             repo_status_rx: None,
             repo_overview_message: None,
+            repo_overview_selected: 0,
+            repo_overview_scroll: 0,
+            repo_overview_collapsed: HashSet::new(),
+            repo_overview_compact: false,
             sync_running: false,
             sync_rx: None,
             install_guard: None,
@@ -242,6 +253,9 @@ impl TuiApp {
             update_prompt: None,
             update_return_view: View::Main,
             message_return_view: View::Main,
+            audit_scroll: 0,
+            audit_search: String::new(),
+            audit_search_active: false,
         };
         if app.view == View::Install {
             app.enter_install_view()?;
@@ -340,7 +354,10 @@ impl TuiApp {
             View::SyncStatus => "Enter/Esc: back".to_string(),
             View::InstallStatus => "Enter/Esc: back".to_string(),
             View::ConfigRoot => "Enter: save | Esc: back".to_string(),
-            View::RepoOverview => "r: refresh | Esc: back".to_string(),
+            View::RepoOverview => {
+                "Up/Down: scroll | PgUp/PgDn | Enter: collapse | c: compact | r: refresh | Esc: back"
+                    .to_string()
+            }
             View::Targets => "a: add | d: remove | Esc: back".to_string(),
             View::TargetAdd | View::TargetRemove | View::TokenSet | View::TokenValidate => {
                 "Tab: next field | Enter: submit | Esc: back".to_string()
@@ -348,7 +365,10 @@ impl TuiApp {
             View::TokenMenu => "Up/Down: navigate | Enter: select | Esc: back".to_string(),
             View::TokenList => "Esc: back".to_string(),
             View::Service => "i: install | u: uninstall | Esc: back".to_string(),
-            View::AuditLog => "f: failures | a: all | Esc: back".to_string(),
+            View::AuditLog => {
+                "Up/Down: scroll | PgUp/PgDn | /: search | f: failures | a: all | Esc: back"
+                    .to_string()
+            }
             View::Message => "Enter: back".to_string(),
             View::InstallProgress => "Installing... please wait".to_string(),
         }
@@ -704,28 +724,66 @@ impl TuiApp {
         frame.render_widget(widget, area);
     }
 
-    fn draw_audit_log(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+    fn draw_audit_log(&mut self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         let log_path = self.audit_log_path();
-        let lines = match read_audit_lines(&log_path, self.audit_filter) {
+        let mut lines = match read_audit_lines(&log_path, self.audit_filter) {
             Ok(lines) => lines,
             Err(err) => vec![format!("Failed to read audit log: {err}")],
         };
-        let mut list_items: Vec<ListItem> = Vec::new();
-        list_items.push(ListItem::new(Line::from(Span::raw(
-            "Context: Audit log entries (newest first)",
-        ))));
-        list_items.push(ListItem::new(Line::from(Span::raw(""))));
-        list_items.extend(
-            lines
-                .into_iter()
-                .map(|line| ListItem::new(Line::from(Span::raw(line)))),
-        );
-        let list = List::new(list_items).block(
+        let query = self.audit_search.trim();
+        if !query.is_empty() {
+            let needle = query.to_lowercase();
+            lines.retain(|line| line.to_lowercase().contains(&needle));
+        }
+
+        let header_lines = vec![
+            Line::from(Span::raw("Context: Audit log entries (newest first)")),
+            Line::from(Span::raw(format!(
+                "Filter: {} | Search: {}{}",
+                match self.audit_filter {
+                    AuditFilter::All => "all",
+                    AuditFilter::Failures => "failures",
+                },
+                if self.audit_search.is_empty() {
+                    "<none>"
+                } else {
+                    &self.audit_search
+                },
+                if self.audit_search_active {
+                    " (editing)"
+                } else {
+                    ""
+                }
+            ))),
+            Line::from(Span::raw("")),
+        ];
+
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(header_lines.len() as u16 + 2),
+                Constraint::Min(0),
+            ])
+            .split(area);
+
+        let header = Paragraph::new(header_lines).block(
             Block::default()
                 .borders(Borders::ALL)
                 .title("Audit Log Viewer"),
         );
-        frame.render_widget(list, area);
+        frame.render_widget(header, layout[0]);
+
+        let body_height = layout[1].height as usize;
+        let max_scroll = lines.len().saturating_sub(body_height);
+        let scroll = self.audit_scroll.min(max_scroll);
+        self.audit_scroll = scroll;
+        let visible_lines = slice_with_scroll(&lines, self.audit_scroll, body_height);
+        let list_items: Vec<ListItem> = visible_lines
+            .into_iter()
+            .map(|line| ListItem::new(Line::from(Span::raw(line))))
+            .collect();
+        let list = List::new(list_items).block(Block::default().borders(Borders::ALL));
+        frame.render_widget(list, layout[1]);
     }
 
     fn draw_token_menu(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
@@ -917,12 +975,7 @@ impl TuiApp {
         frame.render_widget(widget, area);
     }
 
-    fn draw_repo_overview(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
-        let cache_path = default_cache_path().ok();
-        let cache = cache_path
-            .as_ref()
-            .and_then(|path| RepoCache::load(path).ok())
-            .unwrap_or_default();
+    fn draw_repo_overview(&mut self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         let root = self.config.root.as_deref();
         let root_label = root
             .map(|p| p.display().to_string())
@@ -932,33 +985,65 @@ impl TuiApp {
             .map(epoch_to_label)
             .unwrap_or_else(|| "never".to_string());
 
-        let mut lines = vec![
+        let mut header_lines = vec![
             Line::from(Span::raw("Context: Repo overview (cache)")),
             Line::from(Span::raw(format!("Root: {root_label}"))),
             Line::from(Span::raw(format!("Status refresh: {last_refresh}"))),
         ];
         if let Some(message) = self.repo_overview_message.as_deref() {
-            lines.push(Line::from(Span::raw(message)));
+            header_lines.push(Line::from(Span::raw(message)));
         } else if self.repo_status_refreshing {
-            lines.push(Line::from(Span::raw("Refreshing repo status...")));
+            header_lines.push(Line::from(Span::raw("Refreshing repo status...")));
         }
-        lines.push(Line::from(Span::raw("")));
 
-        if cache.repos.is_empty() {
-            lines.push(Line::from(Span::raw("No repos in cache yet.")));
-        } else {
-            let tree = repo_overview::build_repo_tree(cache.repos.iter(), root);
-            for line in repo_overview::render_repo_tree_lines(&tree, &cache, &self.repo_status) {
-                lines.push(Line::from(Span::raw(line)));
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(header_lines.len() as u16 + 2),
+                Constraint::Min(0),
+            ])
+            .split(area);
+
+        let header = Paragraph::new(header_lines)
+            .wrap(Wrap { trim: false })
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Repo Overview"),
+            );
+        frame.render_widget(header, layout[0]);
+
+        let rows = self.current_overview_rows();
+        let visible_rows = self.visible_overview_rows(&rows);
+        let body_height = layout[1].height as usize;
+        let max_scroll = visible_rows.len().saturating_sub(body_height);
+        let scroll = self.repo_overview_scroll.min(max_scroll);
+        let selected = clamp_index(self.repo_overview_selected, visible_rows.len());
+        let scroll = adjust_scroll(selected, scroll, body_height, visible_rows.len());
+        self.repo_overview_selected = selected;
+        self.repo_overview_scroll = scroll;
+        let start = scroll;
+        let end = (start + body_height).min(visible_rows.len());
+        let mut items = Vec::new();
+        let area_width = layout[1].width as usize;
+        let name_width = name_column_width(area_width, self.repo_overview_compact);
+        let header = format_overview_header(name_width, self.repo_overview_compact);
+        items.push(ListItem::new(Line::from(Span::raw(header))));
+        for (idx, row) in visible_rows[start..end].iter().enumerate() {
+            let mut line = Line::from(Span::raw(format_overview_row(
+                row,
+                name_width,
+                self.repo_overview_compact,
+            )));
+            let selected_idx = start + idx;
+            if selected_idx == selected {
+                line = line.style(Style::default().add_modifier(Modifier::BOLD));
             }
+            items.push(ListItem::new(line));
         }
 
-        let widget = Paragraph::new(lines).wrap(Wrap { trim: false }).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Repo Overview"),
-        );
-        frame.render_widget(widget, area);
+        let list = List::new(items).block(Block::default().borders(Borders::ALL));
+        frame.render_widget(list, layout[1]);
     }
 
     fn draw_targets(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
@@ -1098,7 +1183,11 @@ impl TuiApp {
                     self.token_menu_index = 0;
                 }
                 5 => self.view = View::Service,
-                6 => self.view = View::AuditLog,
+                6 => {
+                    self.view = View::AuditLog;
+                    self.audit_scroll = 0;
+                    self.audit_search_active = false;
+                }
                 7 => {
                     if let Err(err) = self.enter_repo_overview() {
                         self.message = format!("Repo overview unavailable: {err}");
@@ -1237,6 +1326,40 @@ impl TuiApp {
             KeyCode::Esc => self.view = View::Main,
             KeyCode::Char('r') => {
                 self.start_repo_status_refresh()?;
+            }
+            KeyCode::Char('c') => {
+                self.repo_overview_compact = !self.repo_overview_compact;
+            }
+            KeyCode::Down => {
+                self.repo_overview_selected = self.repo_overview_selected.saturating_add(1);
+            }
+            KeyCode::Up => {
+                self.repo_overview_selected = self.repo_overview_selected.saturating_sub(1);
+            }
+            KeyCode::PageDown => {
+                self.repo_overview_selected = self.repo_overview_selected.saturating_add(10);
+            }
+            KeyCode::PageUp => {
+                self.repo_overview_selected = self.repo_overview_selected.saturating_sub(10);
+            }
+            KeyCode::Home => {
+                self.repo_overview_selected = 0;
+            }
+            KeyCode::End => {
+                self.repo_overview_selected = usize::MAX;
+            }
+            KeyCode::Enter => {
+                let rows = self.current_overview_rows();
+                let visible = self.visible_overview_rows(&rows);
+                if let Some(row) = visible.get(self.repo_overview_selected)
+                    && !row.is_leaf
+                {
+                    if self.repo_overview_collapsed.contains(&row.id) {
+                        self.repo_overview_collapsed.remove(&row.id);
+                    } else {
+                        self.repo_overview_collapsed.insert(row.id.clone());
+                    }
+                }
             }
             _ => {}
         }
@@ -1620,13 +1743,57 @@ impl TuiApp {
     }
 
     fn handle_audit_log(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
+        if self.audit_search_active {
+            match key.code {
+                KeyCode::Esc => {
+                    self.audit_search.clear();
+                    self.audit_search_active = false;
+                    self.audit_scroll = 0;
+                }
+                KeyCode::Enter => {
+                    self.audit_search_active = false;
+                    self.audit_scroll = 0;
+                }
+                KeyCode::Backspace => {
+                    self.audit_search.pop();
+                }
+                KeyCode::Char(ch) => {
+                    if !ch.is_control() {
+                        self.audit_search.push(ch);
+                    }
+                }
+                _ => {}
+            }
+            return Ok(false);
+        }
+
         match key.code {
             KeyCode::Esc => self.view = View::Main,
             KeyCode::Char('f') => {
                 self.audit_filter = AuditFilter::Failures;
+                self.audit_scroll = 0;
             }
             KeyCode::Char('a') => {
                 self.audit_filter = AuditFilter::All;
+                self.audit_scroll = 0;
+            }
+            KeyCode::Char('/') => {
+                self.audit_search_active = true;
+            }
+            KeyCode::Down => {
+                self.audit_scroll = self.audit_scroll.saturating_add(1);
+            }
+            KeyCode::Up => {
+                self.audit_scroll = self.audit_scroll.saturating_sub(1);
+            }
+            KeyCode::PageDown => {
+                self.audit_scroll = self.audit_scroll.saturating_add(10);
+            }
+            KeyCode::PageUp => {
+                self.audit_scroll = self.audit_scroll.saturating_sub(10);
+            }
+            KeyCode::Home => {
+                self.audit_scroll = 0;
             }
             _ => {}
         }
@@ -1923,6 +2090,8 @@ impl TuiApp {
     fn enter_repo_overview(&mut self) -> anyhow::Result<()> {
         self.view = View::RepoOverview;
         self.repo_overview_message = None;
+        self.repo_overview_selected = 0;
+        self.repo_overview_scroll = 0;
         self.load_repo_status_from_cache();
         if self.repo_status_is_stale() {
             self.start_repo_status_refresh()?;
@@ -1941,6 +2110,60 @@ impl TuiApp {
     fn update_repo_status_cache(&mut self, statuses: HashMap<String, RepoLocalStatus>) {
         self.repo_status_last_refresh = statuses.values().map(|s| s.checked_at).max();
         self.repo_status = statuses;
+    }
+
+    fn current_overview_rows(&self) -> Vec<repo_overview::OverviewRow> {
+        let cache_path = default_cache_path().ok();
+        let cache = cache_path
+            .as_ref()
+            .and_then(|path| RepoCache::load(path).ok())
+            .unwrap_or_default();
+        let root = self.config.root.as_deref();
+        if cache.repos.is_empty() {
+            vec![repo_overview::OverviewRow {
+                id: "empty".to_string(),
+                depth: 0,
+                name: "No repos in cache yet.".to_string(),
+                branch: None,
+                pulled: None,
+                ahead_behind: None,
+                touched: None,
+                is_leaf: true,
+            }]
+        } else {
+            let tree = repo_overview::build_repo_tree(cache.repos.iter(), root);
+            repo_overview::render_repo_tree_rows(&tree, &cache, &self.repo_status)
+        }
+    }
+
+    fn visible_overview_rows(
+        &self,
+        rows: &[repo_overview::OverviewRow],
+    ) -> Vec<repo_overview::OverviewRow> {
+        let mut visible = Vec::new();
+        let mut stack: Vec<(usize, bool)> = Vec::new();
+        for row in rows {
+            while let Some((depth, _)) = stack.last() {
+                if row.depth <= *depth {
+                    stack.pop();
+                } else {
+                    break;
+                }
+            }
+            let hidden = stack.iter().any(|(_, collapsed)| *collapsed);
+            if !hidden {
+                visible.push(row.clone());
+            }
+            if !row.is_leaf {
+                let collapsed = self.repo_overview_collapsed.contains(&row.id);
+                if !hidden {
+                    stack.push((row.depth, collapsed));
+                } else if collapsed {
+                    stack.push((row.depth, true));
+                }
+            }
+        }
+        visible
     }
 
     fn repo_status_is_stale(&self) -> bool {
@@ -2411,6 +2634,112 @@ fn provider_scope_hint_with_host(provider: ProviderKind) -> &'static str {
     }
 }
 
+fn slice_with_scroll(lines: &[String], scroll: usize, height: usize) -> Vec<String> {
+    if lines.is_empty() || height == 0 {
+        return Vec::new();
+    }
+    let start = scroll.min(lines.len());
+    let end = (start + height).min(lines.len());
+    lines[start..end].to_vec()
+}
+
+fn clamp_index(index: usize, len: usize) -> usize {
+    if len == 0 { 0 } else { index.min(len - 1) }
+}
+
+fn adjust_scroll(selected: usize, scroll: usize, height: usize, len: usize) -> usize {
+    if len == 0 || height == 0 {
+        return 0;
+    }
+    if selected < scroll {
+        return selected;
+    }
+    let last_visible = scroll.saturating_add(height).saturating_sub(1);
+    if selected > last_visible {
+        let new_scroll = selected.saturating_sub(height - 1);
+        return new_scroll.min(len.saturating_sub(1));
+    }
+    scroll
+}
+
+fn name_column_width(total_width: usize, compact: bool) -> usize {
+    let fixed = if compact {
+        2 + 12 + 2 + 10 // separators + columns
+    } else {
+        2 + 12 + 2 + 16 + 2 + 10 + 2 + 16
+    };
+    let available = total_width.saturating_sub(fixed);
+    available.max(20)
+}
+
+fn format_overview_header(name_width: usize, compact: bool) -> String {
+    if compact {
+        format!(
+            "{:<name_width$} | {:<12} | {:<10}",
+            "name",
+            "branch",
+            "ahead/behind",
+            name_width = name_width
+        )
+    } else {
+        format!(
+            "{:<name_width$} | {:<12} | {:<16} | {:<10} | {:<16}",
+            "name",
+            "branch",
+            "pulled",
+            "ahead/behind",
+            "touched",
+            name_width = name_width
+        )
+    }
+}
+
+fn format_overview_row(
+    row: &repo_overview::OverviewRow,
+    name_width: usize,
+    compact: bool,
+) -> String {
+    let name = truncate_with_ellipsis(&row.name, name_width);
+    let branch = row.branch.as_deref().unwrap_or("-");
+    let ahead = row.ahead_behind.as_deref().unwrap_or("-");
+    if compact {
+        format!(
+            "{:<name_width$} | {:<12} | {:<10}",
+            name,
+            branch,
+            ahead,
+            name_width = name_width
+        )
+    } else {
+        let pulled = row.pulled.as_deref().unwrap_or("-");
+        let touched = row.touched.as_deref().unwrap_or("-");
+        format!(
+            "{:<name_width$} | {:<12} | {:<16} | {:<10} | {:<16}",
+            name,
+            branch,
+            pulled,
+            ahead,
+            touched,
+            name_width = name_width
+        )
+    }
+}
+
+fn truncate_with_ellipsis(value: &str, max: usize) -> String {
+    if max == 0 {
+        return String::new();
+    }
+    if value.len() <= max {
+        return value.to_string();
+    }
+    if max <= 1 {
+        return "…".to_string();
+    }
+    let mut truncated = value.chars().take(max - 1).collect::<String>();
+    truncated.push('…');
+    truncated
+}
+
 fn optional_text(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -2726,6 +3055,13 @@ mod tests {
             update_prompt: None,
             update_return_view: View::Main,
             message_return_view: View::Main,
+            audit_scroll: 0,
+            audit_search: String::new(),
+            audit_search_active: false,
+            repo_overview_selected: 0,
+            repo_overview_scroll: 0,
+            repo_overview_collapsed: HashSet::new(),
+            repo_overview_compact: false,
         };
         let key = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
         app.handle_main(key).unwrap();
@@ -2790,6 +3126,13 @@ mod tests {
             update_prompt: None,
             update_return_view: View::Main,
             message_return_view: View::Main,
+            audit_scroll: 0,
+            audit_search: String::new(),
+            audit_search_active: false,
+            repo_overview_selected: 0,
+            repo_overview_scroll: 0,
+            repo_overview_collapsed: HashSet::new(),
+            repo_overview_compact: false,
         };
         let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
         app.handle_token_menu(key).unwrap();
@@ -2844,6 +3187,13 @@ mod tests {
             update_prompt: None,
             update_return_view: View::Main,
             message_return_view: View::Main,
+            audit_scroll: 0,
+            audit_search: String::new(),
+            audit_search_active: false,
+            repo_overview_selected: 0,
+            repo_overview_scroll: 0,
+            repo_overview_collapsed: HashSet::new(),
+            repo_overview_compact: false,
         };
         assert!(app.form_hint().is_some());
     }

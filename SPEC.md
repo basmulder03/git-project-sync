@@ -54,3 +54,4 @@
 - `tui --dashboard` to open the status dashboard directly
 - `install` to run guided installation (service + optional PATH)
 - Installer copies the binary to the OS default per-user install location and re-runs service registration from that path.
+- Auto-update: daemon checks for updates on startup and daily; CLI checks only if daemon has not run yet. Network failures are logged and non-fatal. Updates prompt for elevation when required.

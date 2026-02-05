@@ -74,6 +74,8 @@ mirror-cli token set --provider github --scope org-or-user --token <token>
 mirror-cli token set --provider gitlab --scope group --token <token>
 ```
 
+Tokens are validated on set; invalid or expired PATs are rejected.
+
 
 Run a sync:
 
@@ -113,6 +115,12 @@ Auto-update behavior:
 - CLI runs check for updates only if the daemon has not performed a check yet.
 - Network failures are logged and do not fail the daemon.
 - If updates require elevated permissions, the CLI prompts to re-run with admin/sudo.
+
+PAT validation behavior:
+
+- Tokens are validated on set; invalid or expired PATs are rejected.
+- The daemon checks PAT validity daily.
+- CLI checks PAT validity only if the daemon has not performed a check yet.
 
 ## Dashboard
 

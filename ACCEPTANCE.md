@@ -39,3 +39,6 @@
 32) Run the CLI before any daemon check and confirm it performs a one-time update check; subsequent CLI runs should skip if daemon has checked.
 33) Simulate no network and confirm update checks are audited as skipped and do not fail the daemon.
 34) Trigger an update with insufficient permissions and confirm the CLI prompts to re-run with elevated permissions.
+35) Set an invalid PAT and confirm `token set` rejects it and the token is not stored.
+36) Run the daemon and confirm daily PAT validity checks are audited; expired tokens print a warning.
+37) Run the CLI before any daemon token check and confirm it performs a one-time PAT validity check; subsequent CLI runs should skip if the daemon has checked.

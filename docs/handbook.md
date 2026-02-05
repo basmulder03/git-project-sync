@@ -22,7 +22,12 @@ Run the binary:
 
 ## Releases
 
-Every push to `main` opens a GitVersion-based version bump PR. When that PR is merged, a GitHub Release is created with prebuilt binaries.
+Push a release-ready version to `crates/mirror-cli/Cargo.toml` on `main` to trigger the GitHub Release workflow and prebuilt binaries.
+
+**Release Checklist**
+1. Update versions in `crates/mirror-cli/Cargo.toml`, `crates/mirror-core/Cargo.toml`, and `crates/mirror-providers/Cargo.toml`.
+2. Run `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all`.
+3. Merge to `main` and let the Release workflow create the tag and binaries.
 
 ### PATH behavior
 

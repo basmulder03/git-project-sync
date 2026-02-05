@@ -104,15 +104,9 @@ Override the GitHub release repo:
 GIT_PROJECT_SYNC_UPDATE_REPO=owner/repo mirror-cli update --check
 ```
 
-## Tray + Dashboard
+## Dashboard
 
-Run the system tray UI:
-
-```bash
-mirror-cli tray
-```
-
-The tray menu can open a dashboard TUI or trigger a sync. You can also launch the dashboard directly:
+Launch the dashboard TUI:
 
 ```bash
 mirror-cli tui --dashboard
@@ -121,12 +115,6 @@ mirror-cli tui --dashboard
 In the TUI:
 - Dashboard view: press `s` for Sync Status
 - Installer view: press `s` for Installer Status
-
-Note: the tray UI requires building with the `tray` feature:
-
-```bash
-cargo build --release --features tray
-```
 
 ## Scope Shapes
 

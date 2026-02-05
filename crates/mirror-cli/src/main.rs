@@ -31,7 +31,6 @@ use tracing::warn;
 use tracing_subscriber::EnvFilter;
 mod install;
 mod repo_overview;
-mod tray;
 mod tui;
 mod update;
 
@@ -66,8 +65,6 @@ enum Commands {
     Cache(CacheArgs),
     #[command(about = "Launch terminal UI")]
     Tui(TuiArgs),
-    #[command(about = "Run system tray UI")]
-    Tray,
     #[command(about = "Install daemon and optionally register PATH")]
     Install(InstallArgs),
     #[command(about = "Manage scheduled task (Windows only)")]
@@ -483,7 +480,6 @@ fn main() -> anyhow::Result<()> {
             };
             tui::run_tui(&audit, start_view)
         }
-        Commands::Tray => tray::run_tray(&audit),
         Commands::Install(args) => handle_install(args, &audit),
         Commands::Task(args) => handle_task(args, &audit),
         Commands::Update(args) => handle_update(args, &audit),

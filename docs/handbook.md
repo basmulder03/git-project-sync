@@ -233,19 +233,7 @@ GIT_PROJECT_SYNC_UPDATE_REPO=owner/repo mirror-cli update --check
 
 In the TUI, use the "Update" action from the main menu or press `u` in the installer view.
 
-## Tray + Dashboard
-
-System tray UI:
-
-```bash
-mirror-cli tray
-```
-
-Note: build with tray feature to enable the tray UI:
-
-```bash
-cargo build --release --features tray
-```
+## Dashboard
 
 Dashboard TUI:
 

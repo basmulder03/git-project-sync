@@ -55,7 +55,6 @@
   - OAuth gating by provider/host (default allowlist; override via `GIT_PROJECT_SYNC_OAUTH_ALLOW`)
   - Tokens stored in keyring; OAuth refresh handled automatically when supported
 - `oauth revoke` to remove stored OAuth tokens for a provider scope
-- `tray` to run the system tray UI (quick actions + dashboard)
 - `tui --dashboard` to open the status dashboard directly
 - `install` to run guided installation (service + optional PATH)
 - Installer copies the binary to the OS default per-user install location and re-runs service registration from that path.

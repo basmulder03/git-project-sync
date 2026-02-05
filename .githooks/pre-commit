@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -n "${SKIP_PRECOMMIT:-}" ]]; then
+  echo "SKIP_PRECOMMIT set; skipping pre-commit checks."
+  exit 0
+fi
+
+echo "Running pre-commit checks..."
+echo "  - cargo fmt --check"
+cargo fmt --check
+
+echo "  - cargo clippy --all-targets --all-features -- -D warnings"
+cargo clippy --all-targets --all-features -- -D warnings
+
+echo "  - cargo test --all"
+cargo test --all
+
+echo "Pre-commit checks passed."

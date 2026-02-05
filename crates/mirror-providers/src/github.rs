@@ -172,7 +172,8 @@ impl RepoProvider for GitHubProvider {
                 saw_authenticated = true;
             }
             for repo in payload {
-                if scope_kind == ScopeKind::AuthenticatedUser && !Self::owner_matches(scope, &repo) {
+                if scope_kind == ScopeKind::AuthenticatedUser && !Self::owner_matches(scope, &repo)
+                {
                     continue;
                 }
                 repos.push(RemoteRepo {

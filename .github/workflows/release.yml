@@ -3,8 +3,6 @@ name: Release
 on:
   push:
     branches: [main]
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -79,9 +77,6 @@ jobs:
     name: Build Artifacts
     needs: [version, release]
     if: needs.version.outputs.should_release == 'true'
-    name: Build Artifacts
-    needs: [version, release]
-    if: needs.version.outputs.should_release == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -119,6 +114,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.asset_name }}
-          tag_name: ${{ needs.version.outputs.tag }}
           tag_name: ${{ needs.version.outputs.tag }}
           fail_on_unmatched_files: true

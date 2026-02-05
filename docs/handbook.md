@@ -20,6 +20,10 @@ Run the binary:
 ./target/release/mirror-cli --help
 ```
 
+## Releases
+
+Every push to `main` opens a GitVersion-based version bump PR. When that PR is merged, a GitHub Release is created with prebuilt binaries.
+
 ### PATH behavior
 
 PATH updates are **opt-in** during `mirror-cli install`. If you skip it, you can add it later:

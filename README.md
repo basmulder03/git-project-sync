@@ -26,6 +26,10 @@ cargo build --release
 
 The binary will be at `target/release/mirror-cli`.
 
+## Releases
+
+Every push to `main` opens a GitVersion-based version bump PR. When that PR is merged, a GitHub Release is created with prebuilt binaries.
+
 ## Quick Start
 
 Initialize config with a mirror root:

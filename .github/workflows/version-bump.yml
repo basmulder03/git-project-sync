@@ -1,0 +1,71 @@
+name: Version Bump PR
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Skip if merge commit is a release bump
+        id: skip
+        run: |
+          SUBJECT=$(git log -1 --pretty=%s)
+          if [[ "$SUBJECT" == chore\(release\):\ v* ]]; then
+            echo "Release bump commit detected; skipping version bump PR."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Setup GitVersion
+        uses: gittools/actions/gitversion/setup@v0
+        with:
+          versionSpec: '5.x'
+      - name: Execute GitVersion
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v0
+      - name: Determine target version
+        id: version
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.gitversion.outputs.semVer }}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          TAG="v$VERSION"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists. Skipping."
+            echo "should_bump=false" >> $GITHUB_OUTPUT
+          else
+            echo "should_bump=true" >> $GITHUB_OUTPUT
+          fi
+      - name: Update Cargo.toml versions
+        if: steps.skip.outputs.skip != 'true' && steps.version.outputs.should_bump == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          for file in crates/mirror-core/Cargo.toml crates/mirror-providers/Cargo.toml crates/mirror-cli/Cargo.toml; do
+            sed -i -E "s/^version = \".*\"/version = \"${VERSION}\"/" "$file"
+          done
+      - name: Refresh Cargo.lock
+        if: steps.skip.outputs.skip != 'true' && steps.version.outputs.should_bump == 'true'
+        run: cargo generate-lockfile
+      - name: Create version bump PR
+        if: steps.skip.outputs.skip != 'true' && steps.version.outputs.should_bump == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: release/v${{ steps.version.outputs.version }}
+          title: "chore(release): v${{ steps.version.outputs.version }}"
+          commit-message: "chore(release): v${{ steps.version.outputs.version }}"
+          body: |
+            Automated version bump to v${{ steps.version.outputs.version }}.
+            
+            This PR updates crate versions and Cargo.lock to keep releases in sync.
+          labels: release,automation

@@ -1479,6 +1479,20 @@ impl TuiApp {
                     return Ok(false);
                 }
                 auth::set_pat(&account, &token)?;
+                let runtime_target = mirror_core::model::ProviderTarget {
+                    provider: provider.clone(),
+                    scope: scope.clone(),
+                    host: Some(host.clone()),
+                };
+                let validity = crate::token_check::check_token_validity(&runtime_target);
+                if validity.status != crate::token_check::TokenValidity::Ok {
+                    let _ = auth::delete_pat(&account);
+                    let message = validity.message(&runtime_target);
+                    self.validation_message = Some(message.clone());
+                    self.message = message;
+                    self.view = View::Message;
+                    return Ok(false);
+                }
                 let validation =
                     self.validate_token(provider.clone(), scope.clone(), Some(host.clone()));
                 let validation_message = match &validation {

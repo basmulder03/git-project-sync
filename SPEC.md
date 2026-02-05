@@ -55,3 +55,4 @@
 - `install` to run guided installation (service + optional PATH)
 - Installer copies the binary to the OS default per-user install location and re-runs service registration from that path.
 - Auto-update: daemon checks for updates on startup and daily; CLI checks only if daemon has not run yet. Network failures are logged and non-fatal. Updates prompt for elevation when required.
+- PAT validation: tokens are validated on set; daemon performs daily validity checks and logs/prints when tokens are invalid or expired. CLI checks only if the daemon has not yet run.

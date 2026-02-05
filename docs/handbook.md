@@ -89,27 +89,6 @@ Validate scopes (when supported):
 mirror-cli token validate --provider github --scope org-or-user
 ```
 
-### OAuth Device Flow
-
-Device flow is supported for GitHub and Azure DevOps.
-
-```bash
-mirror-cli oauth device --provider github --scope org-or-user --client-id <id>
-mirror-cli oauth device --provider azure-devops --scope org project --client-id <id> --tenant <tenant>
-```
-
-OAuth is gated by provider and host. You can override the allowlist:
-
-```
-GIT_PROJECT_SYNC_OAUTH_ALLOW=github=github.com;azure-devops=dev.azure.com,visualstudio.com
-```
-
-Revoke OAuth tokens:
-
-```bash
-mirror-cli oauth revoke --provider github --scope org-or-user
-```
-
 ## Sync Behavior
 
 For each configured target, the engine:
@@ -273,9 +252,6 @@ Common issues:
 - Dirty working tree: repo is skipped by design.
 - Diverged default branch: repo is skipped by design.
 - Missing origin: origin URL is restored automatically.
-- OAuth not enabled: add host to `GIT_PROJECT_SYNC_OAUTH_ALLOW`.
-- Device code expired: re-run `oauth device` and complete authorization sooner.
-- OAuth refresh failed: revoke token and re-run device flow.
 - PATH not updated: rerun `mirror-cli install --path add` or update PATH manually.
 
 ## Safety Guarantees

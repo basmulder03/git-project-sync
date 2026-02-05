@@ -44,12 +44,6 @@ This document captures key architectural decisions and the rationale behind them
 
 **Rationale:** Reduces API calls and speeds up frequent syncs.
 
-## OAuth device flow (limited)
-
-**Decision:** Support OAuth device flow for GitHub and Azure DevOps; keep PATs as fallback.
-
-**Rationale:** Device flow improves UX but availability varies; PATs remain universal.
-
 ## PATH modification is opt-in
 
 **Decision:** The installer only modifies PATH when explicitly requested.

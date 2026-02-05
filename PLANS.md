@@ -88,7 +88,6 @@
 ## Milestone 39 — High-Severity Fixes (in progress)
 
 - [x] Support GitHub user-scope targets (fallback from org endpoint)
-- [x] Implement OAuth revocation endpoint calls
 - [x] Handle repo rename path moves safely
 - [x] Harden repo name sanitization for Windows
 - [x] Allow archive moves across devices
@@ -103,20 +102,6 @@
 
 - [x] Use stable lock file location under data_local
 - [x] Avoid TUI target add audit relying on list tail
-
-## Milestone 33 — OAuth GA Hardening (completed)
-
-- [x] Add provider capability gating (feature flags by provider + host)
-- [x] Implement robust token refresh + revocation handling across supported providers
-- [x] Add audit logging for OAuth events (device start, approval, token refresh, revoke)
-- [x] Add tests for refresh/revoke failure handling and audit entries
-
-## Milestone 34 — OAuth GA UX + Docs (completed)
-
-- [x] Update CLI/TUI copy for OAuth GA (warnings, fallbacks, retries, timeouts)
-- [x] Add troubleshooting docs for OAuth flows (common errors + recovery steps)
-- [x] Add acceptance criteria updates for OAuth GA
-- [x] Add end-to-end manual test checklist for OAuth login flows
 
 ## Milestone 35 — TUI Main-Flow Guided UX (completed)
 

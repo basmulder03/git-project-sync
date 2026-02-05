@@ -124,19 +124,6 @@ Archived on 2026-02-04. This file contains completed milestones moved out of `PL
 - [x] Add validation checks to confirm required scopes are present (where API allows)
 - [x] Add tests for scope guidance and validation logic (mocked)
 
-## Milestone 30 — OAuth / Device Flow Exploration (completed)
-
-- [x] Research provider-supported OAuth/device flows as PAT alternatives
-- [x] Prototype one provider flow (feature-flagged)
-- [x] Document security implications and fallback to PATs
-
-## Milestone 31 — AzDO OAuth Flow Completion (completed)
-
-- [x] Extend AzDO provider with OAuth device-code flow endpoints and token exchange helpers
-- [x] Add CLI command for AzDO OAuth login with clear scope/permission prompts
-- [x] Persist AzDO OAuth tokens in keyring; add refresh/expiry handling
-- [x] Add tests for device flow happy path and expiry/refresh behavior (mocked)
-
 ## Milestone 32 — PAT Management Screens (completed)
 
 - [x] Add TUI screens for PAT listing (per provider/host/scope) with last-verified status

@@ -25,18 +25,13 @@
 18) Run `cache prune` and confirm it removes cache entries for targets no longer in config.
 19) Run `token guide --provider <provider> --scope <scope>` and verify URL + scopes are printed.
 20) Run `token validate --provider <provider> --scope <scope>` and verify missing scopes are reported or validation is skipped when unsupported.
-21) Run `oauth device --provider github --scope <scope> --client-id <id>` and verify device flow prompts are displayed; store token on success.
-22) Run `oauth device --provider azure-devops --scope <org> <project> --client-id <id> --tenant <tenant>` and verify device flow prompts are displayed; store OAuth token on success.
-23) Run `oauth revoke --provider <provider> --scope <scope>` and verify token is removed from keyring and audit entry is logged.
-24) Set `GIT_PROJECT_SYNC_OAUTH_ALLOW=github=github.com;azure-devops=dev.azure.com` and verify OAuth gating allows only listed hosts.
-25) Trigger an OAuth error (expired code or access denied) and confirm troubleshooting guidance in README/SPEC aligns with the CLI error.
-26) Open the TUI: verify Config and Token screens show guidance text and validation feedback when submitting empty/invalid values.
-28) Run `install` and confirm the daemon service/task is installed; verify delayed start when `--delayed-start` is provided.
-29) Run `install --tui` and confirm the installer screen runs the same flow.
-30) Run `install --path add` and confirm PATH registration message is shown.
-31) Run `mirror-cli` with no args: if not installed, installer opens; if installed, help is shown.
-32) Re-run `install` with a newer binary and confirm it replaces the existing install in the OS default location and restarts the service using that path.
-33) Run `install --status` and confirm it prints install path, service/task state, and PATH status.
-34) Run `sync --status` and confirm live progress output and final summary.
-35) In the TUI dashboard, press `s` to open Sync Status and confirm current action/repo/counts are shown.
-36) Run `sync` and confirm per-repo audit entries are created (e.g., `sync.repo` or `daemon.sync.repo`).
+21) Open the TUI: verify Config and Token screens show guidance text and validation feedback when submitting empty/invalid values.
+22) Run `install` and confirm the daemon service/task is installed; verify delayed start when `--delayed-start` is provided.
+23) Run `install --tui` and confirm the installer screen runs the same flow.
+24) Run `install --path add` and confirm PATH registration message is shown.
+25) Run `mirror-cli` with no args: if not installed, installer opens; if installed, help is shown.
+26) Re-run `install` with a newer binary and confirm it replaces the existing install in the OS default location and restarts the service using that path.
+27) Run `install --status` and confirm it prints install path, service/task state, and PATH status.
+28) Run `sync --status` and confirm live progress output and final summary.
+29) In the TUI dashboard, press `s` to open Sync Status and confirm current action/repo/counts are shown.
+30) Run `sync` and confirm per-repo audit entries are created (e.g., `sync.repo` or `daemon.sync.repo`).

@@ -28,12 +28,19 @@ The binary will be at `target/release/mirror-cli`.
 
 ## Releases
 
-Push a release-ready version to `crates/mirror-cli/Cargo.toml` on `main` to trigger the GitHub Release workflow and prebuilt binaries.
+Releases are created automatically when a PR is merged into `main`. The merged branch name determines the semver bump:
+
+- `release/major/*` → major bump
+- `release/minor/*` → minor bump
+- `release/patch/*` → patch bump
+
+The workflow computes the next version from the latest `vX.Y.Z` tag, updates `crates/mirror-cli/Cargo.toml`, `crates/mirror-core/Cargo.toml`, and `crates/mirror-providers/Cargo.toml`, commits the bump, creates the tag, and publishes release binaries for Windows, macOS, and Linux.
+You can also trigger a manual release via `workflow_dispatch` and choose the bump type.
 
 **Release Checklist**
-1. Update versions in `crates/mirror-cli/Cargo.toml`, `crates/mirror-core/Cargo.toml`, and `crates/mirror-providers/Cargo.toml`.
+1. Create a branch named `release/{major|minor|patch}/...` with your changes.
 2. Run `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all`.
-3. Merge to `main` and let the Release workflow create the tag and binaries.
+3. Open and merge a PR to `main`; the Release workflow will bump the version, tag, and publish binaries.
 
 ## Quick Start
 

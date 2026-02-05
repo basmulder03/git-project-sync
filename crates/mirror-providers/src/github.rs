@@ -1,16 +1,16 @@
-use crate::auth;
 use crate::RepoProvider;
+use crate::auth;
+use crate::http::{send_with_retry, send_with_retry_allow_statuses};
 use crate::spec::{GitHubSpec, host_or_default};
 use anyhow::Context;
 use mirror_core::model::{ProviderKind, ProviderScope, ProviderTarget, RemoteRepo, RepoAuth};
 use mirror_core::provider::ProviderSpec;
+use reqwest::StatusCode;
 use reqwest::blocking::Client;
 use reqwest::header::HeaderMap;
-use reqwest::StatusCode;
 use serde::Deserialize;
-use tracing::info;
-use crate::http::{send_with_retry, send_with_retry_allow_statuses};
 use serde_json::json;
+use tracing::info;
 
 pub struct GitHubProvider {
     client: Client,
@@ -77,9 +77,10 @@ impl GitHubProvider {
                 let key = iter.next().unwrap_or("");
                 let value = iter.next().unwrap_or("");
                 if key == "page"
-                    && let Ok(page) = value.parse::<u32>() {
-                        return Some(page);
-                    }
+                    && let Ok(page) = value.parse::<u32>()
+                {
+                    return Some(page);
+                }
             }
         }
         None
@@ -104,7 +105,7 @@ impl GitHubProvider {
             || builder.try_clone().expect("clone request"),
             &[StatusCode::NOT_FOUND],
         )
-            .context("call GitHub list repos")?;
+        .context("call GitHub list repos")?;
         let status = response.status();
         if status == StatusCode::NOT_FOUND {
             return Ok((Vec::new(), None, status));
@@ -171,10 +172,9 @@ impl RepoProvider for GitHubProvider {
                 saw_authenticated = true;
             }
             for repo in payload {
-                if scope_kind == ScopeKind::AuthenticatedUser {
-                    if !Self::owner_matches(scope, &repo) {
-                        continue;
-                    }
+                if scope_kind == ScopeKind::AuthenticatedUser && !Self::owner_matches(scope, &repo)
+                {
+                    continue;
                 }
                 repos.push(RemoteRepo {
                     id: repo.id.to_string(),
@@ -244,8 +244,13 @@ impl RepoProvider for GitHubProvider {
         let (payload, _next, status) =
             self.fetch_repos_page(&host, scope, token.as_str(), ScopeKind::Org, 1)?;
         if status == StatusCode::NOT_FOUND {
-            let (payload, _next, status) =
-                self.fetch_repos_page(&host, scope, token.as_str(), ScopeKind::AuthenticatedUser, 1)?;
+            let (payload, _next, status) = self.fetch_repos_page(
+                &host,
+                scope,
+                token.as_str(),
+                ScopeKind::AuthenticatedUser,
+                1,
+            )?;
             if status == StatusCode::NOT_FOUND {
                 let (_payload, _next, status) =
                     self.fetch_repos_page(&host, scope, token.as_str(), ScopeKind::User, 1)?;
@@ -310,7 +315,7 @@ impl RepoProvider for GitHubProvider {
             || builder.try_clone().expect("clone request"),
             &[StatusCode::NOT_FOUND],
         )
-            .context("call GitHub webhook register")?;
+        .context("call GitHub webhook register")?;
         if response.status() == StatusCode::NOT_FOUND {
             anyhow::bail!("GitHub org not found or webhooks unsupported for user scopes");
         }
@@ -342,9 +347,10 @@ impl RepoProvider for GitHubProvider {
             .error_for_status()
             .context("GitHub token scopes status")?;
         if let Some(header) = response.headers().get("x-oauth-scopes")
-            && let Ok(value) = header.to_str() {
-                return Ok(Some(parse_scopes_header(value)));
-            }
+            && let Ok(value) = header.to_str()
+        {
+            return Ok(Some(parse_scopes_header(value)));
+        }
         Ok(None)
     }
 }

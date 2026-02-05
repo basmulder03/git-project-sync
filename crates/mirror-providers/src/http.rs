@@ -1,7 +1,7 @@
 use anyhow::{Context, bail};
+use reqwest::StatusCode;
 use reqwest::blocking::{RequestBuilder, Response};
 use reqwest::header::HeaderMap;
-use reqwest::StatusCode;
 use std::thread::sleep;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -16,17 +16,16 @@ where
         if status.is_success() {
             return Ok(response);
         }
-        if is_retryable(status)
-            && attempt < max_attempts {
-                let delay = retry_delay_from_headers(response.headers());
-                let _ = response.bytes();
-                if let Some(delay) = delay {
-                    sleep(delay);
-                    continue;
-                }
-                sleep(Duration::from_secs(1));
+        if is_retryable(status) && attempt < max_attempts {
+            let delay = retry_delay_from_headers(response.headers());
+            let _ = response.bytes();
+            if let Some(delay) = delay {
+                sleep(delay);
                 continue;
             }
+            sleep(Duration::from_secs(1));
+            continue;
+        }
         return Err(response.error_for_status().unwrap_err().into());
     }
     bail!("request failed after retries");
@@ -46,24 +45,26 @@ where
         if status.is_success() || allowed.contains(&status) {
             return Ok(response);
         }
-        if is_retryable(status)
-            && attempt < max_attempts {
-                let delay = retry_delay_from_headers(response.headers());
-                let _ = response.bytes();
-                if let Some(delay) = delay {
-                    sleep(delay);
-                    continue;
-                }
-                sleep(Duration::from_secs(1));
+        if is_retryable(status) && attempt < max_attempts {
+            let delay = retry_delay_from_headers(response.headers());
+            let _ = response.bytes();
+            if let Some(delay) = delay {
+                sleep(delay);
                 continue;
             }
+            sleep(Duration::from_secs(1));
+            continue;
+        }
         return Err(response.error_for_status().unwrap_err().into());
     }
     bail!("request failed after retries");
 }
 
 fn is_retryable(status: StatusCode) -> bool {
-    matches!(status, StatusCode::TOO_MANY_REQUESTS | StatusCode::SERVICE_UNAVAILABLE)
+    matches!(
+        status,
+        StatusCode::TOO_MANY_REQUESTS | StatusCode::SERVICE_UNAVAILABLE
+    )
 }
 
 fn retry_delay_from_headers(headers: &HeaderMap) -> Option<Duration> {

@@ -124,11 +124,10 @@
 - [x] Apply minimal layout polish (headers, spacing, concise summaries)
 - [x] Add tests for guidance rendering and validation text
 
-## Milestone 36 — Tray UI + Dashboard (completed)
+## Milestone 36 — Dashboard (completed)
 
-- [x] Add system tray command with quick actions and dashboard launch
 - [x] Add TUI dashboard view with core stats and per-target toggle
-- [x] Update docs and acceptance checks for tray/dashboard
+- [x] Update docs and acceptance checks for dashboard
 
 ## Milestone 37 — Installer Flow + PATH Registration (completed)
 

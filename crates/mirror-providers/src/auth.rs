@@ -63,9 +63,10 @@ pub fn get_token(account: &str) -> anyhow::Result<String> {
     let entry = Entry::new(SERVICE, account).context("open keyring entry")?;
     let value = entry.get_password().context("read token from keyring")?;
     if let Ok(stored) = serde_json::from_str::<StoredToken>(&value)
-        && stored.kind == "oauth" {
-            return ensure_oauth_token(account, &entry, stored);
-        }
+        && stored.kind == "oauth"
+    {
+        return ensure_oauth_token(account, &entry, stored);
+    }
     Ok(value)
 }
 
@@ -113,7 +114,12 @@ pub fn revoke_oauth_token(account: &str) -> anyhow::Result<()> {
             .context("request oauth revocation")?;
         if !response.status().is_success() {
             let status = response.status();
-            audit_event("oauth.revoke", AuditStatus::Failed, account, Some(&status.to_string()));
+            audit_event(
+                "oauth.revoke",
+                AuditStatus::Failed,
+                account,
+                Some(&status.to_string()),
+            );
             anyhow::bail!("oauth revoke failed with status {status}");
         }
     }
@@ -134,10 +140,9 @@ fn ensure_oauth_token(
     }
 
     audit_event("oauth.refresh.start", AuditStatus::Ok, account, None);
-    let refresh_token = stored
-        .refresh_token
-        .clone()
-        .ok_or_else(|| anyhow::anyhow!("oauth token for {account} expired without refresh token"))?;
+    let refresh_token = stored.refresh_token.clone().ok_or_else(|| {
+        anyhow::anyhow!("oauth token for {account} expired without refresh token")
+    })?;
     let token_endpoint = stored
         .token_endpoint
         .clone()
@@ -169,7 +174,12 @@ fn ensure_oauth_token(
 
     if let Some(error) = response.error {
         let message = response.error_description.unwrap_or(error);
-        audit_event("oauth.refresh", AuditStatus::Failed, account, Some(&message));
+        audit_event(
+            "oauth.refresh",
+            AuditStatus::Failed,
+            account,
+            Some(&message),
+        );
         anyhow::bail!("oauth refresh failed: {message}");
     }
 
@@ -213,12 +223,13 @@ pub fn set_audit_logger(logger: AuditLogger) {
 
 pub fn oauth_allowed(provider: &str, host: &str) -> bool {
     if let Ok(value) = std::env::var(OAUTH_ALLOW_ENV)
-        && !value.trim().is_empty() {
-            return parse_oauth_allowlist(&value)
-                .get(provider)
-                .map(|hosts| host_matches_any(host, hosts))
-                .unwrap_or(false);
-        }
+        && !value.trim().is_empty()
+    {
+        return parse_oauth_allowlist(&value)
+            .get(provider)
+            .map(|hosts| host_matches_any(host, hosts))
+            .unwrap_or(false);
+    }
     default_oauth_allowed(provider, host)
 }
 
@@ -257,9 +268,10 @@ fn match_host(host: &str, pattern: &str) -> bool {
 fn normalize_host(value: &str) -> String {
     let lower = value.trim().to_lowercase();
     if let Ok(url) = reqwest::Url::parse(&lower)
-        && let Some(host) = url.host_str() {
-            return host.to_string();
-        }
+        && let Some(host) = url.host_str()
+    {
+        return host.to_string();
+    }
     lower
 }
 
@@ -331,9 +343,8 @@ mod tests {
 
     #[test]
     fn oauth_allowlist_parses_entries() {
-        let map = parse_oauth_allowlist(
-            "github=github.com;azure-devops=dev.azure.com,visualstudio.com",
-        );
+        let map =
+            parse_oauth_allowlist("github=github.com;azure-devops=dev.azure.com,visualstudio.com");
         assert_eq!(map.get("github").unwrap(), &vec!["github.com".to_string()]);
         assert_eq!(
             map.get("azure-devops").unwrap(),
@@ -351,7 +362,10 @@ mod tests {
     #[test]
     fn default_oauth_allowed_matches_known_hosts() {
         assert!(default_oauth_allowed("github", "https://github.com"));
-        assert!(default_oauth_allowed("azure-devops", "https://dev.azure.com"));
+        assert!(default_oauth_allowed(
+            "azure-devops",
+            "https://dev.azure.com"
+        ));
         assert!(!default_oauth_allowed("gitlab", "https://gitlab.com"));
     }
 }

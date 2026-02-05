@@ -1,10 +1,10 @@
 use anyhow::Context;
-use directories::{ProjectDirs, BaseDirs};
+use directories::{BaseDirs, ProjectDirs};
 use mirror_core::lockfile::LockFile;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
@@ -76,7 +76,11 @@ pub fn perform_install_with_progress(
         progress,
         step,
         total,
-        if is_update { "Preparing update" } else { "Preparing install" },
+        if is_update {
+            "Preparing update"
+        } else {
+            "Preparing install"
+        },
     );
     mirror_core::service::uninstall_service_if_exists().ok();
     let install_path = default_install_path(exec_path)?;
@@ -97,13 +101,20 @@ pub fn perform_install_with_progress(
         progress,
         step,
         total,
-        if is_update { "Updating service" } else { "Installing service" },
+        if is_update {
+            "Updating service"
+        } else {
+            "Installing service"
+        },
     );
     mirror_core::service::install_service_with_delay(&install_path, options.delayed_start)?;
     let service_action = if is_update { "updated" } else { "installed" };
     let service = match options.delayed_start {
         Some(delay) if delay > 0 => {
-            format!("{} {service_action} with delayed start ({delay}s)", service_label())
+            format!(
+                "{} {service_action} with delayed start ({delay}s)",
+                service_label()
+            )
         }
         _ => format!("{} {service_action}", service_label()),
     };
@@ -119,7 +130,11 @@ pub fn perform_install_with_progress(
     report_progress(progress, step, total, "Writing install metadata");
     write_marker()?;
     write_manifest(&install_path)?;
-    Ok(InstallReport { install: install_message, service, path })
+    Ok(InstallReport {
+        install: install_message,
+        service,
+        path,
+    })
 }
 
 fn service_label() -> &'static str {
@@ -206,11 +221,17 @@ pub fn install_status() -> anyhow::Result<InstallStatus> {
         installed_at,
         service_installed,
         service_running,
-        service_last_run: service_status.as_ref().and_then(|s| s.last_run_time.clone()),
+        service_last_run: service_status
+            .as_ref()
+            .and_then(|s| s.last_run_time.clone()),
         service_last_result: service_status.as_ref().and_then(|s| s.last_result.clone()),
-        service_next_run: service_status.as_ref().and_then(|s| s.next_run_time.clone()),
+        service_next_run: service_status
+            .as_ref()
+            .and_then(|s| s.next_run_time.clone()),
         service_task_state: service_status.as_ref().and_then(|s| s.task_state.clone()),
-        service_schedule_type: service_status.as_ref().and_then(|s| s.schedule_type.clone()),
+        service_schedule_type: service_status
+            .as_ref()
+            .and_then(|s| s.schedule_type.clone()),
         service_start_time: service_status.as_ref().and_then(|s| s.start_time.clone()),
         service_start_date: service_status.as_ref().and_then(|s| s.start_date.clone()),
         service_run_as: service_status.as_ref().and_then(|s| s.run_as_user.clone()),
@@ -252,7 +273,11 @@ struct InstallManifest {
 
 const INSTALL_MANIFEST_VERSION: u32 = 1;
 
-fn install_binary(exec_path: &Path, install_path: &Path, is_update: bool) -> anyhow::Result<String> {
+fn install_binary(
+    exec_path: &Path,
+    install_path: &Path,
+    is_update: bool,
+) -> anyhow::Result<String> {
     if install_path == exec_path {
         return Ok(format!(
             "{} location already active at {}",
@@ -435,6 +460,9 @@ mod tests {
     fn build_install_dir_unix_appends_bin() {
         let base = Path::new("/home/me/.local/share/git-project-sync");
         let dir = build_install_dir_unix(base);
-        assert_eq!(dir, PathBuf::from("/home/me/.local/share/git-project-sync/bin"));
+        assert_eq!(
+            dir,
+            PathBuf::from("/home/me/.local/share/git-project-sync/bin")
+        );
     }
 }

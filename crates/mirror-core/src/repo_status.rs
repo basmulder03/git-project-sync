@@ -55,9 +55,7 @@ pub fn compute_repo_status(path: &Path) -> anyhow::Result<RepoLocalStatus> {
         if let Some(name) = upstream.get().name() {
             status.upstream = Some(name.to_string());
         }
-        if let (Some(local_oid), Some(upstream_oid)) =
-            (head.target(), upstream.get().target())
-        {
+        if let (Some(local_oid), Some(upstream_oid)) = (head.target(), upstream.get().target()) {
             let (ahead, behind) = repo.graph_ahead_behind(local_oid, upstream_oid)?;
             status.ahead = Some(ahead as u32);
             status.behind = Some(behind as u32);
@@ -102,7 +100,8 @@ mod tests {
         repo.branch("main", &first_commit, true).unwrap();
         repo.set_head("refs/heads/main").unwrap();
 
-        repo.remote("origin", "https://example.com/repo.git").unwrap();
+        repo.remote("origin", "https://example.com/repo.git")
+            .unwrap();
         repo.reference("refs/remotes/origin/main", first, true, "origin main")
             .unwrap();
 

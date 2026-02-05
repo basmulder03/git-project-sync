@@ -1,5 +1,6 @@
 use crate::RepoProvider;
 use crate::auth;
+use crate::http::send_with_retry;
 use crate::spec::{AzureDevOpsSpec, host_or_default};
 use anyhow::Context;
 use mirror_core::model::{ProviderKind, ProviderScope, ProviderTarget, RemoteRepo, RepoAuth};
@@ -9,7 +10,6 @@ use reqwest::blocking::Client;
 use reqwest::header::HeaderMap;
 use serde::Deserialize;
 use tracing::info;
-use crate::http::send_with_retry;
 
 pub struct AzureDevOpsProvider {
     client: Client,
@@ -25,15 +25,11 @@ impl AzureDevOpsProvider {
     }
 
     pub fn oauth_device_code_endpoint(tenant: &str) -> String {
-        format!(
-            "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/devicecode"
-        )
+        format!("https://login.microsoftonline.com/{tenant}/oauth2/v2.0/devicecode")
     }
 
     pub fn oauth_token_endpoint(tenant: &str) -> String {
-        format!(
-            "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
-        )
+        format!("https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token")
     }
 
     fn parse_scope(scope: &ProviderScope) -> anyhow::Result<(&str, Option<&str>)> {
@@ -100,26 +96,25 @@ impl RepoProvider for AzureDevOpsProvider {
             let url = Self::build_repos_url(&host, org, project, continuation.as_deref())?;
             info!(org, project = ?project, "listing Azure DevOps repos");
             let builder = self
-            .client
-            .get(url)
-            .basic_auth("", Some(auth.token.as_str()));
-        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
-            .context("call Azure DevOps list repos")?
-            .error_for_status()
-            .context("Azure DevOps list repos status")?;
+                .client
+                .get(url)
+                .basic_auth("", Some(auth.token.as_str()));
+            let response = send_with_retry(|| builder.try_clone().expect("clone request"))
+                .context("call Azure DevOps list repos")?
+                .error_for_status()
+                .context("Azure DevOps list repos status")?;
             let next = Self::continuation_token(response.headers());
             let payload: ReposResponse = response.json().context("decode repos response")?;
 
             for repo in payload.value {
                 let scope = match (project, repo.project.as_ref()) {
                     (Some(_), _) => target.scope.clone(),
-                    (None, Some(project)) => ProviderScope::new(vec![
-                        org.to_string(),
-                        project.name.clone(),
-                    ])?,
-                    (None, None) => anyhow::bail!(
-                        "Azure DevOps repo missing project for org-wide listing"
-                    ),
+                    (None, Some(project)) => {
+                        ProviderScope::new(vec![org.to_string(), project.name.clone()])?
+                    }
+                    (None, None) => {
+                        anyhow::bail!("Azure DevOps repo missing project for org-wide listing")
+                    }
                 };
                 repos.push(RemoteRepo {
                     id: repo.id,
@@ -178,10 +173,7 @@ impl RepoProvider for AzureDevOpsProvider {
         let pat = auth::get_pat(&account)?;
 
         let url = Self::build_repos_url(&host, org, project, None)?;
-        let builder = self
-            .client
-            .get(url)
-            .basic_auth("", Some(pat.as_str()));
+        let builder = self.client.get(url).basic_auth("", Some(pat.as_str()));
         let response = send_with_retry(|| builder.try_clone().expect("clone request"))
             .context("call Azure DevOps health check")?
             .error_for_status()
@@ -246,7 +238,10 @@ mod tests {
     #[test]
     fn continuation_token_reads_header() {
         let mut headers = HeaderMap::new();
-        headers.insert("x-ms-continuationtoken", HeaderValue::from_static("token-123"));
+        headers.insert(
+            "x-ms-continuationtoken",
+            HeaderValue::from_static("token-123"),
+        );
         let token = AzureDevOpsProvider::continuation_token(&headers);
         assert_eq!(token, Some("token-123".to_string()));
     }

@@ -1,4 +1,6 @@
-use anyhow::{bail, Context};
+use anyhow::Context;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use anyhow::bail;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use directories::BaseDirs;
 #[cfg(target_os = "macos")]
@@ -25,7 +27,10 @@ pub fn install_service(exec_path: &Path) -> anyhow::Result<()> {
     install_service_with_delay(exec_path, None)
 }
 
-pub fn install_service_with_delay(exec_path: &Path, delay_seconds: Option<u64>) -> anyhow::Result<()> {
+pub fn install_service_with_delay(
+    exec_path: &Path,
+    delay_seconds: Option<u64>,
+) -> anyhow::Result<()> {
     #[cfg(target_os = "linux")]
     {
         install_systemd(exec_path, delay_seconds)
@@ -66,7 +71,7 @@ pub fn uninstall_service() -> anyhow::Result<()> {
 pub fn service_exists() -> anyhow::Result<bool> {
     #[cfg(target_os = "windows")]
     {
-        return windows_service_exists();
+        windows_service_exists()
     }
     #[cfg(target_os = "linux")]
     {
@@ -85,7 +90,7 @@ pub fn service_exists() -> anyhow::Result<bool> {
 pub fn service_running() -> anyhow::Result<bool> {
     #[cfg(target_os = "windows")]
     {
-        return windows_service_running();
+        windows_service_running()
     }
     #[cfg(target_os = "linux")]
     {
@@ -119,7 +124,7 @@ pub struct ServiceStatusInfo {
 pub fn service_status() -> anyhow::Result<ServiceStatusInfo> {
     #[cfg(target_os = "windows")]
     {
-        return windows_task_status();
+        windows_task_status()
     }
     #[cfg(target_os = "linux")]
     {
@@ -311,7 +316,11 @@ fn uninstall_systemd() -> anyhow::Result<()> {
 #[cfg(target_os = "linux")]
 fn systemd_unit_path() -> anyhow::Result<PathBuf> {
     let base = BaseDirs::new().context("resolve base dirs")?;
-    Ok(base.config_dir().join("systemd").join("user").join(SYSTEMD_UNIT_NAME))
+    Ok(base
+        .config_dir()
+        .join("systemd")
+        .join("user")
+        .join(SYSTEMD_UNIT_NAME))
 }
 
 #[cfg(target_os = "linux")]
@@ -334,7 +343,11 @@ WantedBy=default.target\n"
 #[cfg(target_os = "linux")]
 fn systemd_timer_path() -> anyhow::Result<PathBuf> {
     let base = BaseDirs::new().context("resolve base dirs")?;
-    Ok(base.config_dir().join("systemd").join("user").join(SYSTEMD_TIMER_NAME))
+    Ok(base
+        .config_dir()
+        .join("systemd")
+        .join("user")
+        .join(SYSTEMD_TIMER_NAME))
 }
 
 #[cfg(target_os = "linux")]
@@ -388,7 +401,11 @@ fn uninstall_launchd() -> anyhow::Result<()> {
 #[cfg(target_os = "macos")]
 fn launchd_plist_path() -> anyhow::Result<PathBuf> {
     let base = BaseDirs::new().context("resolve base dirs")?;
-    Ok(base.home_dir().join("Library").join("LaunchAgents").join(format!("{LAUNCHD_LABEL}.plist")))
+    Ok(base
+        .home_dir()
+        .join("Library")
+        .join("LaunchAgents")
+        .join(format!("{LAUNCHD_LABEL}.plist")))
 }
 
 #[cfg(target_os = "macos")]
@@ -439,16 +456,17 @@ fn launchd_plist_contents(exec_path: &Path, delay_seconds: Option<u64>) -> anyho
 
 #[cfg(target_os = "macos")]
 fn launchd_log_dir() -> anyhow::Result<PathBuf> {
-    let project = ProjectDirs::from("com", SERVICE_NAME, SERVICE_NAME)
-        .context("resolve project dirs")?;
+    let project =
+        ProjectDirs::from("com", SERVICE_NAME, SERVICE_NAME).context("resolve project dirs")?;
     Ok(project.data_local_dir().join("logs"))
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn ensure_dir_writable(path: Option<&Path>, label: &str) -> anyhow::Result<()> {
-    let Some(path) = path else { return Ok(()); };
-    fs::create_dir_all(path)
-        .with_context(|| format!("create {label} at {}", path.display()))?;
+    let Some(path) = path else {
+        return Ok(());
+    };
+    fs::create_dir_all(path).with_context(|| format!("create {label} at {}", path.display()))?;
     let probe = path.join(".mirror_cli_perm_check");
     match fs::write(&probe, b"") {
         Ok(()) => {
@@ -648,9 +666,15 @@ fn windows_task_status() -> anyhow::Result<ServiceStatusInfo> {
 #[cfg(target_os = "linux")]
 fn systemd_service_running() -> anyhow::Result<bool> {
     if systemd_timer_path()?.exists() {
-        return Ok(command_success("systemctl", &["--user", "is-active", SYSTEMD_TIMER_NAME]));
+        return Ok(command_success(
+            "systemctl",
+            &["--user", "is-active", SYSTEMD_TIMER_NAME],
+        ));
     }
-    Ok(command_success("systemctl", &["--user", "is-active", SYSTEMD_UNIT_NAME]))
+    Ok(command_success(
+        "systemctl",
+        &["--user", "is-active", SYSTEMD_UNIT_NAME],
+    ))
 }
 
 #[cfg(target_os = "macos")]
@@ -699,7 +723,7 @@ fn run_schtasks_output(args: &[String]) -> anyhow::Result<String> {
 
 #[cfg(target_os = "windows")]
 fn schtasks_delay(delay_seconds: u64) -> String {
-    let minutes = (delay_seconds + 59) / 60;
+    let minutes = delay_seconds.div_ceil(60);
     let hours = minutes / 60;
     let mins = minutes % 60;
     format!("{:04}:{:02}", hours, mins)
@@ -721,12 +745,13 @@ fn run_command(binary: &str, args: &[&str], context_label: &str) -> anyhow::Resu
 
 #[cfg(test)]
 mod tests {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use std::path::Path;
 
-    #[cfg(target_os = "linux")]
-    use super::{systemd_timer_contents, systemd_unit_contents};
     #[cfg(target_os = "macos")]
     use super::launchd_plist_contents;
+    #[cfg(target_os = "linux")]
+    use super::{systemd_timer_contents, systemd_unit_contents};
 
     #[cfg(target_os = "linux")]
     #[test]

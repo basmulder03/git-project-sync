@@ -1,5 +1,7 @@
+use crate::install::{InstallOptions, PathChoice};
 use anyhow::Context;
-use clap::{Parser, ValueEnum, CommandFactory};
+use clap::{CommandFactory, Parser, ValueEnum};
+use mirror_core::audit::{AuditContext, AuditLogger, AuditStatus};
 use mirror_core::cache::{
     RepoCache, RepoCacheEntry, backoff_until, update_target_failure, update_target_success,
 };
@@ -8,29 +10,28 @@ use mirror_core::config::{
     load_or_migrate, target_id,
 };
 use mirror_core::deleted::{DeletedRepoAction, MissingRemotePolicy};
-use mirror_core::audit::{AuditContext, AuditLogger, AuditStatus};
-use mirror_core::model::{ProviderKind, ProviderTarget};
 #[cfg(test)]
 use mirror_core::model::ProviderScope;
+use mirror_core::model::{ProviderKind, ProviderTarget};
 use mirror_core::scheduler::{bucket_for_repo_id, current_day_bucket};
-use mirror_core::sync_engine::{SyncAction, SyncProgress, SyncSummary, RunSyncOptions, run_sync_filtered};
+use mirror_core::sync_engine::{
+    RunSyncOptions, SyncAction, SyncProgress, SyncSummary, run_sync_filtered,
+};
+use mirror_providers::ProviderRegistry;
 use mirror_providers::auth;
-use crate::install::{InstallOptions, PathChoice};
 use mirror_providers::azure_devops::{AZDO_DEFAULT_OAUTH_SCOPE, AzureDevOpsProvider};
 use mirror_providers::spec::{host_or_default, pat_help, spec_for};
-use mirror_providers::ProviderRegistry;
-use tracing::warn;
 use reqwest::StatusCode;
 use reqwest::blocking::Client;
 use serde::Deserialize;
-use std::io::{self, Write};
 use std::cell::Cell;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use tracing::warn;
 use tracing_subscriber::EnvFilter;
-mod tray;
 mod install;
-mod tui;
 mod repo_overview;
+mod tui;
 mod update;
 
 #[derive(Parser)]
@@ -64,8 +65,6 @@ enum Commands {
     Cache(CacheArgs),
     #[command(about = "Launch terminal UI")]
     Tui(TuiArgs),
-    #[command(about = "Run system tray UI")]
-    Tray,
     #[command(about = "Install daemon and optionally register PATH")]
     Install(InstallArgs),
     #[command(about = "Manage scheduled task (Windows only)")]
@@ -481,7 +480,6 @@ fn main() -> anyhow::Result<()> {
             };
             tui::run_tui(&audit, start_view)
         }
-        Commands::Tray => tray::run_tray(&audit),
         Commands::Install(args) => handle_install(args, &audit),
         Commands::Task(args) => handle_task(args, &audit),
         Commands::Update(args) => handle_update(args, &audit),
@@ -557,7 +555,10 @@ fn handle_add_target(args: AddTargetArgs, audit: &AuditLogger) -> anyhow::Result
         let spec = spec_for(provider.clone());
         let scope = spec.parse_scope(args.scope)?;
 
-        let host = args.host.as_ref().map(|value| value.trim_end_matches('/').to_string());
+        let host = args
+            .host
+            .as_ref()
+            .map(|value| value.trim_end_matches('/').to_string());
         let id = target_id(provider.clone(), host.as_deref(), &scope);
 
         if config.targets.iter().any(|target| target.id == id) {
@@ -590,7 +591,10 @@ fn handle_add_target(args: AddTargetArgs, audit: &AuditLogger) -> anyhow::Result
         config.targets.push(target);
         config.save(&config_path)?;
         if migrated {
-            println!("Config migrated and target added to {}", config_path.display());
+            println!(
+                "Config migrated and target added to {}",
+                config_path.display()
+            );
         } else {
             println!("Target added to {}", config_path.display());
         }
@@ -637,7 +641,10 @@ fn handle_list_targets(audit: &AuditLogger) -> anyhow::Result<()> {
         }
 
         for target in config.targets {
-            let host = target.host.clone().unwrap_or_else(|| "(default)".to_string());
+            let host = target
+                .host
+                .clone()
+                .unwrap_or_else(|| "(default)".to_string());
             println!(
                 "{} | {} | {} | {}",
                 target.id,
@@ -658,8 +665,13 @@ fn handle_list_targets(audit: &AuditLogger) -> anyhow::Result<()> {
             Some(&err.to_string()),
         );
     } else {
-        let audit_id =
-            audit.record("target.list", AuditStatus::Ok, Some("target.list"), None, None)?;
+        let audit_id = audit.record(
+            "target.list",
+            AuditStatus::Ok,
+            Some("target.list"),
+            None,
+            None,
+        )?;
         println!("Audit ID: {audit_id}");
     }
     result
@@ -686,7 +698,10 @@ fn handle_remove_target(args: RemoveTargetArgs, audit: &AuditLogger) -> anyhow::
         }
         config.save(&config_path)?;
         if migrated {
-            println!("Config migrated and target removed from {}", config_path.display());
+            println!(
+                "Config migrated and target removed from {}",
+                config_path.display()
+            );
         } else {
             println!("Target removed from {}", config_path.display());
         }
@@ -806,7 +821,10 @@ fn handle_validate_token(args: ValidateTokenArgs, audit: &AuditLogger) -> anyhow
         let provider: ProviderKind = args.provider.into();
         let spec = spec_for(provider.clone());
         let scope = spec.parse_scope(args.scope)?;
-        let host = args.host.as_ref().map(|value| value.trim_end_matches('/').to_string());
+        let host = args
+            .host
+            .as_ref()
+            .map(|value| value.trim_end_matches('/').to_string());
         let runtime_target = ProviderTarget {
             provider: provider.clone(),
             scope: scope.clone(),
@@ -862,7 +880,10 @@ fn handle_validate_token(args: ValidateTokenArgs, audit: &AuditLogger) -> anyhow
                 }
             }
             None => {
-                println!("Scope validation not supported for {}", provider.as_prefix());
+                println!(
+                    "Scope validation not supported for {}",
+                    provider.as_prefix()
+                );
                 let audit_id = audit.record_with_context(
                     "token.validate",
                     AuditStatus::Skipped,
@@ -907,8 +928,12 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
             config.save(&config_path)?;
         }
         if args.status_only {
-            let targets =
-                select_targets(&config, args.target_id.as_deref(), args.provider, &args.scope)?;
+            let targets = select_targets(
+                &config,
+                args.target_id.as_deref(),
+                args.provider,
+                &args.scope,
+            )?;
             if targets.is_empty() {
                 println!("No matching targets found.");
                 let audit_id = audit.record(
@@ -922,13 +947,8 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                 return Ok(());
             }
             print_sync_status(&cache_path, &targets)?;
-            let audit_id = audit.record(
-                "sync.status",
-                AuditStatus::Ok,
-                Some("sync"),
-                None,
-                None,
-            )?;
+            let audit_id =
+                audit.record("sync.status", AuditStatus::Ok, Some("sync"), None, None)?;
             println!("Audit ID: {audit_id}");
             return Ok(());
         }
@@ -937,7 +957,12 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
             .as_ref()
             .context("config missing root; run config init")?;
 
-        let targets = select_targets(&config, args.target_id.as_deref(), args.provider, &args.scope)?;
+        let targets = select_targets(
+            &config,
+            args.target_id.as_deref(),
+            args.provider,
+            &args.scope,
+        )?;
         if targets.is_empty() {
             println!("No matching targets found.");
             let audit_id = audit.record(
@@ -985,8 +1010,11 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                     audit_repo_progress(audit, "sync", "sync.repo", &runtime_target, &progress);
                 }
             };
-            let progress: Option<&dyn Fn(SyncProgress)> =
-                if args.status || args.audit_repo { Some(&progress_fn) } else { None };
+            let progress: Option<&dyn Fn(SyncProgress)> = if args.status || args.audit_repo {
+                Some(&progress_fn)
+            } else {
+                None
+            };
             let summary = if let Some(repo_name) = args.repo.as_ref() {
                 let repo_name = repo_name.clone();
                 let filter = move |remote: &mirror_core::model::RemoteRepo| {
@@ -1004,12 +1032,17 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                     refresh: args.refresh,
                     verify: args.verify,
                 };
-                run_sync_filtered(provider.as_ref(), &runtime_target, root, &cache_path, options)
-                    .or_else(|err| map_azdo_error(&runtime_target, err))?
+                run_sync_filtered(
+                    provider.as_ref(),
+                    &runtime_target,
+                    root,
+                    &cache_path,
+                    options,
+                )
+                .or_else(|err| map_azdo_error(&runtime_target, err))?
             } else {
-                let filter = move |repo: &mirror_core::model::RemoteRepo| {
-                    include_archived || !repo.archived
-                };
+                let filter =
+                    move |repo: &mirror_core::model::RemoteRepo| include_archived || !repo.archived;
                 let options = RunSyncOptions {
                     missing_policy: policy,
                     missing_decider: decider,
@@ -1020,8 +1053,14 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                     refresh: args.refresh,
                     verify: args.verify,
                 };
-                run_sync_filtered(provider.as_ref(), &runtime_target, root, &cache_path, options)
-                    .or_else(|err| map_azdo_error(&runtime_target, err))?
+                run_sync_filtered(
+                    provider.as_ref(),
+                    &runtime_target,
+                    root,
+                    &cache_path,
+                    options,
+                )
+                .or_else(|err| map_azdo_error(&runtime_target, err))?
             };
 
             print_summary(&target, summary);
@@ -1081,8 +1120,13 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
             "missing_removed": total.missing_removed,
             "missing_skipped": total.missing_skipped,
         });
-        let audit_id =
-            audit.record("sync.run", AuditStatus::Ok, Some("sync"), Some(totals), None)?;
+        let audit_id = audit.record(
+            "sync.run",
+            AuditStatus::Ok,
+            Some("sync"),
+            Some(totals),
+            None,
+        )?;
         println!("Audit ID: {audit_id}");
 
         Ok(())
@@ -1113,15 +1157,18 @@ fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Result<()> {
         let config_path = args.config.unwrap_or(default_config_path()?);
         let cache_path = args.cache.unwrap_or(default_cache_path()?);
         let policy: MissingRemotePolicy = args.missing_remote.into();
-        let audit_id = audit.record(
-            "daemon.start",
-            AuditStatus::Ok,
-            Some("daemon"),
-            None,
-            None,
-        )?;
+        let audit_id = audit.record("daemon.start", AuditStatus::Ok, Some("daemon"), None, None)?;
         println!("Audit ID: {audit_id}");
-        let job = || run_sync_job(&config_path, &cache_path, policy, audit, args.audit_repo, args.jobs);
+        let job = || {
+            run_sync_job(
+                &config_path,
+                &cache_path,
+                policy,
+                audit,
+                args.audit_repo,
+                args.jobs,
+            )
+        };
         if args.run_once {
             mirror_core::daemon::run_once_with_lock(&lock_path, job)?;
             let audit_id = audit.record(
@@ -1207,7 +1254,12 @@ fn handle_health(args: HealthArgs, audit: &AuditLogger) -> anyhow::Result<()> {
             config.save(&config_path)?;
         }
 
-        let targets = select_targets(&config, args.target_id.as_deref(), args.provider, &args.scope)?;
+        let targets = select_targets(
+            &config,
+            args.target_id.as_deref(),
+            args.provider,
+            &args.scope,
+        )?;
         if targets.is_empty() {
             println!("No matching targets found.");
             let audit_id = audit.record(
@@ -1306,7 +1358,10 @@ fn handle_webhook_register(args: WebhookRegisterArgs, audit: &AuditLogger) -> an
         let provider: ProviderKind = args.provider.into();
         let spec = spec_for(provider.clone());
         let scope = spec.parse_scope(args.scope)?;
-        let host = args.host.as_ref().map(|value| value.trim_end_matches('/').to_string());
+        let host = args
+            .host
+            .as_ref()
+            .map(|value| value.trim_end_matches('/').to_string());
         let runtime_target = ProviderTarget {
             provider: provider.clone(),
             scope: scope.clone(),
@@ -1673,7 +1728,9 @@ fn poll_device_token(
             Some("access_denied") => anyhow::bail!("access denied"),
             Some(other) => anyhow::bail!(
                 "device flow failed: {}",
-                response.error_description.unwrap_or_else(|| other.to_string())
+                response
+                    .error_description
+                    .unwrap_or_else(|| other.to_string())
             ),
             None => anyhow::bail!("device flow failed without error"),
         }
@@ -1835,7 +1892,11 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
             println!(
                 "{} installed: {}",
                 service_label,
-                if status.service_installed { "yes" } else { "no" }
+                if status.service_installed {
+                    "yes"
+                } else {
+                    "no"
+                }
             );
             println!(
                 "{} running: {}",
@@ -1943,13 +2004,7 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
                 .context("start service/task after install")?;
             println!("{} started.", service_label());
         }
-        let audit_id = audit.record(
-            "install.run",
-            AuditStatus::Ok,
-            Some("install"),
-            None,
-            None,
-        )?;
+        let audit_id = audit.record("install.run", AuditStatus::Ok, Some("install"), None, None)?;
         println!("Audit ID: {audit_id}");
         Ok(())
     })();
@@ -1982,14 +2037,8 @@ fn handle_task(args: TaskArgs, audit: &AuditLogger) -> anyhow::Result<()> {
         match args.command {
             TaskCommands::Status => {
                 let status = mirror_core::service::service_status()?;
-                println!(
-                    "Installed: {}",
-                    if status.installed { "yes" } else { "no" }
-                );
-                println!(
-                    "Running: {}",
-                    if status.running { "yes" } else { "no" }
-                );
+                println!("Installed: {}", if status.installed { "yes" } else { "no" });
+                println!("Running: {}", if status.running { "yes" } else { "no" });
                 if let Some(value) = status.last_run_time.as_deref() {
                     println!("Last run: {value}");
                 }
@@ -2000,35 +2049,17 @@ fn handle_task(args: TaskArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                     println!("Last result: {value}");
                 }
                 println!("Task name: git-project-sync");
-                let _ = audit.record(
-                    "task.status",
-                    AuditStatus::Ok,
-                    Some("task"),
-                    None,
-                    None,
-                );
+                let _ = audit.record("task.status", AuditStatus::Ok, Some("task"), None, None);
             }
             TaskCommands::Run => {
                 mirror_core::service::start_service_now()?;
                 println!("Task started.");
-                let _ = audit.record(
-                    "task.run",
-                    AuditStatus::Ok,
-                    Some("task"),
-                    None,
-                    None,
-                );
+                let _ = audit.record("task.run", AuditStatus::Ok, Some("task"), None, None);
             }
             TaskCommands::Remove => {
                 mirror_core::service::uninstall_service()?;
                 println!("Task removed.");
-                let _ = audit.record(
-                    "task.remove",
-                    AuditStatus::Ok,
-                    Some("task"),
-                    None,
-                    None,
-                );
+                let _ = audit.record("task.remove", AuditStatus::Ok, Some("task"), None, None);
             }
         }
         Ok(())
@@ -2053,13 +2084,7 @@ fn handle_update(args: UpdateArgs, audit: &AuditLogger) -> anyhow::Result<()> {
         let latest = check.latest.to_string();
         if !check.is_newer {
             println!("Up to date ({current}).");
-            let _ = audit.record(
-                "update.check",
-                AuditStatus::Ok,
-                Some("update"),
-                None,
-                None,
-            )?;
+            let _ = audit.record("update.check", AuditStatus::Ok, Some("update"), None, None)?;
             return Ok(());
         }
 
@@ -2208,16 +2233,12 @@ fn print_sync_status(cache_path: &Path, targets: &[TargetConfig]) -> anyhow::Res
         let action = status
             .and_then(|s| s.last_action.as_deref())
             .unwrap_or("unknown");
-        let repo = status
-            .and_then(|s| s.last_repo.as_deref())
-            .unwrap_or("-");
+        let repo = status.and_then(|s| s.last_repo.as_deref()).unwrap_or("-");
         let updated = status
             .map(|s| epoch_to_label(s.last_updated))
             .unwrap_or_else(|| "unknown".to_string());
         let empty_summary = mirror_core::cache::SyncSummarySnapshot::default();
-        let summary = status
-            .map(|s| &s.summary)
-            .unwrap_or(&empty_summary);
+        let summary = status.map(|s| &s.summary).unwrap_or(&empty_summary);
         let total = status.map(|s| s.total_repos).unwrap_or(0);
         let processed = status.map(|s| s.processed_repos).unwrap_or(0);
 
@@ -2262,7 +2283,10 @@ fn audit_repo_progress(
     if !should_audit_action(progress.action) {
         return;
     }
-    let repo_id = progress.repo_id.clone().or_else(|| progress.repo_name.clone());
+    let repo_id = progress
+        .repo_id
+        .clone()
+        .or_else(|| progress.repo_name.clone());
     let context = AuditContext {
         provider: Some(runtime_target.provider.as_prefix().to_string()),
         scope: Some(runtime_target.scope.segments().join("/")),
@@ -2309,7 +2333,9 @@ fn should_audit_action(action: SyncAction) -> bool {
 fn audit_status_for_action(action: SyncAction) -> AuditStatus {
     match action {
         SyncAction::Failed => AuditStatus::Failed,
-        SyncAction::Dirty | SyncAction::Diverged | SyncAction::MissingSkipped => AuditStatus::Skipped,
+        SyncAction::Dirty | SyncAction::Diverged | SyncAction::MissingSkipped => {
+            AuditStatus::Skipped
+        }
         _ => AuditStatus::Ok,
     }
 }
@@ -2377,28 +2403,29 @@ fn run_sync_job(
             &target.scope,
         );
         if let Some(until) = backoff_until(&cache_snapshot, &target_key)
-            && until > now {
-                warn!(
-                    provider = %target.provider,
-                    scope = ?target.scope,
-                    until = until,
-                    "skipping target due to backoff"
-                );
-                let _ = audit.record_with_context(
-                    "daemon.sync.target",
-                    AuditStatus::Skipped,
-                    Some("daemon.sync"),
-                    AuditContext {
-                        provider: Some(target.provider.as_prefix().to_string()),
-                        scope: Some(target.scope.segments().join("/")),
-                        repo_id: Some(target.id.clone()),
-                        path: None,
-                    },
-                    Some(serde_json::json!({"reason": "backoff", "until": until})),
-                    Some("skipping target due to backoff"),
-                );
-                continue;
-            }
+            && until > now
+        {
+            warn!(
+                provider = %target.provider,
+                scope = ?target.scope,
+                until = until,
+                "skipping target due to backoff"
+            );
+            let _ = audit.record_with_context(
+                "daemon.sync.target",
+                AuditStatus::Skipped,
+                Some("daemon.sync"),
+                AuditContext {
+                    provider: Some(target.provider.as_prefix().to_string()),
+                    scope: Some(target.scope.segments().join("/")),
+                    repo_id: Some(target.id.clone()),
+                    path: None,
+                },
+                Some(serde_json::json!({"reason": "backoff", "until": until})),
+                Some("skipping target due to backoff"),
+            );
+            continue;
+        }
         let provider_kind = target.provider.clone();
         let provider = registry.provider(provider_kind.clone())?;
         let runtime_target = ProviderTarget {
@@ -2430,8 +2457,14 @@ fn run_sync_job(
             refresh: false,
             verify: false,
         };
-        let result = run_sync_filtered(provider.as_ref(), &runtime_target, root, cache_path, options)
-            .or_else(|err| map_azdo_error(&runtime_target, err));
+        let result = run_sync_filtered(
+            provider.as_ref(),
+            &runtime_target,
+            root,
+            cache_path,
+            options,
+        )
+        .or_else(|err| map_azdo_error(&runtime_target, err));
         match result {
             Ok(summary) => {
                 let _ = update_target_success(cache_path, &target_key, now);
@@ -2569,42 +2602,35 @@ fn accumulate_summary(total: &mut SyncSummary, summary: SyncSummary) {
     total.missing_skipped += summary.missing_skipped;
 }
 
-fn map_azdo_error(
-    target: &ProviderTarget,
-    err: anyhow::Error,
-) -> anyhow::Result<SyncSummary> {
+fn map_azdo_error(target: &ProviderTarget, err: anyhow::Error) -> anyhow::Result<SyncSummary> {
     if target.provider == ProviderKind::AzureDevOps
         && let Some(reqwest_err) = err.downcast_ref::<reqwest::Error>()
-            && let Some(status) = reqwest_err.status()
-                && let Some(message) = azdo_message_for_status(target, status) {
-                    return Err(anyhow::anyhow!(message));
-                }
+        && let Some(status) = reqwest_err.status()
+        && let Some(message) = azdo_message_for_status(target, status)
+    {
+        return Err(anyhow::anyhow!(message));
+    }
     Err(err)
 }
 
-fn map_provider_error(
-    target: &ProviderTarget,
-    err: anyhow::Error,
-) -> anyhow::Result<()> {
+fn map_provider_error(target: &ProviderTarget, err: anyhow::Error) -> anyhow::Result<()> {
     if let Some(reqwest_err) = err.downcast_ref::<reqwest::Error>()
-        && let Some(status) = reqwest_err.status() {
-            let scope = target.scope.segments().join("/");
-            let message = match target.provider {
-                ProviderKind::AzureDevOps => azdo_status_message(&scope, status),
-                ProviderKind::GitHub => github_status_message(&scope, status),
-                ProviderKind::GitLab => gitlab_status_message(&scope, status),
-            };
-            if let Some(message) = message {
-                return Err(anyhow::anyhow!(message));
-            }
+        && let Some(status) = reqwest_err.status()
+    {
+        let scope = target.scope.segments().join("/");
+        let message = match target.provider {
+            ProviderKind::AzureDevOps => azdo_status_message(&scope, status),
+            ProviderKind::GitHub => github_status_message(&scope, status),
+            ProviderKind::GitLab => gitlab_status_message(&scope, status),
+        };
+        if let Some(message) = message {
+            return Err(anyhow::anyhow!(message));
         }
+    }
     Err(err)
 }
 
-fn azdo_message_for_status(
-    target: &ProviderTarget,
-    status: StatusCode,
-) -> Option<String> {
+fn azdo_message_for_status(target: &ProviderTarget, status: StatusCode) -> Option<String> {
     let scope = target.scope.segments().join("/");
     azdo_status_message(&scope, status)
 }

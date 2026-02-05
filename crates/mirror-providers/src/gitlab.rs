@@ -1,5 +1,6 @@
-use crate::auth;
 use crate::RepoProvider;
+use crate::auth;
+use crate::http::send_with_retry;
 use crate::spec::{GitLabSpec, host_or_default};
 use anyhow::Context;
 use mirror_core::model::{ProviderKind, ProviderScope, ProviderTarget, RemoteRepo, RepoAuth};
@@ -8,7 +9,6 @@ use reqwest::blocking::Client;
 use reqwest::header::HeaderMap;
 use serde::Deserialize;
 use tracing::info;
-use crate::http::send_with_retry;
 
 pub struct GitLabProvider {
     client: Client,
@@ -67,20 +67,15 @@ impl RepoProvider for GitLabProvider {
         };
 
         loop {
-            let url =
-                format!("{host}/groups/{group}/projects?per_page=100&page={page}");
+            let url = format!("{host}/groups/{group}/projects?per_page=100&page={page}");
             info!(group, page, "listing GitLab repos");
-            let builder = self
-                .client
-                .get(url)
-                .header("PRIVATE-TOKEN", token.as_str());
+            let builder = self.client.get(url).header("PRIVATE-TOKEN", token.as_str());
             let response = send_with_retry(|| builder.try_clone().expect("clone request"))
                 .context("call GitLab list repos")?
                 .error_for_status()
                 .context("GitLab list repos status")?;
             let next_page = Self::next_page(response.headers());
-            let payload: Vec<ProjectItem> =
-                response.json().context("decode repos response")?;
+            let payload: Vec<ProjectItem> = response.json().context("decode repos response")?;
             if payload.is_empty() {
                 break;
             }
@@ -138,10 +133,7 @@ impl RepoProvider for GitLabProvider {
         let token = auth::get_pat(&account)?;
 
         let url = format!("{host}/groups/{group}/projects?per_page=1&page=1");
-        let builder = self
-            .client
-            .get(url)
-            .header("PRIVATE-TOKEN", token.as_str());
+        let builder = self.client.get(url).header("PRIVATE-TOKEN", token.as_str());
         let response = send_with_retry(|| builder.try_clone().expect("clone request"))
             .context("call GitLab health check")?
             .error_for_status()

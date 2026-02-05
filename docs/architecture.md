@@ -6,7 +6,7 @@ This document describes the architecture, module boundaries, and key data flows.
 
 - `crates/mirror-core`: provider-agnostic sync engine, config, cache, scheduler, audit
 - `crates/mirror-providers`: provider adapters (Azure DevOps, GitHub, GitLab)
-- `crates/mirror-cli`: CLI and TUI wiring, command handlers, tray UI
+- `crates/mirror-cli`: CLI and TUI wiring, command handlers
 
 ## Provider adapter pattern
 
@@ -64,9 +64,9 @@ Logs are rotated by file size and stored under OS data directory.
 - TUI is built with ratatui/crossterm and provides forms for config, targets, tokens, audit, and dashboard.
 - TUI includes guided validation hints and inline feedback.
 
-## Tray + Dashboard
+## Dashboard
 
-The tray UI (cross-platform where supported) provides quick actions and launches the dashboard TUI. The dashboard summarizes:
+The dashboard summarizes:
 
 - target counts
 - backoff status
@@ -89,4 +89,3 @@ Service install helpers are OS-specific:
 
 - PATH modification is opt-in during install.
 - OAuth device flow is supported for GitHub and Azure DevOps only.
-- Tray UI requires a graphical session.

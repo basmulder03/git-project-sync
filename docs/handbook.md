@@ -198,6 +198,7 @@ Installation is tracked via an install marker file stored under the OS data dire
 The installer also writes an `install.json` manifest to the same location and uses it to detect existing installs.
 Only one installer can run at a time (guarded by an install lock file under the same directory).
 Re-running the installer replaces the existing install in place and updates the service to point at the new binary.
+The installer lock is re-entrant within the same process, so updates can run while the UI holds the lock.
 
 ## Updates
 

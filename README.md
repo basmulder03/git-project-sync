@@ -107,6 +107,13 @@ Override the GitHub release repo:
 GIT_PROJECT_SYNC_UPDATE_REPO=owner/repo mirror-cli update --check
 ```
 
+Auto-update behavior:
+
+- The daemon checks for updates on startup and then daily.
+- CLI runs check for updates only if the daemon has not performed a check yet.
+- Network failures are logged and do not fail the daemon.
+- If updates require elevated permissions, the CLI prompts to re-run with admin/sudo.
+
 ## Dashboard
 
 Launch the dashboard TUI:

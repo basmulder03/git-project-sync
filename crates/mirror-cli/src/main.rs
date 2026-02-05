@@ -3,7 +3,8 @@ use anyhow::Context;
 use clap::{CommandFactory, Parser, ValueEnum};
 use mirror_core::audit::{AuditContext, AuditLogger, AuditStatus};
 use mirror_core::cache::{
-    RepoCache, RepoCacheEntry, backoff_until, update_target_failure, update_target_success,
+    RepoCache, RepoCacheEntry, backoff_until, update_check_due, update_target_failure,
+    update_target_success,
 };
 use mirror_core::config::{
     AppConfigV2, TargetConfig, default_cache_path, default_config_path, default_lock_path,
@@ -22,8 +23,10 @@ use mirror_providers::auth;
 use mirror_providers::spec::{host_or_default, spec_for};
 use reqwest::StatusCode;
 use std::cell::Cell;
+use std::io::IsTerminal;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use tracing::warn;
 use tracing_subscriber::EnvFilter;
 mod install;
@@ -413,6 +416,42 @@ fn main() -> anyhow::Result<()> {
     }
 
     let cli = Cli::parse();
+    let is_interactive = stdin_is_tty() && stdout_is_tty();
+
+    if should_run_cli_update_check(&cli.command) {
+        let cache_path = default_cache_path()?;
+        let now = current_epoch_seconds();
+        let should_check = match RepoCache::load(&cache_path) {
+            Ok(cache) => update_check_due(&cache, now, 86_400),
+            Err(_) => true,
+        };
+        if should_check
+            && let Err(err) = update::check_and_maybe_apply(update::AutoUpdateOptions {
+                cache_path: &cache_path,
+                interval_secs: 86_400,
+                auto_apply: true,
+                audit: &audit,
+                force: true,
+                interactive: is_interactive,
+                source: "cli",
+                override_repo: None,
+            })
+        {
+            if update::is_permission_error(&err)
+                && maybe_escalate_and_reexec("update").context("escalate update")?
+            {
+                return Ok(());
+            }
+            let _ = audit.record(
+                "update.check",
+                AuditStatus::Skipped,
+                Some("update"),
+                Some(serde_json::json!({"reason": "error", "source": "cli"})),
+                Some(&err.to_string()),
+            );
+        }
+    }
+
     let result = match cli.command {
         Commands::Config(args) => handle_config(args, &audit),
         Commands::Target(args) => handle_target(args, &audit),
@@ -1110,17 +1149,38 @@ fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Result<()> {
         let config_path = args.config.unwrap_or(default_config_path()?);
         let cache_path = args.cache.unwrap_or(default_cache_path()?);
         let policy: MissingRemotePolicy = args.missing_remote.into();
+        let _ = update::check_and_maybe_apply(update::AutoUpdateOptions {
+            cache_path: &cache_path,
+            interval_secs: 86_400,
+            auto_apply: true,
+            audit,
+            force: true,
+            interactive: false,
+            source: "daemon",
+            override_repo: None,
+        });
         let audit_id = audit.record("daemon.start", AuditStatus::Ok, Some("daemon"), None, None)?;
         println!("Audit ID: {audit_id}");
         let job = || {
-            run_sync_job(
+            let sync_result = run_sync_job(
                 &config_path,
                 &cache_path,
                 policy,
                 audit,
                 args.audit_repo,
                 args.jobs,
-            )
+            );
+            let _ = update::check_and_maybe_apply(update::AutoUpdateOptions {
+                cache_path: &cache_path,
+                interval_secs: 86_400,
+                auto_apply: true,
+                audit,
+                force: false,
+                interactive: false,
+                source: "daemon",
+                override_repo: None,
+            });
+            sync_result
         };
         if args.run_once {
             mirror_core::daemon::run_once_with_lock(&lock_path, job)?;
@@ -1589,7 +1649,15 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
                 last_len.set(line.len());
                 let _ = io::stdout().flush();
             }),
-        )?;
+        )
+        .map_err(|err| {
+            if update::is_permission_error(&err)
+                && maybe_escalate_and_reexec("install").unwrap_or(false)
+            {
+                return anyhow::anyhow!("install escalated");
+            }
+            err
+        })?;
         if last_len.get() > 0 {
             println!();
         }
@@ -1607,6 +1675,9 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
     })();
 
     if let Err(err) = &result {
+        if err.to_string() == "install escalated" {
+            return Ok(());
+        }
         let _ = audit.record(
             "install.run",
             AuditStatus::Failed,
@@ -1723,7 +1794,14 @@ fn handle_update(args: UpdateArgs, audit: &AuditLogger) -> anyhow::Result<()> {
             return Ok(());
         }
 
-        let report = update::apply_update(&check)?;
+        let report = update::apply_update(&check).map_err(|err| {
+            if update::is_permission_error(&err)
+                && maybe_escalate_and_reexec("update").unwrap_or(false)
+            {
+                return anyhow::anyhow!("update escalated");
+            }
+            err
+        })?;
         println!("{}", report.install);
         println!("{}", report.service);
         println!("{}", report.path);
@@ -1738,6 +1816,9 @@ fn handle_update(args: UpdateArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     })();
 
     if let Err(err) = &result {
+        if err.to_string() == "update escalated" {
+            return Ok(());
+        }
         let _ = audit.record(
             "update.apply",
             AuditStatus::Failed,
@@ -1868,6 +1949,68 @@ fn epoch_to_label(epoch: u64) -> String {
         .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
     ts.format(&time::format_description::parse("[year]-[month]-[day] [hour]:[minute]").unwrap())
         .unwrap_or_else(|_| "unknown".to_string())
+}
+
+fn should_run_cli_update_check(command: &Commands) -> bool {
+    !matches!(command, Commands::Update(_) | Commands::Install(_))
+}
+
+fn stdin_is_tty() -> bool {
+    std::io::stdin().is_terminal()
+}
+
+fn stdout_is_tty() -> bool {
+    std::io::stdout().is_terminal()
+}
+
+fn current_epoch_seconds() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn maybe_escalate_and_reexec(reason: &str) -> anyhow::Result<bool> {
+    if !stdin_is_tty() || !stdout_is_tty() {
+        return Ok(false);
+    }
+    println!(
+        "Permission denied while attempting to {reason}. Re-run with elevated permissions? (y/n):"
+    );
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    if input.trim().to_lowercase() != "y" {
+        return Ok(false);
+    }
+
+    let exe = std::env::current_exe().context("resolve current executable")?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+
+    if cfg!(target_os = "windows") {
+        let exe_str = exe.to_string_lossy().replace('\'', "''");
+        let arg_list = args
+            .iter()
+            .map(|arg| arg.replace('\'', "''"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let command = format!(
+            "Start-Process -Verb RunAs -FilePath '{}' -ArgumentList '{}'",
+            exe_str, arg_list
+        );
+        Command::new("powershell")
+            .args(["-Command", &command])
+            .spawn()
+            .context("launch elevated process")?;
+        return Ok(true);
+    }
+
+    Command::new("sudo")
+        .arg(exe)
+        .args(args)
+        .spawn()
+        .context("launch elevated process")?;
+    Ok(true)
 }
 
 fn audit_repo_progress(

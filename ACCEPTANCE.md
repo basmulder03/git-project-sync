@@ -35,3 +35,7 @@
 28) Run `sync --status` and confirm live progress output and final summary.
 29) In the TUI dashboard, press `s` to open Sync Status and confirm current action/repo/counts are shown.
 30) Run `sync` and confirm per-repo audit entries are created (e.g., `sync.repo` or `daemon.sync.repo`).
+31) Start the daemon and confirm an update check is logged on startup, then daily.
+32) Run the CLI before any daemon check and confirm it performs a one-time update check; subsequent CLI runs should skip if daemon has checked.
+33) Simulate no network and confirm update checks are audited as skipped and do not fail the daemon.
+34) Trigger an update with insufficient permissions and confirm the CLI prompts to re-run with elevated permissions.

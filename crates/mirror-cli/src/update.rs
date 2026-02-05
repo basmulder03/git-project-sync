@@ -3,9 +3,13 @@ use directories::ProjectDirs;
 use reqwest::blocking::Client;
 use semver::Version;
 use serde::Deserialize;
+use serde_json::json;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
+use mirror_core::audit::{AuditLogger, AuditStatus};
+use mirror_core::cache::{RepoCache, record_update_check, update_check_due};
 
 use crate::install::{InstallOptions, PathChoice};
 
@@ -25,6 +29,17 @@ pub struct UpdateCheck {
     pub release_url: Option<String>,
     pub is_newer: bool,
     pub asset: Option<ReleaseAsset>,
+}
+
+pub struct AutoUpdateOptions<'a> {
+    pub cache_path: &'a Path,
+    pub interval_secs: u64,
+    pub auto_apply: bool,
+    pub audit: &'a AuditLogger,
+    pub force: bool,
+    pub interactive: bool,
+    pub source: &'a str,
+    pub override_repo: Option<&'a str>,
 }
 
 #[derive(Deserialize)]
@@ -140,6 +155,125 @@ pub fn apply_update_with_progress(
     )
 }
 
+pub fn check_and_maybe_apply(options: AutoUpdateOptions<'_>) -> anyhow::Result<()> {
+    let now = current_epoch_seconds();
+    let mut cache = RepoCache::load(options.cache_path).unwrap_or_default();
+    if !options.force && !update_check_due(&cache, now, options.interval_secs) {
+        return Ok(());
+    }
+
+    let check = match check_for_update(options.override_repo) {
+        Ok(value) => value,
+        Err(err) if is_network_error(&err) => {
+            record_update_check(
+                &mut cache,
+                now,
+                "skipped:network".to_string(),
+                None,
+                options.source,
+            );
+            let _ = cache.save(options.cache_path);
+            let _ = options.audit.record(
+                "update.check",
+                AuditStatus::Skipped,
+                Some("update"),
+                Some(json!({"reason": "network", "source": options.source})),
+                Some(&err.to_string()),
+            );
+            return Ok(());
+        }
+        Err(err) => {
+            let _ = options.audit.record(
+                "update.check",
+                AuditStatus::Failed,
+                Some("update"),
+                Some(json!({"source": options.source})),
+                Some(&err.to_string()),
+            );
+            return Err(err);
+        }
+    };
+
+    let latest = check.latest.to_string();
+    let result = if check.is_newer {
+        "update_available"
+    } else {
+        "up_to_date"
+    };
+    record_update_check(
+        &mut cache,
+        now,
+        result.to_string(),
+        Some(latest.clone()),
+        options.source,
+    );
+    let _ = cache.save(options.cache_path);
+
+    let _ = options.audit.record(
+        "update.check",
+        AuditStatus::Ok,
+        Some("update"),
+        Some(json!({
+            "current": check.current.to_string(),
+            "latest": latest,
+            "is_newer": check.is_newer,
+            "source": options.source
+        })),
+        None,
+    );
+
+    if check.is_newer && options.auto_apply {
+        if !crate::install::is_installed()? {
+            let _ = options.audit.record(
+                "update.apply",
+                AuditStatus::Skipped,
+                Some("update"),
+                Some(json!({"reason": "not_installed", "source": options.source})),
+                None,
+            );
+            return Ok(());
+        }
+        match apply_update(&check) {
+            Ok(report) => {
+                let _ = options.audit.record(
+                    "update.apply",
+                    AuditStatus::Ok,
+                    Some("update"),
+                    Some(json!({
+                        "source": options.source,
+                        "install": report.install,
+                        "service": report.service,
+                        "path": report.path
+                    })),
+                    None,
+                );
+            }
+            Err(err) if is_permission_error(&err) && options.interactive => {
+                let _ = options.audit.record(
+                    "update.apply",
+                    AuditStatus::Failed,
+                    Some("update"),
+                    Some(json!({"source": options.source, "reason": "permission"})),
+                    Some(&err.to_string()),
+                );
+                return Err(err);
+            }
+            Err(err) => {
+                let _ = options.audit.record(
+                    "update.apply",
+                    AuditStatus::Failed,
+                    Some("update"),
+                    Some(json!({"source": options.source})),
+                    Some(&err.to_string()),
+                );
+                return Err(err);
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn download_asset(asset: &ReleaseAsset) -> anyhow::Result<PathBuf> {
     let target_dir = update_download_dir()?;
     fs::create_dir_all(&target_dir).context("create update download dir")?;
@@ -187,6 +321,34 @@ fn parse_version(raw: &str) -> anyhow::Result<Version> {
     let trimmed = raw.trim();
     let normalized = trimmed.strip_prefix('v').unwrap_or(trimmed);
     Version::parse(normalized).context("parse release version")
+}
+
+fn current_epoch_seconds() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+pub fn is_network_error(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| {
+        if let Some(reqwest_err) = cause.downcast_ref::<reqwest::Error>() {
+            return reqwest_err.is_timeout()
+                || reqwest_err.is_connect()
+                || reqwest_err.is_request();
+        }
+        false
+    })
+}
+
+pub fn is_permission_error(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| {
+        if let Some(io_err) = cause.downcast_ref::<std::io::Error>() {
+            return io_err.kind() == std::io::ErrorKind::PermissionDenied;
+        }
+        false
+    })
 }
 
 #[cfg(test)]

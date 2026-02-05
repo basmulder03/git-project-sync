@@ -48,9 +48,9 @@ jobs:
               release/minor/*) BUMP="minor" ;;
               release/patch/*) BUMP="patch" ;;
               *)
-                echo "Unsupported branch name: $BRANCH"
-                echo "Expected release/{major|minor|patch}/*"
-                exit 1
+                echo "Branch name does not match release/{major|minor|patch}/*; skipping release."
+                echo "should_release=false" >> $GITHUB_OUTPUT
+                exit 0
                 ;;
             esac
           fi

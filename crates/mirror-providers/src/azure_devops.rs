@@ -15,21 +15,11 @@ pub struct AzureDevOpsProvider {
     client: Client,
 }
 
-pub const AZDO_DEFAULT_OAUTH_SCOPE: &str = "499b84ac-1321-427f-aa17-267ca6975798/.default";
-
 impl AzureDevOpsProvider {
     pub fn new() -> anyhow::Result<Self> {
         Ok(Self {
             client: Client::new(),
         })
-    }
-
-    pub fn oauth_device_code_endpoint(tenant: &str) -> String {
-        format!("https://login.microsoftonline.com/{tenant}/oauth2/v2.0/devicecode")
-    }
-
-    pub fn oauth_token_endpoint(tenant: &str) -> String {
-        format!("https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token")
     }
 
     fn parse_scope(scope: &ProviderScope) -> anyhow::Result<(&str, Option<&str>)> {
@@ -257,13 +247,5 @@ mod tests {
         });
         let repo: RepoItem = serde_json::from_value(value).unwrap();
         assert_eq!(repo.is_disabled, Some(true));
-    }
-
-    #[test]
-    fn oauth_endpoints_include_tenant() {
-        let device = AzureDevOpsProvider::oauth_device_code_endpoint("common");
-        let token = AzureDevOpsProvider::oauth_token_endpoint("common");
-        assert!(device.contains("common/oauth2/v2.0/devicecode"));
-        assert!(token.contains("common/oauth2/v2.0/token"));
     }
 }

@@ -75,7 +75,7 @@ The dashboard summarizes:
 
 ## Token storage
 
-Tokens are stored in the OS keychain via `keyring`. OAuth tokens include refresh metadata and are refreshed on access when expired.
+Tokens are stored in the OS keychain via `keyring` as provider PATs.
 
 ## Service installers
 
@@ -88,4 +88,3 @@ Service install helpers are OS-specific:
 ## Known limitations
 
 - PATH modification is opt-in during install.
-- OAuth device flow is supported for GitHub and Azure DevOps only.

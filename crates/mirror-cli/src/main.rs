@@ -19,11 +19,8 @@ use mirror_core::sync_engine::{
 };
 use mirror_providers::ProviderRegistry;
 use mirror_providers::auth;
-use mirror_providers::azure_devops::{AZDO_DEFAULT_OAUTH_SCOPE, AzureDevOpsProvider};
-use mirror_providers::spec::{host_or_default, pat_help, spec_for};
+use mirror_providers::spec::{host_or_default, spec_for};
 use reqwest::StatusCode;
-use reqwest::blocking::Client;
-use serde::Deserialize;
 use std::cell::Cell;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -59,8 +56,6 @@ enum Commands {
     Health(HealthArgs),
     #[command(about = "Manage webhooks")]
     Webhook(WebhookArgs),
-    #[command(about = "OAuth helpers")]
-    Oauth(OauthArgs),
     #[command(about = "Manage cache")]
     Cache(CacheArgs),
     #[command(about = "Launch terminal UI")]
@@ -292,46 +287,6 @@ struct CacheOverviewArgs {
 }
 
 #[derive(Parser)]
-struct OauthArgs {
-    #[command(subcommand)]
-    command: OauthCommands,
-}
-
-#[derive(clap::Subcommand)]
-enum OauthCommands {
-    #[command(about = "Start OAuth device flow")]
-    Device(DeviceFlowArgs),
-    #[command(about = "Revoke stored OAuth token")]
-    Revoke(RevokeOauthArgs),
-}
-
-#[derive(Parser)]
-struct DeviceFlowArgs {
-    #[arg(long, value_enum)]
-    provider: ProviderKindValue,
-    #[arg(long, required = true)]
-    scope: Vec<String>,
-    #[arg(long)]
-    host: Option<String>,
-    #[arg(long)]
-    client_id: String,
-    #[arg(long)]
-    tenant: Option<String>,
-    #[arg(long, value_name = "OAUTH_SCOPE")]
-    oauth_scope: Vec<String>,
-}
-
-#[derive(Parser)]
-struct RevokeOauthArgs {
-    #[arg(long, value_enum)]
-    provider: ProviderKindValue,
-    #[arg(long, required = true)]
-    scope: Vec<String>,
-    #[arg(long)]
-    host: Option<String>,
-}
-
-#[derive(Parser)]
 struct HealthArgs {
     #[arg(long)]
     target_id: Option<String>,
@@ -445,7 +400,6 @@ fn main() -> anyhow::Result<()> {
 
     let audit = AuditLogger::new()?;
     let _ = audit.record("app.start", AuditStatus::Ok, None, None, None)?;
-    auth::set_audit_logger(audit.clone());
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() == 1 {
@@ -468,7 +422,6 @@ fn main() -> anyhow::Result<()> {
         Commands::Service(args) => handle_service(args, &audit),
         Commands::Health(args) => handle_health(args, &audit),
         Commands::Webhook(args) => handle_webhook(args, &audit),
-        Commands::Oauth(args) => handle_oauth(args, &audit),
         Commands::Cache(args) => handle_cache(args, &audit),
         Commands::Tui(args) => {
             let start_view = if args.install {
@@ -1413,362 +1366,6 @@ fn handle_cache(args: CacheArgs, audit: &AuditLogger) -> anyhow::Result<()> {
         CacheCommands::Prune(args) => handle_cache_prune(args, audit),
         CacheCommands::Overview(args) => handle_cache_overview(args, audit),
     }
-}
-
-fn handle_oauth(args: OauthArgs, audit: &AuditLogger) -> anyhow::Result<()> {
-    match args.command {
-        OauthCommands::Device(args) => handle_device_flow(args, audit),
-        OauthCommands::Revoke(args) => handle_revoke_oauth(args, audit),
-    }
-}
-
-fn handle_device_flow(args: DeviceFlowArgs, audit: &AuditLogger) -> anyhow::Result<()> {
-    let result: anyhow::Result<()> = (|| {
-        let provider: ProviderKind = args.provider.into();
-        let spec = spec_for(provider.clone());
-        let scope = spec.parse_scope(args.scope)?;
-        let host = host_or_default(args.host.as_deref(), spec.as_ref());
-        let oauth_host = oauth_gate_host(&provider, &host);
-        if !auth::oauth_allowed(provider.as_prefix(), &oauth_host) {
-            let message = format!(
-                "OAuth not enabled for {} at {}. Set {} to override.",
-                provider.as_prefix(),
-                oauth_host,
-                "GIT_PROJECT_SYNC_OAUTH_ALLOW"
-            );
-            let _ = audit.record_with_context(
-                "oauth.device.start",
-                AuditStatus::Failed,
-                Some("oauth.device"),
-                AuditContext {
-                    provider: Some(provider.as_prefix().to_string()),
-                    scope: Some(scope.segments().join("/")),
-                    repo_id: None,
-                    path: None,
-                },
-                None,
-                Some(&message),
-            );
-            anyhow::bail!(message);
-        }
-        let start_audit = audit.record_with_context(
-            "oauth.device.start",
-            AuditStatus::Ok,
-            Some("oauth.device"),
-            AuditContext {
-                provider: Some(provider.as_prefix().to_string()),
-                scope: Some(scope.segments().join("/")),
-                repo_id: None,
-                path: None,
-            },
-            None,
-            None,
-        )?;
-        println!("Audit ID: {start_audit}");
-        let client = Client::new();
-        let account = spec.account_key(&host, &scope)?;
-        match provider {
-            ProviderKind::GitHub => {
-                let base = github_oauth_base(&host);
-                let default_scopes = pat_help(provider.clone()).scopes.join(" ");
-                let scope_string = if args.oauth_scope.is_empty() {
-                    default_scopes
-                } else {
-                    args.oauth_scope.join(" ")
-                };
-                println!("Requested OAuth scopes: {scope_string}");
-                let device_resp: DeviceCodeResponse = client
-                    .post(format!("{base}/login/device/code"))
-                    .header("Accept", "application/json")
-                    .form(&[
-                        ("client_id", args.client_id.as_str()),
-                        ("scope", scope_string.as_str()),
-                    ])
-                    .send()?
-                    .error_for_status()?
-                    .json()?;
-
-                println!("Open: {}", device_resp.verification_uri);
-                println!("Code: {}", device_resp.user_code);
-                println!("Expires in: {}s", device_resp.expires_in);
-                println!("Polling for authorization...");
-
-                let mut interval = device_resp.interval.unwrap_or(5);
-                let token_response = poll_device_token(
-                    &client,
-                    &format!("{base}/login/oauth/access_token"),
-                    &args.client_id,
-                    &device_resp.device_code,
-                    &mut interval,
-                    None,
-                )?;
-                let token = extract_access_token(&token_response)?;
-
-                auth::set_pat(&account, &token)?;
-                println!("Token stored for {account}");
-                let _ = audit.record_with_context(
-                    "oauth.device.approved",
-                    AuditStatus::Ok,
-                    Some("oauth.device"),
-                    AuditContext {
-                        provider: Some(provider.as_prefix().to_string()),
-                        scope: Some(scope.segments().join("/")),
-                        repo_id: None,
-                        path: None,
-                    },
-                    None,
-                    None,
-                );
-            }
-            ProviderKind::AzureDevOps => {
-                let tenant = args.tenant.as_deref().unwrap_or("common");
-                let oauth_scope = if args.oauth_scope.is_empty() {
-                    AZDO_DEFAULT_OAUTH_SCOPE.to_string()
-                } else {
-                    args.oauth_scope.join(" ")
-                };
-                println!("Tenant: {tenant}");
-                println!("Requested OAuth scopes: {oauth_scope}");
-                let device_endpoint = AzureDevOpsProvider::oauth_device_code_endpoint(tenant);
-                let token_endpoint = AzureDevOpsProvider::oauth_token_endpoint(tenant);
-                let device_resp: DeviceCodeResponse = client
-                    .post(&device_endpoint)
-                    .header("Accept", "application/json")
-                    .form(&[
-                        ("client_id", args.client_id.as_str()),
-                        ("scope", oauth_scope.as_str()),
-                    ])
-                    .send()?
-                    .error_for_status()?
-                    .json()?;
-
-                if let Some(message) = device_resp.message.as_deref() {
-                    println!("{message}");
-                }
-                let verification = device_resp
-                    .verification_uri_complete
-                    .as_deref()
-                    .unwrap_or(device_resp.verification_uri.as_str());
-                println!("Open: {verification}");
-                println!("Code: {}", device_resp.user_code);
-                println!("Expires in: {}s", device_resp.expires_in);
-                println!("Polling for authorization...");
-
-                let mut interval = device_resp.interval.unwrap_or(5);
-                let token_response = poll_device_token(
-                    &client,
-                    &token_endpoint,
-                    &args.client_id,
-                    &device_resp.device_code,
-                    &mut interval,
-                    Some(oauth_scope.as_str()),
-                )?;
-                let token = extract_access_token(&token_response)?;
-                let expires_at = token_response
-                    .expires_in
-                    .map(|secs| current_epoch_seconds() + secs as i64);
-                auth::set_oauth_token(
-                    &account,
-                    auth::OAuthToken {
-                        access_token: token,
-                        refresh_token: token_response.refresh_token.clone(),
-                        expires_at,
-                        token_endpoint: token_endpoint.clone(),
-                        revocation_endpoint: None,
-                        client_id: args.client_id.clone(),
-                        scope: Some(oauth_scope),
-                    },
-                )?;
-                println!("OAuth token stored for {account}");
-                let _ = audit.record_with_context(
-                    "oauth.device.approved",
-                    AuditStatus::Ok,
-                    Some("oauth.device"),
-                    AuditContext {
-                        provider: Some(provider.as_prefix().to_string()),
-                        scope: Some(scope.segments().join("/")),
-                        repo_id: None,
-                        path: None,
-                    },
-                    None,
-                    None,
-                );
-            }
-            ProviderKind::GitLab => {
-                anyhow::bail!("device flow is not supported for GitLab yet");
-            }
-        }
-
-        let audit_id = audit.record_with_context(
-            "oauth.device",
-            AuditStatus::Ok,
-            Some("oauth.device"),
-            AuditContext {
-                provider: Some(provider.as_prefix().to_string()),
-                scope: Some(scope.segments().join("/")),
-                repo_id: None,
-                path: None,
-            },
-            None,
-            None,
-        )?;
-        println!("Audit ID: {audit_id}");
-        Ok(())
-    })();
-
-    if let Err(err) = &result {
-        let _ = audit.record(
-            "oauth.device",
-            AuditStatus::Failed,
-            Some("oauth.device"),
-            None,
-            Some(&err.to_string()),
-        );
-    }
-    result
-}
-
-fn handle_revoke_oauth(args: RevokeOauthArgs, audit: &AuditLogger) -> anyhow::Result<()> {
-    let result: anyhow::Result<()> = (|| {
-        let provider: ProviderKind = args.provider.into();
-        let spec = spec_for(provider.clone());
-        let scope = spec.parse_scope(args.scope)?;
-        let host = host_or_default(args.host.as_deref(), spec.as_ref());
-        let account = spec.account_key(&host, &scope)?;
-        auth::revoke_oauth_token(&account)?;
-        println!("OAuth token revoked for {account}");
-        let audit_id = audit.record_with_context(
-            "oauth.revoke",
-            AuditStatus::Ok,
-            Some("oauth.revoke"),
-            AuditContext {
-                provider: Some(provider.as_prefix().to_string()),
-                scope: Some(scope.segments().join("/")),
-                repo_id: None,
-                path: None,
-            },
-            None,
-            None,
-        )?;
-        println!("Audit ID: {audit_id}");
-        Ok(())
-    })();
-
-    if let Err(err) = &result {
-        let _ = audit.record(
-            "oauth.revoke",
-            AuditStatus::Failed,
-            Some("oauth.revoke"),
-            None,
-            Some(&err.to_string()),
-        );
-    }
-    result
-}
-
-#[derive(Deserialize)]
-struct DeviceCodeResponse {
-    device_code: String,
-    user_code: String,
-    verification_uri: String,
-    expires_in: u64,
-    interval: Option<u64>,
-    #[serde(default)]
-    verification_uri_complete: Option<String>,
-    #[serde(default)]
-    message: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct DeviceTokenResponse {
-    access_token: Option<String>,
-    refresh_token: Option<String>,
-    expires_in: Option<u64>,
-    error: Option<String>,
-    error_description: Option<String>,
-}
-
-fn poll_device_token(
-    client: &Client,
-    token_endpoint: &str,
-    client_id: &str,
-    device_code: &str,
-    interval: &mut u64,
-    scope: Option<&str>,
-) -> anyhow::Result<DeviceTokenResponse> {
-    loop {
-        std::thread::sleep(std::time::Duration::from_secs(*interval));
-        let mut form = vec![
-            ("client_id", client_id.to_string()),
-            ("device_code", device_code.to_string()),
-            (
-                "grant_type",
-                "urn:ietf:params:oauth:grant-type:device_code".to_string(),
-            ),
-        ];
-        if let Some(scope) = scope {
-            form.push(("scope", scope.to_string()));
-        }
-        let response: DeviceTokenResponse = client
-            .post(token_endpoint)
-            .header("Accept", "application/json")
-            .form(&form)
-            .send()?
-            .error_for_status()?
-            .json()?;
-        if response.access_token.is_some() {
-            return Ok(response);
-        }
-        match response.error.as_deref() {
-            Some("authorization_pending") => continue,
-            Some("slow_down") => {
-                *interval += 5;
-            }
-            Some("expired_token") => anyhow::bail!("device code expired"),
-            Some("access_denied") => anyhow::bail!("access denied"),
-            Some(other) => anyhow::bail!(
-                "device flow failed: {}",
-                response
-                    .error_description
-                    .unwrap_or_else(|| other.to_string())
-            ),
-            None => anyhow::bail!("device flow failed without error"),
-        }
-    }
-}
-
-fn github_oauth_base(host: &str) -> String {
-    if host.contains("github.com") {
-        "https://github.com".to_string()
-    } else if let Some(stripped) = host.strip_suffix("/api/v3") {
-        stripped.to_string()
-    } else if let Some(stripped) = host.strip_suffix("/api") {
-        stripped.to_string()
-    } else {
-        host.trim_end_matches('/').to_string()
-    }
-}
-
-fn oauth_gate_host(provider: &ProviderKind, host: &str) -> String {
-    match provider {
-        ProviderKind::GitHub => github_oauth_base(host),
-        _ => host.to_string(),
-    }
-}
-
-fn extract_access_token(response: &DeviceTokenResponse) -> anyhow::Result<String> {
-    response
-        .access_token
-        .clone()
-        .ok_or_else(|| anyhow::anyhow!("device flow did not return access token"))
-}
-
-fn current_epoch_seconds() -> i64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64
 }
 
 fn handle_cache_prune(args: CachePruneArgs, audit: &AuditLogger) -> anyhow::Result<()> {
@@ -2718,23 +2315,5 @@ mod tests {
         assert!(message.contains("GitLab authentication failed"));
         let message = gitlab_status_message(scope, StatusCode::NOT_FOUND).unwrap();
         assert!(message.contains("scope not found"));
-    }
-
-    #[test]
-    fn github_oauth_base_for_enterprise() {
-        let host = "https://github.example.com/api/v3";
-        assert_eq!(github_oauth_base(host), "https://github.example.com");
-    }
-
-    #[test]
-    fn extract_access_token_happy_path() {
-        let response = DeviceTokenResponse {
-            access_token: Some("token-123".to_string()),
-            refresh_token: None,
-            expires_in: None,
-            error: None,
-            error_description: None,
-        };
-        assert_eq!(extract_access_token(&response).unwrap(), "token-123");
     }
 }

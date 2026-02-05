@@ -2175,6 +2175,7 @@ dependencies = [
  "mirror-providers",
  "ratatui",
  "reqwest",
+ "semver",
  "serde",
  "serde_json",
  "tempfile",

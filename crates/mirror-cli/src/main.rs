@@ -31,6 +31,7 @@ mod tray;
 mod install;
 mod tui;
 mod repo_overview;
+mod update;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -69,6 +70,8 @@ enum Commands {
     Install(InstallArgs),
     #[command(about = "Manage scheduled task (Windows only)")]
     Task(TaskArgs),
+    #[command(about = "Check for updates and install latest release")]
+    Update(UpdateArgs),
 }
 
 #[derive(Parser)]
@@ -367,6 +370,18 @@ struct InstallArgs {
     non_interactive: bool,
 }
 
+#[derive(Parser)]
+struct UpdateArgs {
+    #[arg(long)]
+    check: bool,
+    #[arg(long)]
+    apply: bool,
+    #[arg(long)]
+    yes: bool,
+    #[arg(long)]
+    repo: Option<String>,
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 enum PathChoiceValue {
     Add,
@@ -469,6 +484,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Tray => tray::run_tray(&audit),
         Commands::Install(args) => handle_install(args, &audit),
         Commands::Task(args) => handle_task(args, &audit),
+        Commands::Update(args) => handle_update(args, &audit),
     };
 
     if let Err(err) = &result {
@@ -2030,6 +2046,87 @@ fn handle_task(args: TaskArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     result
 }
 
+fn handle_update(args: UpdateArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = (|| {
+        let check = update::check_for_update(args.repo.as_deref())?;
+        let current = check.current.to_string();
+        let latest = check.latest.to_string();
+        if !check.is_newer {
+            println!("Up to date ({current}).");
+            let _ = audit.record(
+                "update.check",
+                AuditStatus::Ok,
+                Some("update"),
+                None,
+                None,
+            )?;
+            return Ok(());
+        }
+
+        println!("Update available: {current} -> {latest}");
+        if let Some(url) = check.release_url.as_deref() {
+            println!("Release: {url}");
+        }
+
+        if check.asset.is_none() {
+            anyhow::bail!("update available but no release asset found for this platform");
+        }
+
+        if args.check && !args.apply {
+            let _ = audit.record(
+                "update.check",
+                AuditStatus::Ok,
+                Some("update"),
+                Some(serde_json::json!({"current": current, "latest": latest, "available": true})),
+                None,
+            )?;
+            std::process::exit(2);
+        }
+
+        let should_apply = if args.yes {
+            true
+        } else {
+            prompt_update_confirm(&latest)?
+        };
+
+        if !should_apply {
+            println!("Update canceled.");
+            let _ = audit.record(
+                "update.apply",
+                AuditStatus::Skipped,
+                Some("update"),
+                None,
+                Some("user canceled"),
+            );
+            return Ok(());
+        }
+
+        let report = update::apply_update(&check)?;
+        println!("{}", report.install);
+        println!("{}", report.service);
+        println!("{}", report.path);
+        let _ = audit.record(
+            "update.apply",
+            AuditStatus::Ok,
+            Some("update"),
+            Some(serde_json::json!({"current": current, "latest": latest})),
+            None,
+        )?;
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "update.apply",
+            AuditStatus::Failed,
+            Some("update"),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+    result
+}
+
 #[derive(Parser)]
 struct TaskArgs {
     #[command(subcommand)]
@@ -2239,6 +2336,14 @@ fn prompt_path_choice() -> anyhow::Result<PathChoice> {
     } else {
         PathChoice::Skip
     })
+}
+
+fn prompt_update_confirm(latest: &str) -> anyhow::Result<bool> {
+    println!("Apply update to {latest}? (y/n):");
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let choice = input.trim().to_lowercase();
+    Ok(choice == "y" || choice == "yes")
 }
 
 fn run_sync_job(

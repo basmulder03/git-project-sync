@@ -209,6 +209,30 @@ The installer also writes an `install.json` manifest to the same location and us
 Only one installer can run at a time (guarded by an install lock file under the same directory).
 Re-running the installer replaces the existing install in place and updates the service to point at the new binary.
 
+## Updates
+
+Check for updates:
+
+```bash
+mirror-cli update --check
+```
+
+Apply the latest release:
+
+```bash
+mirror-cli update --apply
+```
+
+Updates require an existing install. If none is found, run `mirror-cli install` first.
+
+Override the GitHub release repo:
+
+```bash
+GIT_PROJECT_SYNC_UPDATE_REPO=owner/repo mirror-cli update --check
+```
+
+In the TUI, use the "Update" action from the main menu or press `u` in the installer view.
+
 ## Tray + Dashboard
 
 System tray UI:

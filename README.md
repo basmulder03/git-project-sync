@@ -84,6 +84,26 @@ Live status for sync:
 mirror-cli sync --status
 ```
 
+## Updates
+
+Check for updates:
+
+```bash
+mirror-cli update --check
+```
+
+Apply the latest release:
+
+```bash
+mirror-cli update --apply
+```
+
+Override the GitHub release repo:
+
+```bash
+GIT_PROJECT_SYNC_UPDATE_REPO=owner/repo mirror-cli update --check
+```
+
 ## Tray + Dashboard
 
 Run the system tray UI:

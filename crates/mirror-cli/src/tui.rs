@@ -18,6 +18,7 @@ use mirror_core::model::RemoteRepo;
 use mirror_core::repo_status::RepoLocalStatus;
 use mirror_core::sync_engine::{run_sync_filtered, RunSyncOptions, SyncSummary};
 use crate::repo_overview;
+use crate::update;
 use mirror_providers::auth;
 use mirror_providers::spec::{host_or_default, pat_help, spec_for};
 use mirror_providers::ProviderRegistry;
@@ -93,6 +94,7 @@ fn run_app(
         app.poll_install_events()?;
         app.poll_repo_status_events()?;
         app.poll_sync_events()?;
+        app.poll_update_events()?;
     }
 
     Ok(())
@@ -103,6 +105,8 @@ enum View {
     Main,
     Dashboard,
     Install,
+    UpdatePrompt,
+    UpdateProgress,
     SyncStatus,
     InstallStatus,
     ConfigRoot,
@@ -187,6 +191,11 @@ struct TuiApp {
     install_rx: Option<mpsc::Receiver<InstallEvent>>,
     install_progress: Option<InstallProgressState>,
     install_status: Option<crate::install::InstallStatus>,
+    update_rx: Option<mpsc::Receiver<UpdateEvent>>,
+    update_progress: Option<UpdateProgressState>,
+    update_prompt: Option<update::UpdateCheck>,
+    update_return_view: View,
+    message_return_view: View,
 }
 
 impl TuiApp {
@@ -227,6 +236,11 @@ impl TuiApp {
             install_rx: None,
             install_progress: None,
             install_status: None,
+            update_rx: None,
+            update_progress: None,
+            update_prompt: None,
+            update_return_view: View::Main,
+            message_return_view: View::Main,
         };
         if app.view == View::Install {
             app.enter_install_view()?;
@@ -283,6 +297,8 @@ impl TuiApp {
             View::Main => self.draw_main(frame, layout[1]),
             View::Dashboard => self.draw_dashboard(frame, layout[1]),
             View::Install => self.draw_install(frame, layout[1]),
+            View::UpdatePrompt => self.draw_update_prompt(frame, layout[1]),
+            View::UpdateProgress => self.draw_update_progress(frame, layout[1]),
             View::SyncStatus => self.draw_sync_status(frame, layout[1]),
             View::InstallStatus => self.draw_install_status(frame, layout[1]),
             View::ConfigRoot => self.draw_config_root(frame, layout[1]),
@@ -309,7 +325,9 @@ impl TuiApp {
         match self.view {
             View::Main => "Up/Down: navigate | Enter: select | q: quit".to_string(),
             View::Dashboard => "t: toggle targets | s: sync status | r: sync now | Esc: back".to_string(),
-            View::Install => "Tab: next | Enter: run install | s: status | Esc: back".to_string(),
+            View::Install => "Tab: next | Enter: run install | s: status | u: update | Esc: back".to_string(),
+            View::UpdatePrompt => "y: apply update | n: cancel | Esc: back".to_string(),
+            View::UpdateProgress => "Updating... please wait".to_string(),
             View::SyncStatus => "Enter/Esc: back".to_string(),
             View::InstallStatus => "Enter/Esc: back".to_string(),
             View::ConfigRoot => "Enter: save | Esc: back".to_string(),
@@ -337,6 +355,7 @@ impl TuiApp {
             "Service",
             "Audit Log",
             "Repo Overview",
+            "Update",
             "Quit",
         ];
         let list_items: Vec<ListItem> = items
@@ -476,6 +495,8 @@ impl TuiApp {
             ))));
             lines.push(Line::from(Span::raw("")));
         }
+        lines.push(Line::from(Span::raw("Tip: Press u to check for updates.")));
+        lines.push(Line::from(Span::raw("")));
         for (idx, field) in self.input_fields.iter().enumerate() {
             let label = if idx == self.input_index {
                 format!("> {}: {}", field.label, field.display_value())
@@ -515,6 +536,31 @@ impl TuiApp {
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .block(Block::default().borders(Borders::ALL).title("Installer"));
+        frame.render_widget(widget, area);
+    }
+
+    fn draw_update_prompt(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let widget = Paragraph::new(self.message.clone())
+            .wrap(Wrap { trim: false })
+            .block(Block::default().borders(Borders::ALL).title("Update"));
+        frame.render_widget(widget, area);
+    }
+
+    fn draw_update_progress(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let mut lines = vec![
+            Line::from(Span::raw("Context: Updating... please wait")),
+            Line::from(Span::raw("")),
+        ];
+        if let Some(progress) = &self.update_progress {
+            for line in &progress.messages {
+                lines.push(Line::from(Span::raw(line)));
+            }
+        } else {
+            lines.push(Line::from(Span::raw("Starting update...")));
+        }
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(Block::default().borders(Borders::ALL).title("Update"));
         frame.render_widget(widget, area);
     }
 
@@ -948,6 +994,8 @@ impl TuiApp {
             View::Main => self.handle_main(key),
             View::Dashboard => self.handle_dashboard(key),
             View::Install => self.handle_install(key),
+            View::UpdatePrompt => self.handle_update_prompt(key),
+            View::UpdateProgress => self.handle_update_progress(key),
             View::ConfigRoot => self.handle_config_root(key),
             View::RepoOverview => self.handle_repo_overview(key),
             View::Targets => self.handle_targets(key),
@@ -969,10 +1017,10 @@ impl TuiApp {
     fn handle_main(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
         match key.code {
             KeyCode::Char('q') => return Ok(true),
-            KeyCode::Down => self.menu_index = (self.menu_index + 1) % 9,
+            KeyCode::Down => self.menu_index = (self.menu_index + 1) % 10,
             KeyCode::Up => {
                 if self.menu_index == 0 {
-                    self.menu_index = 8;
+                    self.menu_index = 9;
                 } else {
                     self.menu_index -= 1;
                 }
@@ -1002,6 +1050,9 @@ impl TuiApp {
                         self.message = format!("Repo overview unavailable: {err}");
                         self.view = View::Message;
                     }
+                }
+                8 => {
+                    self.start_update_check(View::Main)?;
                 }
                 _ => return Ok(true),
             },
@@ -1064,6 +1115,9 @@ impl TuiApp {
             KeyCode::Char('s') => {
                 self.install_status = crate::install::install_status().ok();
                 self.view = View::InstallStatus;
+            }
+            KeyCode::Char('u') => {
+                self.start_update_check(View::Install)?;
             }
             _ => self.handle_text_input(key),
         }
@@ -1479,7 +1533,11 @@ impl TuiApp {
     }
 
     fn handle_message(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
-        if key.code == KeyCode::Enter { self.view = View::Main }
+        if key.code == KeyCode::Enter {
+            let return_view = self.message_return_view;
+            self.message_return_view = View::Main;
+            self.view = return_view;
+        }
         Ok(false)
     }
 
@@ -1561,6 +1619,30 @@ impl TuiApp {
     }
 
     fn handle_install_progress(&mut self, _key: KeyEvent) -> anyhow::Result<bool> {
+        Ok(false)
+    }
+
+    fn handle_update_prompt(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                if let Some(check) = self.update_prompt.take() {
+                    self.start_update_apply(check)?;
+                } else {
+                    self.message = "No update available.".to_string();
+                    self.message_return_view = self.update_return_view;
+                    self.view = View::Message;
+                }
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                self.update_prompt = None;
+                self.view = self.update_return_view;
+            }
+            _ => {}
+        }
+        Ok(false)
+    }
+
+    fn handle_update_progress(&mut self, _key: KeyEvent) -> anyhow::Result<bool> {
         Ok(false)
     }
 
@@ -1695,6 +1777,72 @@ impl TuiApp {
         Ok(())
     }
 
+    fn poll_update_events(&mut self) -> anyhow::Result<()> {
+        let Some(rx) = self.update_rx.take() else {
+            return Ok(());
+        };
+        let mut done = false;
+        while let Ok(event) = rx.try_recv() {
+            match event {
+                UpdateEvent::Progress(message) => {
+                    let state = self
+                        .update_progress
+                        .get_or_insert_with(UpdateProgressState::new);
+                    state.messages.push(message);
+                }
+                UpdateEvent::Checked(result) => {
+                    match result {
+                        Ok(check) => {
+                            if !check.is_newer {
+                                self.message = format!("Up to date ({})", check.current);
+                                self.message_return_view = self.update_return_view;
+                                self.view = View::Message;
+                            } else if check.asset.is_none() {
+                                self.message = "Update available but no asset found for this platform."
+                                    .to_string();
+                                self.message_return_view = self.update_return_view;
+                                self.view = View::Message;
+                            } else {
+                                self.message = format!(
+                                    "Update available: {} -> {}\nApply update? (y/n)",
+                                    check.current, check.latest
+                                );
+                                self.update_prompt = Some(check);
+                                self.view = View::UpdatePrompt;
+                            }
+                        }
+                        Err(err) => {
+                            self.message = format!("Update check failed: {err}");
+                            self.message_return_view = self.update_return_view;
+                            self.view = View::Message;
+                        }
+                    }
+                    done = true;
+                }
+                UpdateEvent::Done(result) => {
+                    match result {
+                        Ok(report) => {
+                            self.message = format!(
+                                "{}\n{}\n{}",
+                                report.install, report.service, report.path
+                            );
+                        }
+                        Err(err) => {
+                            self.message = format!("Update failed: {err}");
+                        }
+                    }
+                    self.message_return_view = self.update_return_view;
+                    self.view = View::Message;
+                    done = true;
+                }
+            }
+        }
+        if !done {
+            self.update_rx = Some(rx);
+        }
+        Ok(())
+    }
+
     fn enter_repo_overview(&mut self) -> anyhow::Result<()> {
         self.view = View::RepoOverview;
         self.repo_overview_message = None;
@@ -1737,6 +1885,34 @@ impl TuiApp {
         thread::spawn(move || {
             let result = repo_overview::refresh_repo_status(&cache_path).map_err(|err| err.to_string());
             let _ = tx.send(result);
+        });
+        Ok(())
+    }
+
+    fn start_update_check(&mut self, return_view: View) -> anyhow::Result<()> {
+        self.update_return_view = return_view;
+        self.update_progress = Some(UpdateProgressState::new());
+        self.view = View::UpdateProgress;
+        let (tx, rx) = mpsc::channel::<UpdateEvent>();
+        self.update_rx = Some(rx);
+        thread::spawn(move || {
+            let result = update::check_for_update(None).map_err(|err| err.to_string());
+            let _ = tx.send(UpdateEvent::Checked(result));
+        });
+        Ok(())
+    }
+
+    fn start_update_apply(&mut self, check: update::UpdateCheck) -> anyhow::Result<()> {
+        self.update_progress = Some(UpdateProgressState { messages: vec!["Starting update...".to_string()] });
+        self.view = View::UpdateProgress;
+        let (tx, rx) = mpsc::channel::<UpdateEvent>();
+        self.update_rx = Some(rx);
+        thread::spawn(move || {
+            let result = update::apply_update_with_progress(&check, Some(&|message| {
+                let _ = tx.send(UpdateEvent::Progress(message.to_string()));
+            }))
+            .map_err(|err| err.to_string());
+            let _ = tx.send(UpdateEvent::Done(result));
         });
         Ok(())
     }
@@ -2173,6 +2349,12 @@ enum InstallEvent {
     Done(Result<crate::install::InstallReport, String>),
 }
 
+enum UpdateEvent {
+    Progress(String),
+    Checked(Result<update::UpdateCheck, String>),
+    Done(Result<crate::install::InstallReport, String>),
+}
+
 struct InstallProgressState {
     current: usize,
     total: usize,
@@ -2192,6 +2374,16 @@ impl InstallProgressState {
         self.current = progress.step;
         self.total = progress.total.max(1);
         self.messages.push(progress.message);
+    }
+}
+
+struct UpdateProgressState {
+    messages: Vec<String>,
+}
+
+impl UpdateProgressState {
+    fn new() -> Self {
+        Self { messages: vec!["Checking for updates...".to_string()] }
     }
 }
 
@@ -2414,7 +2606,7 @@ mod tests {
             config_path: std::path::PathBuf::from("/tmp/config.json"),
             config: AppConfigV2::default(),
             view: View::Main,
-            menu_index: 8,
+            menu_index: 9,
             message: String::new(),
             input_index: 0,
             input_fields: Vec::new(),
@@ -2436,6 +2628,11 @@ mod tests {
             install_rx: None,
             install_progress: None,
             install_status: None,
+            update_rx: None,
+            update_progress: None,
+            update_prompt: None,
+            update_return_view: View::Main,
+            message_return_view: View::Main,
         };
         let key = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
         app.handle_main(key).unwrap();
@@ -2495,6 +2692,11 @@ mod tests {
             install_rx: None,
             install_progress: None,
             install_status: None,
+            update_rx: None,
+            update_progress: None,
+            update_prompt: None,
+            update_return_view: View::Main,
+            message_return_view: View::Main,
         };
         let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
         app.handle_token_menu(key).unwrap();
@@ -2541,6 +2743,11 @@ mod tests {
             install_rx: None,
             install_progress: None,
             install_status: None,
+            update_rx: None,
+            update_progress: None,
+            update_prompt: None,
+            update_return_view: View::Main,
+            message_return_view: View::Main,
         };
         assert!(app.form_hint().is_some());
     }

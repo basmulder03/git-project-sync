@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to release (e.g. v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            asset_name: mirror-cli-windows-x86_64.exe
+            binary_path: target/release/mirror-cli.exe
+          - os: macos-latest
+            asset_name: mirror-cli-macos-x86_64
+            binary_path: target/release/mirror-cli
+          - os: ubuntu-latest
+            asset_name: mirror-cli-linux-x86_64
+            binary_path: target/release/mirror-cli
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release
+      - name: Package asset (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Copy-Item ${{ matrix.binary_path }} ${{ matrix.asset_name }}
+      - name: Package asset (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cp ${{ matrix.binary_path }} ${{ matrix.asset_name }}
+          chmod +x ${{ matrix.asset_name }}
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset_name }}
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          fail_on_unmatched_files: true

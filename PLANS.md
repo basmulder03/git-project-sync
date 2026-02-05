@@ -1,5 +1,13 @@
 # PLANS.md
 
+## Milestone 51 — GitHub CI + Release + Self-Update (in progress)
+
+- [x] Add GitHub Actions CI workflow (fmt, clippy, test, build)
+- [x] Add GitHub Release workflow with OS binaries
+- [x] Add CLI update command (check/apply)
+- [x] Add TUI update flow (main menu + install view)
+- [x] Update docs for self-update
+
 ## Milestone 43 — Installer Default Location + Update (in progress)
 
 - [x] Install binary to OS default per-user location (app-data based)

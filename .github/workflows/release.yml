@@ -3,6 +3,8 @@ name: Release
 on:
   push:
     branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -28,11 +30,28 @@ jobs:
           TAG="v$VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT
+          LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n 1)
+          echo "last_tag=$LAST_TAG" >> $GITHUB_OUTPUT
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists. Skipping release."
             echo "should_release=false" >> $GITHUB_OUTPUT
           else
             echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+      - name: Ensure version bumped
+        if: steps.version.outputs.should_release == 'true'
+        run: |
+          LAST_TAG="${{ steps.version.outputs.last_tag }}"
+          CURRENT="v${{ steps.version.outputs.version }}"
+          if [ -z "$LAST_TAG" ]; then
+            echo "No prior tags found; proceeding with first release."
+            exit 0
+          fi
+          HIGHEST=$(printf "%s\n%s\n" "$LAST_TAG" "$CURRENT" | sort -V | tail -n 1)
+          if [ "$HIGHEST" != "$CURRENT" ]; then
+            echo "Release version $CURRENT is not greater than latest tag $LAST_TAG."
+            echo "Bump the version in crates/mirror-cli/Cargo.toml before releasing."
+            exit 1
           fi
 
   release:
@@ -57,6 +76,9 @@ jobs:
           generate_release_notes: true
 
   build:
+    name: Build Artifacts
+    needs: [version, release]
+    if: needs.version.outputs.should_release == 'true'
     name: Build Artifacts
     needs: [version, release]
     if: needs.version.outputs.should_release == 'true'
@@ -97,5 +119,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.asset_name }}
+          tag_name: ${{ needs.version.outputs.tag }}
           tag_name: ${{ needs.version.outputs.tag }}
           fail_on_unmatched_files: true

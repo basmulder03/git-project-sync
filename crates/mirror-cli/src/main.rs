@@ -1708,6 +1708,7 @@ fn handle_install(
                 last_len.set(line.len());
                 let _ = io::stdout().flush();
             }),
+            None,
         )
         .map_err(|err| {
             if update::is_permission_error(&err)

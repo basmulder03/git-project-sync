@@ -145,6 +145,7 @@ pub fn apply_update_with_progress(
     if let Some(callback) = progress {
         callback("Installing update");
     }
+    let installed_version = check.latest.to_string();
     crate::install::perform_install_with_progress(
         &download_path,
         InstallOptions {
@@ -152,6 +153,7 @@ pub fn apply_update_with_progress(
             path_choice: PathChoice::Skip,
         },
         None,
+        Some(installed_version.as_str()),
     )
 }
 

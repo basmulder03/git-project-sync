@@ -1,3 +1,4 @@
+use crate::logging::LogBuffer;
 use crate::repo_overview;
 use crate::update;
 use anyhow::Context;
@@ -35,6 +36,7 @@ use std::io::{self, Stdout};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
+use tracing::{debug, error, info, warn};
 
 #[derive(Clone, Copy, Debug)]
 pub enum StartView {
@@ -44,16 +46,24 @@ pub enum StartView {
 }
 
 const REPO_STATUS_TTL_SECS: u64 = 600;
+const LOG_PANEL_HEIGHT: u16 = 7;
+const LOG_PANEL_BORDER_HEIGHT: u16 = 2;
+const LOG_HEADER_LINES: usize = 1;
 
-pub fn run_tui(audit: &AuditLogger, start_view: StartView) -> anyhow::Result<()> {
+pub fn run_tui(
+    audit: &AuditLogger,
+    log_buffer: LogBuffer,
+    start_view: StartView,
+) -> anyhow::Result<()> {
     enable_raw_mode().context("enable raw mode")?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen).context("enter alternate screen")?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend).context("create terminal")?;
 
+    info!(start_view = ?start_view, "Starting TUI");
     let _ = audit.record("tui.start", AuditStatus::Ok, Some("tui"), None, None)?;
-    let result = run_app(&mut terminal, audit, start_view);
+    let result = run_app(&mut terminal, audit, log_buffer, start_view);
 
     disable_raw_mode().ok();
     execute!(terminal.backend_mut(), LeaveAlternateScreen).ok();
@@ -61,6 +71,8 @@ pub fn run_tui(audit: &AuditLogger, start_view: StartView) -> anyhow::Result<()>
 
     if result.is_ok() {
         let _ = audit.record("tui.exit", AuditStatus::Ok, Some("tui"), None, None);
+    } else if let Err(err) = &result {
+        error!(error = %err, "TUI exited with error");
     }
     result
 }
@@ -68,11 +80,16 @@ pub fn run_tui(audit: &AuditLogger, start_view: StartView) -> anyhow::Result<()>
 fn run_app(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     audit: &AuditLogger,
+    log_buffer: LogBuffer,
     start_view: StartView,
 ) -> anyhow::Result<()> {
-    let mut app = TuiApp::load(audit.clone(), start_view)?;
+    let mut app = TuiApp::load(audit.clone(), log_buffer, start_view)?;
     let mut last_tick = Instant::now();
     let tick_rate = Duration::from_millis(200);
+    debug!(
+        tick_rate_ms = tick_rate.as_millis(),
+        "TUI event loop started"
+    );
 
     loop {
         terminal.draw(|frame| app.draw(frame))?;
@@ -178,6 +195,7 @@ struct TuiApp {
     token_menu_index: usize,
     token_validation: HashMap<String, TokenValidation>,
     audit: AuditLogger,
+    log_buffer: LogBuffer,
     audit_filter: AuditFilter,
     validation_message: Option<String>,
     show_target_stats: bool,
@@ -207,7 +225,11 @@ struct TuiApp {
 }
 
 impl TuiApp {
-    fn load(audit: AuditLogger, start_view: StartView) -> anyhow::Result<Self> {
+    fn load(
+        audit: AuditLogger,
+        log_buffer: LogBuffer,
+        start_view: StartView,
+    ) -> anyhow::Result<Self> {
         let config_path = default_config_path()?;
         let (config, migrated) = load_or_migrate(&config_path)?;
         if migrated {
@@ -230,6 +252,7 @@ impl TuiApp {
             token_menu_index: 0,
             token_validation: HashMap::new(),
             audit,
+            log_buffer,
             audit_filter: AuditFilter::All,
             validation_message: None,
             show_target_stats: false,
@@ -284,6 +307,7 @@ impl TuiApp {
 
     fn enter_install_view(&mut self) -> anyhow::Result<()> {
         self.ensure_install_guard()?;
+        info!("Entered install view");
         self.view = View::Install;
         self.prepare_install_form();
         self.drain_input_events()?;
@@ -304,6 +328,7 @@ impl TuiApp {
             .constraints([
                 Constraint::Length(3),
                 Constraint::Min(0),
+                Constraint::Length(LOG_PANEL_HEIGHT),
                 Constraint::Length(3),
             ])
             .split(frame.size());
@@ -335,9 +360,11 @@ impl TuiApp {
             View::InstallProgress => self.draw_install_progress(frame, layout[1]),
         }
 
+        self.draw_log_panel(frame, layout[2]);
+
         let footer = Paragraph::new(self.footer_text())
             .block(Block::default().borders(Borders::ALL).title("Help"));
-        frame.render_widget(footer, layout[2]);
+        frame.render_widget(footer, layout[3]);
     }
 
     fn footer_text(&self) -> String {
@@ -1125,6 +1152,33 @@ impl TuiApp {
         frame.render_widget(widget, area);
     }
 
+    fn draw_log_panel(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let max_lines = area.height.saturating_sub(LOG_PANEL_BORDER_HEIGHT) as usize;
+        if max_lines == 0 {
+            return;
+        }
+        let header = Line::from(Span::styled(
+            "time     level target message",
+            Style::default().add_modifier(Modifier::BOLD),
+        ));
+        let mut lines = Vec::new();
+        lines.push(header);
+        let entries = self.log_buffer.entries();
+        if entries.is_empty() {
+            lines.push(Line::from(Span::raw("No log messages yet.")));
+        } else if max_lines > LOG_HEADER_LINES {
+            let max_entries = max_lines.saturating_sub(LOG_HEADER_LINES);
+            let start = entries.len().saturating_sub(max_entries);
+            for entry in entries[start..].iter() {
+                lines.push(Line::from(Span::raw(entry.format_compact())));
+            }
+        }
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(Block::default().borders(Borders::ALL).title("Logs"));
+        frame.render_widget(widget, area);
+    }
+
     fn handle_key(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
         if key.kind != KeyEventKind::Press {
             return Ok(false);
@@ -1164,41 +1218,59 @@ impl TuiApp {
                     self.menu_index -= 1;
                 }
             }
-            KeyCode::Enter => match self.menu_index {
-                0 => self.view = View::Dashboard,
-                1 => {
-                    if let Err(err) = self.enter_install_view() {
-                        self.message = format!("Installer unavailable: {err}");
-                        self.view = View::Message;
+            KeyCode::Enter => {
+                info!(selection = self.menu_index, "Main menu selected");
+                match self.menu_index {
+                    0 => {
+                        info!("Switching to dashboard view");
+                        self.view = View::Dashboard;
                     }
-                }
-                2 => {
-                    self.view = View::ConfigRoot;
-                    self.input_fields = vec![InputField::new("Root path")];
-                    self.input_index = 0;
-                }
-                3 => self.view = View::Targets,
-                4 => {
-                    self.view = View::TokenMenu;
-                    self.token_menu_index = 0;
-                }
-                5 => self.view = View::Service,
-                6 => {
-                    self.view = View::AuditLog;
-                    self.audit_scroll = 0;
-                    self.audit_search_active = false;
-                }
-                7 => {
-                    if let Err(err) = self.enter_repo_overview() {
-                        self.message = format!("Repo overview unavailable: {err}");
-                        self.view = View::Message;
+                    1 => {
+                        if let Err(err) = self.enter_install_view() {
+                            error!(error = %err, "Installer unavailable");
+                            self.message = format!("Installer unavailable: {err}");
+                            self.view = View::Message;
+                        }
                     }
+                    2 => {
+                        info!("Switching to config root view");
+                        self.view = View::ConfigRoot;
+                        self.input_fields = vec![InputField::new("Root path")];
+                        self.input_index = 0;
+                    }
+                    3 => {
+                        info!("Switching to targets view");
+                        self.view = View::Targets;
+                    }
+                    4 => {
+                        info!("Switching to token menu view");
+                        self.view = View::TokenMenu;
+                        self.token_menu_index = 0;
+                    }
+                    5 => {
+                        info!("Switching to service view");
+                        self.view = View::Service;
+                    }
+                    6 => {
+                        info!("Switching to audit log view");
+                        self.view = View::AuditLog;
+                        self.audit_scroll = 0;
+                        self.audit_search_active = false;
+                    }
+                    7 => {
+                        if let Err(err) = self.enter_repo_overview() {
+                            error!(error = %err, "Repo overview unavailable");
+                            self.message = format!("Repo overview unavailable: {err}");
+                            self.view = View::Message;
+                        }
+                    }
+                    8 => {
+                        info!("Starting update check from main menu");
+                        self.start_update_check(View::Main)?;
+                    }
+                    _ => return Ok(true),
                 }
-                8 => {
-                    self.start_update_check(View::Main)?;
-                }
-                _ => return Ok(true),
-            },
+            }
             _ => {}
         }
         Ok(false)
@@ -1213,6 +1285,7 @@ impl TuiApp {
             KeyCode::Tab => self.input_index = (self.input_index + 1) % self.input_fields.len(),
             KeyCode::Enter => {
                 if let Err(err) = self.ensure_install_guard() {
+                    error!(error = %err, "Installer lock unavailable");
                     self.message = format!("Installer unavailable: {err}");
                     self.view = View::Message;
                     return Ok(false);
@@ -1224,6 +1297,7 @@ impl TuiApp {
                     match delay_raw.parse::<u64>() {
                         Ok(value) => Some(value),
                         Err(_) => {
+                            warn!(value = delay_raw, "Invalid delayed start input");
                             self.validation_message =
                                 Some("Delayed start must be a number.".to_string());
                             return Ok(false);
@@ -1237,6 +1311,11 @@ impl TuiApp {
                     crate::install::PathChoice::Skip
                 };
                 let exec = std::env::current_exe().context("resolve current executable")?;
+                info!(
+                    delayed_start = delayed_start,
+                    path_choice = ?path_choice,
+                    "Starting install"
+                );
                 let (tx, rx) = mpsc::channel::<InstallEvent>();
                 thread::spawn(move || {
                     let result = crate::install::perform_install_with_progress(
@@ -1273,6 +1352,10 @@ impl TuiApp {
             KeyCode::Esc => self.view = View::Main,
             KeyCode::Char('t') => {
                 self.show_target_stats = !self.show_target_stats;
+                debug!(
+                    show_target_stats = self.show_target_stats,
+                    "Toggled target stats"
+                );
             }
             KeyCode::Char('s') => {
                 self.view = View::SyncStatus;
@@ -1295,6 +1378,7 @@ impl TuiApp {
                     .map(|f| f.value.trim().to_string());
                 if let Some(path) = value {
                     if path.is_empty() {
+                        warn!("Root path empty in config root view");
                         self.validation_message = Some("Root path cannot be empty.".to_string());
                         self.message = "Root path cannot be empty.".to_string();
                         self.view = View::Message;
@@ -1303,6 +1387,7 @@ impl TuiApp {
                     self.config.root = Some(path.into());
                     self.config.save(&self.config_path)?;
                     self.validation_message = None;
+                    info!("Saved config root from TUI");
                     let audit_id = self.audit.record(
                         "tui.config.root",
                         AuditStatus::Ok,
@@ -1329,6 +1414,10 @@ impl TuiApp {
             }
             KeyCode::Char('c') => {
                 self.repo_overview_compact = !self.repo_overview_compact;
+                debug!(
+                    compact = self.repo_overview_compact,
+                    "Toggled repo overview compact mode"
+                );
             }
             KeyCode::Down => {
                 self.repo_overview_selected = self.repo_overview_selected.saturating_add(1);
@@ -1414,6 +1503,7 @@ impl TuiApp {
                         scope
                     }
                     Err(err) => {
+                        warn!(error = %err, "Invalid scope for target add");
                         self.validation_message = Some(format!("Scope invalid: {err}"));
                         return Ok(false);
                     }
@@ -1422,6 +1512,7 @@ impl TuiApp {
                 let labels = split_labels(&self.input_fields[2].value);
                 let id = target_id(provider.clone(), host.as_deref(), &scope);
                 if self.config.targets.iter().any(|t| t.id == id) {
+                    warn!(target_id = %id, "Target already exists");
                     self.validation_message = Some("Target already exists.".to_string());
                     self.message = "Target already exists.".to_string();
                     self.view = View::Message;
@@ -1452,6 +1543,7 @@ impl TuiApp {
                 });
                 self.config.save(&self.config_path)?;
                 self.validation_message = None;
+                info!(target_id = %id, provider = %provider.as_prefix(), "Target added");
                 let audit_id = self.audit.record_with_context(
                     "tui.target.add",
                     AuditStatus::Ok,
@@ -1479,6 +1571,7 @@ impl TuiApp {
             KeyCode::Enter => {
                 let id = self.input_fields[0].value.trim().to_string();
                 if id.is_empty() {
+                    warn!("Target remove attempted without id");
                     self.validation_message = Some("Target id is required.".to_string());
                     self.message = "Target id required.".to_string();
                     self.view = View::Message;
@@ -1488,6 +1581,7 @@ impl TuiApp {
                 self.config.targets.retain(|t| t.id != id);
                 let after = self.config.targets.len();
                 if before == after {
+                    warn!(target_id = %id, "Target not found for removal");
                     self.validation_message = Some("Target not found.".to_string());
                     let audit_id = self.audit.record(
                         "tui.target.remove",
@@ -1500,6 +1594,7 @@ impl TuiApp {
                 } else {
                     self.config.save(&self.config_path)?;
                     self.validation_message = None;
+                    info!(target_id = %id, "Target removed");
                     let audit_id = self.audit.record(
                         "tui.target.remove",
                         AuditStatus::Ok,
@@ -1587,6 +1682,7 @@ impl TuiApp {
                         scope
                     }
                     Err(err) => {
+                        warn!(error = %err, "Invalid scope for token set");
                         self.validation_message = Some(format!("Scope invalid: {err}"));
                         return Ok(false);
                     }
@@ -1596,6 +1692,7 @@ impl TuiApp {
                 let account = spec.account_key(&host, &scope)?;
                 let token = self.input_fields[2].value.trim().to_string();
                 if token.is_empty() {
+                    warn!(account = %account, "Token missing in token set");
                     self.validation_message = Some("Token cannot be empty.".to_string());
                     self.message = "Token cannot be empty.".to_string();
                     self.view = View::Message;
@@ -1611,6 +1708,7 @@ impl TuiApp {
                 if validity.status != crate::token_check::TokenValidity::Ok {
                     let _ = auth::delete_pat(&account);
                     let message = validity.message(&runtime_target);
+                    warn!(account = %account, status = ?validity.status, "Token validity check failed");
                     self.validation_message = Some(message.clone());
                     self.message = message;
                     self.view = View::Message;
@@ -1640,6 +1738,7 @@ impl TuiApp {
                     None,
                     None,
                 )?;
+                info!(account = %account, provider = %provider.as_prefix(), "Token stored");
                 self.message = format!(
                     "Token stored for {account}. {validation_message}. Audit ID: {audit_id}"
                 );
@@ -1673,6 +1772,7 @@ impl TuiApp {
                         scope
                     }
                     Err(err) => {
+                        warn!(error = %err, "Invalid scope for token validation");
                         self.validation_message = Some(format!("Scope invalid: {err}"));
                         return Ok(false);
                     }
@@ -1706,9 +1806,11 @@ impl TuiApp {
                             None,
                             None,
                         )?;
+                        info!(account = %account, status = ?record.status, "Token validation completed");
                         self.message = format!("{status}. Audit ID: {audit_id}");
                     }
                     Err(err) => {
+                        error!(error = %err, "Token validation failed");
                         self.validation_message = Some(format!("Validation failed: {err}"));
                         let _ = self.audit.record_with_context(
                             "tui.token.validate",
@@ -1805,6 +1907,7 @@ impl TuiApp {
             KeyCode::Esc => self.view = View::Main,
             KeyCode::Char('i') => {
                 let exe = std::env::current_exe().context("resolve current executable")?;
+                info!("Service install requested");
                 let result = mirror_core::service::install_service(&exe);
                 match result {
                     Ok(()) => {
@@ -1818,6 +1921,7 @@ impl TuiApp {
                         self.message = format!("Service installed. Audit ID: {audit_id}");
                     }
                     Err(err) => {
+                        error!(error = %err, "Service install failed");
                         let _ = self.audit.record(
                             "tui.service.install",
                             AuditStatus::Failed,
@@ -1831,6 +1935,7 @@ impl TuiApp {
                 self.view = View::Message;
             }
             KeyCode::Char('u') => {
+                info!("Service uninstall requested");
                 let result = mirror_core::service::uninstall_service();
                 match result {
                     Ok(()) => {
@@ -1846,6 +1951,7 @@ impl TuiApp {
                         self.message = format!("Service uninstalled. Audit ID: {audit_id}");
                     }
                     Err(err) => {
+                        error!(error = %err, "Service uninstall failed");
                         let _ = self.audit.record(
                             "tui.service.uninstall",
                             AuditStatus::Failed,
@@ -1924,6 +2030,7 @@ impl TuiApp {
                     self.release_install_guard();
                     match result {
                         Ok(report) => {
+                            info!("Install completed");
                             let audit_id = self.audit.record(
                                 "tui.install",
                                 AuditStatus::Ok,
@@ -1937,6 +2044,7 @@ impl TuiApp {
                             );
                         }
                         Err(err) => {
+                            error!(error = %err, "Install failed");
                             let _ = self.audit.record(
                                 "tui.install",
                                 AuditStatus::Failed,
@@ -1967,6 +2075,7 @@ impl TuiApp {
             self.repo_status_refreshing = false;
             match result {
                 Ok(statuses) => {
+                    info!(count = statuses.len(), "Repo status refreshed");
                     self.update_repo_status_cache(statuses);
                     let refreshed = self
                         .repo_status_last_refresh
@@ -1976,6 +2085,7 @@ impl TuiApp {
                         Some(format!("Repo status refreshed at {refreshed}"));
                 }
                 Err(err) => {
+                    warn!(error = %err, "Repo status refresh failed");
                     self.repo_overview_message = Some(format!("Repo status refresh failed: {err}"));
                 }
             }
@@ -1996,6 +2106,18 @@ impl TuiApp {
             self.sync_running = false;
             match result {
                 Ok(summary) => {
+                    info!(
+                        cloned = summary.cloned,
+                        fast_forwarded = summary.fast_forwarded,
+                        up_to_date = summary.up_to_date,
+                        dirty = summary.dirty,
+                        diverged = summary.diverged,
+                        failed = summary.failed,
+                        missing_archived = summary.missing_archived,
+                        missing_removed = summary.missing_removed,
+                        missing_skipped = summary.missing_skipped,
+                        "Sync completed"
+                    );
                     self.message = format!(
                         "Sync completed. cloned={} ff={} up={} dirty={} div={} fail={} missA={} missR={} missS={}",
                         summary.cloned,
@@ -2010,6 +2132,7 @@ impl TuiApp {
                     );
                 }
                 Err(err) => {
+                    error!(error = %err, "Sync failed");
                     self.message = format!("Sync failed: {err}");
                 }
             }
@@ -2038,6 +2161,12 @@ impl TuiApp {
                 UpdateEvent::Checked(result) => {
                     match result {
                         Ok(check) => {
+                            info!(
+                                current = %check.current,
+                                latest = %check.latest,
+                                is_newer = check.is_newer,
+                                "Update check completed"
+                            );
                             if !check.is_newer {
                                 self.message = format!("Up to date ({})", check.current);
                                 self.message_return_view = self.update_return_view;
@@ -2058,6 +2187,7 @@ impl TuiApp {
                             }
                         }
                         Err(err) => {
+                            warn!(error = %err, "Update check failed");
                             self.message = format!("Update check failed: {err}");
                             self.message_return_view = self.update_return_view;
                             self.view = View::Message;
@@ -2068,10 +2198,12 @@ impl TuiApp {
                 UpdateEvent::Done(result) => {
                     match result {
                         Ok(report) => {
+                            info!("Update applied");
                             self.message =
                                 format!("{}\n{}\n{}", report.install, report.service, report.path);
                         }
                         Err(err) => {
+                            error!(error = %err, "Update apply failed");
                             self.message = format!("Update failed: {err}");
                         }
                     }
@@ -2088,6 +2220,7 @@ impl TuiApp {
     }
 
     fn enter_repo_overview(&mut self) -> anyhow::Result<()> {
+        info!("Entered repo overview view");
         self.view = View::RepoOverview;
         self.repo_overview_message = None;
         self.repo_overview_selected = 0;
@@ -2177,9 +2310,11 @@ impl TuiApp {
 
     fn start_repo_status_refresh(&mut self) -> anyhow::Result<()> {
         if self.repo_status_refreshing {
+            debug!("Repo status refresh already running");
             return Ok(());
         }
         let cache_path = default_cache_path()?;
+        info!(path = %cache_path.display(), "Starting repo status refresh");
         let (tx, rx) = mpsc::channel::<Result<HashMap<String, RepoLocalStatus>, String>>();
         self.repo_status_rx = Some(rx);
         self.repo_status_refreshing = true;
@@ -2193,6 +2328,7 @@ impl TuiApp {
     }
 
     fn start_update_check(&mut self, return_view: View) -> anyhow::Result<()> {
+        info!(return_view = ?return_view, "Starting update check");
         self.update_return_view = return_view;
         self.update_progress = Some(UpdateProgressState::new());
         self.view = View::UpdateProgress;
@@ -2206,6 +2342,7 @@ impl TuiApp {
     }
 
     fn start_update_apply(&mut self, check: update::UpdateCheck) -> anyhow::Result<()> {
+        info!(current = %check.current, latest = %check.latest, "Applying update");
         self.update_progress = Some(UpdateProgressState {
             messages: vec!["Starting update...".to_string()],
         });
@@ -2227,6 +2364,7 @@ impl TuiApp {
 
     fn start_sync_run(&mut self) -> anyhow::Result<()> {
         if self.sync_running {
+            warn!("Sync already running");
             self.message = "Sync already running.".to_string();
             self.view = View::Message;
             return Ok(());
@@ -2234,12 +2372,14 @@ impl TuiApp {
         let root = match self.config.root.clone() {
             Some(root) => root,
             None => {
+                warn!("Sync requested without configured root");
                 self.message = "Config missing root; run config init.".to_string();
                 self.view = View::Message;
                 return Ok(());
             }
         };
         if self.config.targets.is_empty() {
+            warn!("Sync requested without configured targets");
             self.message = "No targets configured.".to_string();
             self.view = View::Message;
             return Ok(());
@@ -2249,6 +2389,7 @@ impl TuiApp {
         let lock = match LockFile::try_acquire(&lock_path)? {
             Some(lock) => lock,
             None => {
+                warn!(path = %lock_path.display(), "Sync lock already held");
                 self.message = "Sync already running (lock held).".to_string();
                 self.view = View::Message;
                 return Ok(());
@@ -2262,6 +2403,7 @@ impl TuiApp {
         self.sync_rx = Some(rx);
         self.sync_running = true;
         self.view = View::SyncStatus;
+        info!(targets = targets.len(), root = %root.display(), "Starting sync");
 
         thread::spawn(move || {
             let _lock = lock;
@@ -2562,7 +2704,7 @@ impl TokenValidation {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum TokenValidationStatus {
     Ok,
     MissingScopes(Vec<String>),
@@ -3036,6 +3178,7 @@ mod tests {
             token_menu_index: 0,
             token_validation: HashMap::new(),
             audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
+            log_buffer: LogBuffer::new(50),
             audit_filter: AuditFilter::All,
             validation_message: None,
             show_target_stats: false,
@@ -3107,6 +3250,7 @@ mod tests {
             token_menu_index: 1,
             token_validation: HashMap::new(),
             audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
+            log_buffer: LogBuffer::new(50),
             audit_filter: AuditFilter::All,
             validation_message: None,
             show_target_stats: false,
@@ -3168,6 +3312,7 @@ mod tests {
             token_menu_index: 0,
             token_validation: HashMap::new(),
             audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
+            log_buffer: LogBuffer::new(50),
             audit_filter: AuditFilter::All,
             validation_message: None,
             show_target_stats: false,

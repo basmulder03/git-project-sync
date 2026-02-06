@@ -95,6 +95,12 @@ Check for updates:
 mirror-cli update --check-only
 ```
 
+Check updates alongside any command:
+
+```bash
+mirror-cli sync --check-updates
+```
+
 Apply the latest release:
 
 ```bash
@@ -131,7 +137,7 @@ mirror-cli tui --dashboard
 
 In the TUI:
 - Dashboard view: press `s` for Sync Status
-- Installer view: press `s` for Installer Status
+- Setup view: press `s` for Setup Status
 
 ## Scope Shapes
 

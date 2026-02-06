@@ -213,6 +213,12 @@ Check for updates:
 mirror-cli update --check-only
 ```
 
+Check updates alongside any command:
+
+```bash
+mirror-cli sync --check-updates
+```
+
 Apply the latest release:
 
 ```bash

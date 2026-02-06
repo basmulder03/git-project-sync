@@ -31,6 +31,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
+use semver::Version;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Stdout};
 use std::sync::mpsc;
@@ -156,6 +157,50 @@ enum View {
     AuditLog,
     Message,
     InstallProgress,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InstallAction {
+    Install,
+    Update,
+    Reinstall,
+}
+
+impl InstallAction {
+    fn label(self) -> &'static str {
+        match self {
+            InstallAction::Install => "Install new",
+            InstallAction::Update => "Update installed version",
+            InstallAction::Reinstall => "Reinstall current version",
+        }
+    }
+
+    fn verb(self) -> &'static str {
+        match self {
+            InstallAction::Install => "install",
+            InstallAction::Update => "update install",
+            InstallAction::Reinstall => "reinstall",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InstallState {
+    NotInstalled,
+    UpdateReady,
+    Installed,
+    Unknown,
+}
+
+impl InstallState {
+    fn menu_label(self) -> &'static str {
+        match self {
+            InstallState::NotInstalled => "Setup (not installed)",
+            InstallState::UpdateReady => "Setup (update ready)",
+            InstallState::Installed => "Setup (installed)",
+            InstallState::Unknown => "Setup",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -412,7 +457,12 @@ impl TuiApp {
                     .to_string()
             }
             View::Install => {
-                "Tab: next | Enter: run install | s: status | u: update | Esc: back".to_string()
+                let status = crate::install::install_status().ok();
+                let action = install_action_from_status(status.as_ref());
+                format!(
+                    "Tab: next | Enter: {} | s: status | u: check updates | Esc: back",
+                    action.verb()
+                )
             }
             View::UpdatePrompt => "y: apply update | n: cancel | Esc: back".to_string(),
             View::UpdateProgress => "Updating... please wait".to_string(),
@@ -435,28 +485,31 @@ impl TuiApp {
                     .to_string()
             }
             View::Message => "Enter: back".to_string(),
-            View::InstallProgress => "Installing... please wait".to_string(),
+            View::InstallProgress => "Applying setup... please wait".to_string(),
         }
     }
 
     fn draw_main(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
-        let items = [
-            "Dashboard",
-            "Installer",
-            "Config",
-            "Targets",
-            "Tokens",
-            "Service",
-            "Audit Log",
-            "Repo Overview",
-            "Update",
-            "Quit",
+        let status = crate::install::install_status().ok();
+        let action = install_action_from_status(status.as_ref());
+        let state = install_state_from_status(status.as_ref(), action);
+        let items = vec![
+            "Dashboard".to_string(),
+            state.menu_label().to_string(),
+            "Config".to_string(),
+            "Targets".to_string(),
+            "Tokens".to_string(),
+            "Service".to_string(),
+            "Audit Log".to_string(),
+            "Repo Overview".to_string(),
+            "Update".to_string(),
+            "Quit".to_string(),
         ];
         let list_items: Vec<ListItem> = items
             .iter()
             .enumerate()
             .map(|(idx, item)| {
-                let mut line = Line::from(Span::raw(*item));
+                let mut line = Line::from(Span::raw(item.as_str()));
                 if idx == self.menu_index {
                     line = line.style(Style::default().add_modifier(Modifier::BOLD));
                 }
@@ -509,13 +562,19 @@ impl TuiApp {
     }
 
     fn draw_install(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let status = crate::install::install_status().ok();
+        let action = install_action_from_status(status.as_ref());
         let mut lines = vec![
             Line::from(Span::raw(
-                "Context: Install daemon and optionally register PATH",
+                "Context: Setup status with install/update actions",
             )),
             Line::from(Span::raw("")),
+            Line::from(Span::raw(format!(
+                "Current version: {}",
+                env!("CARGO_PKG_VERSION")
+            ))),
         ];
-        if let Ok(status) = crate::install::install_status() {
+        if let Some(status) = status.as_ref() {
             let service_label = if cfg!(target_os = "windows") {
                 "Scheduled task"
             } else {
@@ -526,12 +585,8 @@ impl TuiApp {
                 if status.installed { "yes" } else { "no" }
             ))));
             lines.push(Line::from(Span::raw(format!(
-                "Action: {}",
-                if status.installed {
-                    "Update existing install"
-                } else {
-                    "Install new"
-                }
+                "Action: {} (press Enter)",
+                action.label()
             ))));
             lines.push(Line::from(Span::raw(format!(
                 "Path: {}",
@@ -603,6 +658,13 @@ impl TuiApp {
                 if status.path_in_env { "yes" } else { "no" }
             ))));
             lines.push(Line::from(Span::raw("")));
+        } else {
+            lines.push(Line::from(Span::raw(format!(
+                "Action: {} (press Enter)",
+                action.label()
+            ))));
+            lines.push(Line::from(Span::raw("Status unavailable.")));
+            lines.push(Line::from(Span::raw("")));
         }
         lines.push(Line::from(Span::raw("Tip: Press u to check for updates.")));
         lines.push(Line::from(Span::raw("")));
@@ -624,13 +686,13 @@ impl TuiApp {
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .scroll((scroll as u16, 0))
-            .block(Block::default().borders(Borders::ALL).title("Installer"));
+            .block(Block::default().borders(Borders::ALL).title("Setup"));
         frame.render_widget(widget, area);
     }
 
     fn draw_install_progress(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         let mut lines = vec![
-            Line::from(Span::raw("Context: Installing... please wait")),
+            Line::from(Span::raw("Context: Applying setup... please wait")),
             Line::from(Span::raw("")),
         ];
         if let Some(progress) = &self.install_progress {
@@ -648,7 +710,7 @@ impl TuiApp {
         }
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
-            .block(Block::default().borders(Borders::ALL).title("Installer"));
+            .block(Block::default().borders(Borders::ALL).title("Setup"));
         frame.render_widget(widget, area);
     }
 
@@ -679,7 +741,7 @@ impl TuiApp {
 
     fn draw_install_status(&self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         let mut lines = vec![
-            Line::from(Span::raw("Context: Installer status")),
+            Line::from(Span::raw("Context: Setup status")),
             Line::from(Span::raw("")),
         ];
         if let Some(status) = &self.install_status {
@@ -774,11 +836,7 @@ impl TuiApp {
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .scroll((scroll as u16, 0))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Installer Status"),
-            );
+            .block(Block::default().borders(Borders::ALL).title("Setup Status"));
         frame.render_widget(widget, area);
     }
 
@@ -1283,8 +1341,8 @@ impl TuiApp {
                     }
                     1 => {
                         if let Err(err) = self.enter_install_view() {
-                            error!(error = %err, "Installer unavailable");
-                            self.message = format!("Installer unavailable: {err}");
+                            error!(error = %err, "Setup unavailable");
+                            self.message = format!("Setup unavailable: {err}");
                             self.view = View::Message;
                         }
                     }
@@ -1346,8 +1404,8 @@ impl TuiApp {
             KeyCode::Home => self.install_scroll = 0,
             KeyCode::Enter => {
                 if let Err(err) = self.ensure_install_guard() {
-                    error!(error = %err, "Installer lock unavailable");
-                    self.message = format!("Installer unavailable: {err}");
+                    error!(error = %err, "Setup lock unavailable");
+                    self.message = format!("Setup unavailable: {err}");
                     self.view = View::Message;
                     return Ok(false);
                 }
@@ -3216,6 +3274,60 @@ fn format_delayed_start(delay: Option<u64>) -> String {
     }
 }
 
+fn install_action_from_status(status: Option<&crate::install::InstallStatus>) -> InstallAction {
+    let Some(status) = status else {
+        return InstallAction::Install;
+    };
+    let running_from_install = status
+        .installed_path
+        .as_ref()
+        .and_then(|path| std::env::current_exe().ok().map(|exe| exe == *path))
+        .unwrap_or(false);
+    install_action_for_versions(
+        status.installed,
+        status.installed_version.as_deref(),
+        env!("CARGO_PKG_VERSION"),
+        running_from_install,
+    )
+}
+
+fn install_action_for_versions(
+    installed: bool,
+    installed_version: Option<&str>,
+    current_version: &str,
+    running_from_install: bool,
+) -> InstallAction {
+    if !installed {
+        return InstallAction::Install;
+    }
+    if !running_from_install
+        && let (Ok(current), Some(installed)) = (
+            Version::parse(current_version),
+            installed_version.and_then(|value| Version::parse(value).ok()),
+        )
+        && current > installed
+    {
+        return InstallAction::Update;
+    }
+    InstallAction::Reinstall
+}
+
+fn install_state_from_status(
+    status: Option<&crate::install::InstallStatus>,
+    action: InstallAction,
+) -> InstallState {
+    let Some(status) = status else {
+        return InstallState::Unknown;
+    };
+    if !status.installed {
+        return InstallState::NotInstalled;
+    }
+    if matches!(action, InstallAction::Update) {
+        return InstallState::UpdateReady;
+    }
+    InstallState::Installed
+}
+
 fn current_epoch_seconds() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -3436,5 +3548,25 @@ mod tests {
             repo_overview_compact: false,
         };
         assert!(app.form_hint().is_some());
+    }
+
+    #[test]
+    fn install_action_for_versions_detects_update() {
+        let action = install_action_for_versions(true, Some("1.2.3"), "1.3.0", false);
+        assert_eq!(action, InstallAction::Update);
+    }
+
+    #[test]
+    fn install_action_for_versions_install_when_missing() {
+        let action = install_action_for_versions(false, None, "1.2.3", false);
+        assert_eq!(action, InstallAction::Install);
+    }
+
+    #[test]
+    fn install_action_for_versions_reinstall_when_current() {
+        let action = install_action_for_versions(true, Some("1.2.3"), "1.2.3", false);
+        assert_eq!(action, InstallAction::Reinstall);
+        let action = install_action_for_versions(true, Some("1.2.3"), "1.3.0", true);
+        assert_eq!(action, InstallAction::Reinstall);
     }
 }

@@ -958,13 +958,15 @@ fn handle_validate_token(args: ValidateTokenArgs, audit: &AuditLogger) -> anyhow
                 }
             }
             None => {
+                let token_check_result = token_check::check_token_validity(&runtime_target);
+                token_check::ensure_token_valid(&token_check_result, &runtime_target)?;
                 println!(
-                    "Scope validation not supported for {}",
-                    provider.as_prefix()
+                    "{} (scope validation not supported)",
+                    token_check_result.message(&runtime_target)
                 );
                 let audit_id = audit.record_with_context(
                     "token.validate",
-                    AuditStatus::Skipped,
+                    AuditStatus::Ok,
                     Some("token.validate"),
                     AuditContext {
                         provider: Some(provider.as_prefix().to_string()),
@@ -973,7 +975,7 @@ fn handle_validate_token(args: ValidateTokenArgs, audit: &AuditLogger) -> anyhow
                         path: None,
                     },
                     None,
-                    Some("validation not supported"),
+                    Some("auth-based validation used (scope validation not supported)"),
                 )?;
                 println!("Audit ID: {audit_id}");
             }

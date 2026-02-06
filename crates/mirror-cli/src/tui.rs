@@ -1915,7 +1915,13 @@ impl TuiApp {
                         let audit_status = match record.status {
                             TokenValidationStatus::Ok => AuditStatus::Ok,
                             TokenValidationStatus::MissingScopes(_) => AuditStatus::Failed,
-                            TokenValidationStatus::Unsupported => AuditStatus::Skipped,
+                            TokenValidationStatus::Unsupported => AuditStatus::Ok,
+                        };
+                        let audit_detail = match &record.status {
+                            TokenValidationStatus::Unsupported => {
+                                Some("auth-based validation used (scope validation not supported)")
+                            }
+                            _ => None,
                         };
                         let audit_id = self.audit.record_with_context(
                             "tui.token.validate",
@@ -1928,7 +1934,7 @@ impl TuiApp {
                                 path: None,
                             },
                             None,
-                            None,
+                            audit_detail,
                         )?;
                         info!(account = %account, status = ?record.status, "Token validation completed");
                         self.message = format!("{status}. Audit ID: {audit_id}");
@@ -2669,7 +2675,14 @@ impl TuiApp {
                     )
                 }
             }
-            None => TokenValidationStatus::Unsupported,
+            None => {
+                let token_check_result = crate::token_check::check_token_validity(&runtime_target);
+                crate::token_check::ensure_token_valid(&token_check_result, &runtime_target)
+                    .context(
+                        "Auth-based token validation failed; verify your token is valid and not expired",
+                    )?;
+                TokenValidationStatus::Unsupported
+            }
         };
         Ok(TokenValidation {
             status,
@@ -2832,7 +2845,10 @@ impl TokenValidation {
             TokenValidationStatus::MissingScopes(scopes) => {
                 format!("missing scopes ({}) at {}", scopes.join(", "), self.at)
             }
-            TokenValidationStatus::Unsupported => format!("validation unsupported at {}", self.at),
+            TokenValidationStatus::Unsupported => format!(
+                "token valid (scope validation not supported) at {}",
+                self.at
+            ),
         }
     }
 }
@@ -3500,6 +3516,19 @@ mod tests {
         let message = validation.display();
         assert!(message.contains("missing scopes"));
         assert!(message.contains("repo"));
+    }
+
+    #[test]
+    fn token_validation_display_reports_unsupported_scopes() {
+        let validation = TokenValidation {
+            status: TokenValidationStatus::Unsupported,
+            at: "2026-02-04 12:00:00".to_string(),
+        };
+        let message = validation.display();
+        assert_eq!(
+            message,
+            "token valid (scope validation not supported) at 2026-02-04 12:00:00"
+        );
     }
 
     #[test]

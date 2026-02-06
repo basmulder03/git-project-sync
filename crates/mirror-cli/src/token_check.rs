@@ -1,3 +1,4 @@
+use anyhow::bail;
 use mirror_core::model::{ProviderKind, ProviderTarget};
 use mirror_providers::ProviderRegistry;
 
@@ -60,6 +61,16 @@ pub fn check_token_validity(target: &ProviderTarget) -> TokenCheckResult {
         Ok(_) => TokenCheckResult::ok(),
         Err(err) => classify_error(target.provider.clone(), &err),
     }
+}
+
+pub fn ensure_token_valid(
+    result: &TokenCheckResult,
+    target: &ProviderTarget,
+) -> anyhow::Result<()> {
+    if result.status != TokenValidity::Ok {
+        bail!("Token validation failed: {}", result.message(target));
+    }
+    Ok(())
 }
 
 fn classify_error(_provider: ProviderKind, err: &anyhow::Error) -> TokenCheckResult {

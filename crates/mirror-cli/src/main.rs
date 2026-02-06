@@ -953,7 +953,7 @@ fn handle_validate_token(args: ValidateTokenArgs, audit: &AuditLogger) -> anyhow
                         path: None,
                     },
                     None,
-                    None,
+                    Some("auth-based validation used (scope validation not supported)"),
                 )?;
                 println!("Audit ID: {audit_id}");
             }

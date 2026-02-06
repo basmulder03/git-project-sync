@@ -180,7 +180,7 @@ impl RepoProvider for AzureDevOpsProvider {
         let scopes = pat_help(ProviderKind::AzureDevOps)
             .scopes
             .iter()
-            .map(|scope| (*scope).to_string())
+            .map(|scope| scope.to_string())
             .collect();
         Ok(Some(scopes))
     }

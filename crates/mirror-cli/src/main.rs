@@ -1610,6 +1610,10 @@ fn handle_install(
                 println!("Installed at: {}", epoch_to_label(value));
             }
             println!(
+                "Startup delay: {}",
+                format_delayed_start(status.delayed_start)
+            );
+            println!(
                 "{} installed: {}",
                 service_label,
                 if status.service_installed {
@@ -2013,6 +2017,13 @@ fn epoch_to_label(epoch: u64) -> String {
         .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
     ts.format(&time::format_description::parse("[year]-[month]-[day] [hour]:[minute]").unwrap())
         .unwrap_or_else(|_| "unknown".to_string())
+}
+
+fn format_delayed_start(delay: Option<u64>) -> String {
+    match delay.filter(|value| *value > 0) {
+        Some(value) => format!("{value}s"),
+        None => "none".to_string(),
+    }
 }
 
 fn should_run_cli_update_check(command: &Commands) -> bool {

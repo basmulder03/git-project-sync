@@ -2655,7 +2655,9 @@ mod tests {
                 assert!(args.check_only);
             }
             _ => panic!("expected update command"),
-    
+        }
+    }
+
     #[test]
     fn admin_prompt_label_matches_os() {
         let label = admin_privileges_prompt_label();

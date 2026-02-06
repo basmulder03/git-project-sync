@@ -1859,6 +1859,12 @@ impl TuiApp {
                             TokenValidationStatus::MissingScopes(_) => AuditStatus::Failed,
                             TokenValidationStatus::Unsupported => AuditStatus::Ok,
                         };
+                        let audit_detail = match &record.status {
+                            TokenValidationStatus::Unsupported => {
+                                Some("auth-based validation used (scope validation not supported)")
+                            }
+                            _ => None,
+                        };
                         let audit_id = self.audit.record_with_context(
                             "tui.token.validate",
                             audit_status,
@@ -1870,7 +1876,7 @@ impl TuiApp {
                                 path: None,
                             },
                             None,
-                            None,
+                            audit_detail,
                         )?;
                         info!(account = %account, status = ?record.status, "Token validation completed");
                         self.message = format!("{status}. Audit ID: {audit_id}");
@@ -2612,7 +2618,8 @@ impl TuiApp {
                 }
             }
             None => {
-                crate::token_check::ensure_token_valid(&runtime_target)?;
+                crate::token_check::ensure_token_valid(&runtime_target)
+                    .context("Auth-based token validation failed")?;
                 TokenValidationStatus::Unsupported
             }
         };

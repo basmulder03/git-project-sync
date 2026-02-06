@@ -937,10 +937,10 @@ fn handle_validate_token(args: ValidateTokenArgs, audit: &AuditLogger) -> anyhow
                 }
             }
             None => {
-                let validation = token_check::ensure_token_valid(&runtime_target)?;
+                let token_check_result = token_check::ensure_token_valid(&runtime_target)?;
                 println!(
                     "{} (scope validation not supported)",
-                    validation.message(&runtime_target)
+                    token_check_result.message(&runtime_target)
                 );
                 let audit_id = audit.record_with_context(
                     "token.validate",

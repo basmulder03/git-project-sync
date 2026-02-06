@@ -2136,12 +2136,23 @@ fn run_token_validity_checks(
     Ok(())
 }
 
+fn admin_privileges_prompt_label() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "User Account Control (UAC) prompt"
+    } else if cfg!(target_os = "macos") {
+        "macOS administrator privileges prompt"
+    } else {
+        "sudo password prompt"
+    }
+}
+
 fn maybe_escalate_and_reexec(reason: &str) -> anyhow::Result<bool> {
     if !stdin_is_tty() || !stdout_is_tty() {
         return Ok(false);
     }
+    let prompt_label = admin_privileges_prompt_label();
     println!(
-        "Permission denied while attempting to {reason}. Re-run with elevated permissions? (y/n):"
+        "Permission denied while attempting to {reason}. Re-run with elevated permissions? You will see the {prompt_label}. (y/n):"
     );
     let mut input = String::new();
     std::io::stdin().read_line(&mut input)?;
@@ -2623,5 +2634,17 @@ mod tests {
         assert!(message.contains("GitLab authentication failed"));
         let message = gitlab_status_message(scope, StatusCode::NOT_FOUND).unwrap();
         assert!(message.contains("scope not found"));
+    }
+
+    #[test]
+    fn admin_prompt_label_matches_os() {
+        let label = admin_privileges_prompt_label();
+        if cfg!(target_os = "windows") {
+            assert!(label.contains("User Account Control"));
+        } else if cfg!(target_os = "macos") {
+            assert!(label.contains("macOS"));
+        } else {
+            assert!(label.contains("sudo"));
+        }
     }
 }

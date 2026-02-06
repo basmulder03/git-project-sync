@@ -334,10 +334,10 @@ fn parse_version(raw: &str) -> anyhow::Result<Version> {
 }
 
 fn choose_restart_path(installed_path: Option<PathBuf>, current_exe: PathBuf) -> PathBuf {
-    if let Some(path) = installed_path {
-        if path.exists() {
-            return path;
-        }
+    if let Some(path) = installed_path
+        && path.exists()
+    {
+        return path;
     }
     current_exe
 }

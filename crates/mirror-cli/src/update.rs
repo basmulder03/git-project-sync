@@ -7,6 +7,7 @@ use serde_json::json;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use mirror_core::audit::{AuditLogger, AuditStatus};
 use mirror_core::cache::{RepoCache, record_update_check, update_check_due};
@@ -40,6 +41,11 @@ pub struct AutoUpdateOptions<'a> {
     pub interactive: bool,
     pub source: &'a str,
     pub override_repo: Option<&'a str>,
+}
+
+struct RestartCommand {
+    exec: PathBuf,
+    args: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -157,11 +163,11 @@ pub fn apply_update_with_progress(
     )
 }
 
-pub fn check_and_maybe_apply(options: AutoUpdateOptions<'_>) -> anyhow::Result<()> {
+pub fn check_and_maybe_apply(options: AutoUpdateOptions<'_>) -> anyhow::Result<bool> {
     let now = current_epoch_seconds();
     let mut cache = RepoCache::load(options.cache_path).unwrap_or_default();
     if !options.force && !update_check_due(&cache, now, options.interval_secs) {
-        return Ok(());
+        return Ok(false);
     }
 
     let check = match check_for_update(options.override_repo) {
@@ -182,7 +188,7 @@ pub fn check_and_maybe_apply(options: AutoUpdateOptions<'_>) -> anyhow::Result<(
                 Some(json!({"reason": "network", "source": options.source})),
                 Some(&err.to_string()),
             );
-            return Ok(());
+            return Ok(false);
         }
         Err(err) => {
             let _ = options.audit.record(
@@ -224,6 +230,7 @@ pub fn check_and_maybe_apply(options: AutoUpdateOptions<'_>) -> anyhow::Result<(
         None,
     );
 
+    let mut applied = false;
     if check.is_newer && options.auto_apply {
         if !crate::install::is_installed()? {
             let _ = options.audit.record(
@@ -233,10 +240,11 @@ pub fn check_and_maybe_apply(options: AutoUpdateOptions<'_>) -> anyhow::Result<(
                 Some(json!({"reason": "not_installed", "source": options.source})),
                 None,
             );
-            return Ok(());
+            return Ok(false);
         }
         match apply_update(&check) {
             Ok(report) => {
+                applied = true;
                 let _ = options.audit.record(
                     "update.apply",
                     AuditStatus::Ok,
@@ -273,7 +281,7 @@ pub fn check_and_maybe_apply(options: AutoUpdateOptions<'_>) -> anyhow::Result<(
         }
     }
 
-    Ok(())
+    Ok(applied)
 }
 
 fn download_asset(asset: &ReleaseAsset) -> anyhow::Result<PathBuf> {
@@ -325,6 +333,45 @@ fn parse_version(raw: &str) -> anyhow::Result<Version> {
     Version::parse(normalized).context("parse release version")
 }
 
+fn choose_restart_path(installed_path: Option<PathBuf>, current_exe: PathBuf) -> PathBuf {
+    if let Some(path) = installed_path {
+        if path.exists() {
+            return path;
+        }
+    }
+    current_exe
+}
+
+fn restart_command() -> anyhow::Result<RestartCommand> {
+    let current_exe = std::env::current_exe().context("resolve current executable")?;
+    let installed_path = crate::install::install_status()
+        .ok()
+        .and_then(|status| status.installed_path);
+    Ok(RestartCommand {
+        exec: choose_restart_path(installed_path, current_exe),
+        args: std::env::args().skip(1).collect(),
+    })
+}
+
+#[cfg(unix)]
+pub fn restart_current_process() -> anyhow::Result<()> {
+    use std::os::unix::process::CommandExt;
+
+    let command = restart_command()?;
+    let err = Command::new(command.exec).args(command.args).exec();
+    Err(err).context("re-exec mirror-cli")
+}
+
+#[cfg(not(unix))]
+pub fn restart_current_process() -> anyhow::Result<()> {
+    let command = restart_command()?;
+    Command::new(command.exec)
+        .args(command.args)
+        .spawn()
+        .context("restart mirror-cli")?;
+    std::process::exit(0);
+}
+
 fn current_epoch_seconds() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -356,6 +403,8 @@ pub fn is_permission_error(err: &anyhow::Error) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn resolve_repo_prefers_override() {
@@ -373,5 +422,15 @@ mod tests {
     fn parse_version_strips_v() {
         let parsed = parse_version("v1.2.3").unwrap();
         assert_eq!(parsed.to_string(), "1.2.3");
+    }
+
+    #[test]
+    fn choose_restart_path_uses_installed_path() {
+        let temp = TempDir::new().unwrap();
+        let installed = temp.path().join("mirror-cli");
+        fs::write(&installed, b"binary").unwrap();
+        let current = temp.path().join("current");
+        let chosen = choose_restart_path(Some(installed.clone()), current);
+        assert_eq!(chosen, installed);
     }
 }

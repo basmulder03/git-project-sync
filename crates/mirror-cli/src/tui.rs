@@ -1328,6 +1328,7 @@ impl TuiApp {
                         Some(&|progress| {
                             let _ = tx.send(InstallEvent::Progress(progress));
                         }),
+                        None,
                     )
                     .map_err(|err| err.to_string());
                     let _ = tx.send(InstallEvent::Done(result));

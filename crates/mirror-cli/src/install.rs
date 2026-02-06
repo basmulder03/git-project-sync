@@ -75,6 +75,7 @@ pub fn perform_install_with_progress(
     exec_path: &Path,
     options: InstallOptions,
     progress: Option<&dyn Fn(InstallProgress)>,
+    installed_version: Option<&str>,
 ) -> anyhow::Result<InstallReport> {
     let status = install_status().ok();
     let is_update = status.as_ref().map(|s| s.installed).unwrap_or(false);
@@ -142,7 +143,7 @@ pub fn perform_install_with_progress(
     step += 1;
     report_progress(progress, step, total, "Writing install metadata");
     write_marker()?;
-    write_manifest(&install_path)?;
+    write_manifest(&install_path, installed_version)?;
     Ok(InstallReport {
         install: install_message,
         service,
@@ -417,7 +418,7 @@ fn read_manifest() -> anyhow::Result<Option<InstallManifest>> {
     Ok(Some(manifest))
 }
 
-fn write_manifest(install_path: &Path) -> anyhow::Result<()> {
+fn write_manifest(install_path: &Path, installed_version: Option<&str>) -> anyhow::Result<()> {
     let path = manifest_path()?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).context("create install manifest dir")?;
@@ -425,12 +426,20 @@ fn write_manifest(install_path: &Path) -> anyhow::Result<()> {
     let manifest = InstallManifest {
         version: INSTALL_MANIFEST_VERSION,
         installed_path: install_path.to_path_buf(),
-        installed_version: env!("CARGO_PKG_VERSION").to_string(),
+        installed_version: resolve_installed_version(installed_version),
         installed_at: current_epoch_seconds(),
     };
     let data = serde_json::to_string_pretty(&manifest).context("serialize install manifest")?;
     fs::write(&path, data).context("write install manifest")?;
     Ok(())
+}
+
+fn resolve_installed_version(override_version: Option<&str>) -> String {
+    override_version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(env!("CARGO_PKG_VERSION"))
+        .to_string()
 }
 
 fn path_contains_dir(dir: &Path) -> bool {
@@ -484,5 +493,19 @@ mod tests {
             dir,
             PathBuf::from("/home/me/.local/share/git-project-sync/bin")
         );
+    }
+
+    #[test]
+    fn resolve_installed_version_prefers_override() {
+        let resolved = resolve_installed_version(Some("9.9.9"));
+        assert_eq!(resolved, "9.9.9");
+    }
+
+    #[test]
+    fn resolve_installed_version_falls_back_for_blank_override() {
+        let expected = env!("CARGO_PKG_VERSION");
+        assert_eq!(resolve_installed_version(None), expected);
+        assert_eq!(resolve_installed_version(Some("")), expected);
+        assert_eq!(resolve_installed_version(Some("   ")), expected);
     }
 }

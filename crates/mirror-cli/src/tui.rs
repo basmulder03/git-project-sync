@@ -45,6 +45,11 @@ pub enum StartView {
     Install,
 }
 
+enum RunOutcome {
+    Exit,
+    Restart,
+}
+
 const REPO_STATUS_TTL_SECS: u64 = 600;
 const LOG_PANEL_HEIGHT: u16 = 7;
 const LOG_PANEL_BORDER_HEIGHT: u16 = 2;
@@ -69,12 +74,22 @@ pub fn run_tui(
     execute!(terminal.backend_mut(), LeaveAlternateScreen).ok();
     terminal.show_cursor().ok();
 
-    if result.is_ok() {
-        let _ = audit.record("tui.exit", AuditStatus::Ok, Some("tui"), None, None);
-    } else if let Err(err) = &result {
-        error!(error = %err, "TUI exited with error");
+    let outcome = match result {
+        Ok(outcome) => {
+            let _ = audit.record("tui.exit", AuditStatus::Ok, Some("tui"), None, None);
+            Some(outcome)
+        }
+        Err(err) => {
+            error!(error = %err, "TUI exited with error");
+            return Err(err);
+        }
+    };
+
+    if matches!(outcome, Some(RunOutcome::Restart)) {
+        update::restart_current_process().context("restart after update apply")?;
     }
-    result
+
+    Ok(())
 }
 
 fn run_app(
@@ -82,7 +97,7 @@ fn run_app(
     audit: &AuditLogger,
     log_buffer: LogBuffer,
     start_view: StartView,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<RunOutcome> {
     let mut app = TuiApp::load(audit.clone(), log_buffer, start_view)?;
     let mut last_tick = Instant::now();
     let tick_rate = Duration::from_millis(200);
@@ -102,7 +117,7 @@ fn run_app(
             && let Event::Key(key) = event::read()?
             && app.handle_key(key)?
         {
-            break;
+            return Ok(RunOutcome::Exit);
         }
 
         if last_tick.elapsed() >= tick_rate {
@@ -113,9 +128,10 @@ fn run_app(
         app.poll_repo_status_events()?;
         app.poll_sync_events()?;
         app.poll_update_events()?;
+        if app.restart_requested {
+            return Ok(RunOutcome::Restart);
+        }
     }
-
-    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -219,6 +235,7 @@ struct TuiApp {
     update_progress: Option<UpdateProgressState>,
     update_prompt: Option<update::UpdateCheck>,
     update_return_view: View,
+    restart_requested: bool,
     message_return_view: View,
     audit_scroll: usize,
     audit_search: String,
@@ -277,6 +294,7 @@ impl TuiApp {
             update_progress: None,
             update_prompt: None,
             update_return_view: View::Main,
+            restart_requested: false,
             message_return_view: View::Main,
             audit_scroll: 0,
             audit_search: String::new(),
@@ -2257,6 +2275,7 @@ impl TuiApp {
                             info!("Update applied");
                             self.message =
                                 format!("{}\n{}\n{}", report.install, report.service, report.path);
+                            self.restart_requested = true;
                         }
                         Err(err) => {
                             error!(error = %err, "Update apply failed");
@@ -3268,6 +3287,7 @@ mod tests {
             update_progress: None,
             update_prompt: None,
             update_return_view: View::Main,
+            restart_requested: false,
             message_return_view: View::Main,
             audit_scroll: 0,
             audit_search: String::new(),
@@ -3341,6 +3361,7 @@ mod tests {
             update_progress: None,
             update_prompt: None,
             update_return_view: View::Main,
+            restart_requested: false,
             message_return_view: View::Main,
             audit_scroll: 0,
             audit_search: String::new(),
@@ -3404,6 +3425,7 @@ mod tests {
             update_progress: None,
             update_prompt: None,
             update_return_view: View::Main,
+            restart_requested: false,
             message_return_view: View::Main,
             audit_scroll: 0,
             audit_search: String::new(),

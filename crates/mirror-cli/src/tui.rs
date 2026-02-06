@@ -2774,7 +2774,9 @@ impl TokenValidation {
             TokenValidationStatus::MissingScopes(scopes) => {
                 format!("missing scopes ({}) at {}", scopes.join(", "), self.at)
             }
-            TokenValidationStatus::Unsupported => format!("validation unsupported at {}", self.at),
+            TokenValidationStatus::Unsupported => {
+                format!("scope validation not supported at {}", self.at)
+            }
         }
     }
 }
@@ -3388,6 +3390,16 @@ mod tests {
         let message = validation.display();
         assert!(message.contains("missing scopes"));
         assert!(message.contains("repo"));
+    }
+
+    #[test]
+    fn token_validation_display_reports_unsupported_scopes() {
+        let validation = TokenValidation {
+            status: TokenValidationStatus::Unsupported,
+            at: "2026-02-04 12:00:00".to_string(),
+        };
+        let message = validation.display();
+        assert!(message.contains("scope validation not supported"));
     }
 
     #[test]

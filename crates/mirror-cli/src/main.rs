@@ -1837,7 +1837,7 @@ fn run_update_check(audit: &AuditLogger) -> anyhow::Result<()> {
     let latest = check.latest.to_string();
     if !check.is_newer {
         println!("Up to date ({current}).");
-        let _ = audit.record("update.check", AuditStatus::Ok, Some("update"), None, None)?;
+        let _ = audit.record("update.check", AuditStatus::Ok, Some("update"), None, None);
         return Ok(());
     }
 
@@ -1854,7 +1854,7 @@ fn run_update_check(audit: &AuditLogger) -> anyhow::Result<()> {
         Some("update"),
         Some(serde_json::json!({"current": current, "latest": latest, "available": true})),
         None,
-    )?;
+    );
     Ok(())
 }
 

@@ -2618,8 +2618,11 @@ impl TuiApp {
                 }
             }
             None => {
-                crate::token_check::ensure_token_valid(&runtime_target)
-                    .context("Auth-based token validation failed")?;
+                let token_check_result = crate::token_check::check_token_validity(&runtime_target);
+                crate::token_check::ensure_token_valid(&token_check_result, &runtime_target)
+                    .context(
+                        "Auth-based token validation failed; verify your token is valid and not expired",
+                    )?;
                 TokenValidationStatus::Unsupported
             }
         };

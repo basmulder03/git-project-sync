@@ -63,12 +63,14 @@ pub fn check_token_validity(target: &ProviderTarget) -> TokenCheckResult {
     }
 }
 
-pub fn ensure_token_valid(target: &ProviderTarget) -> anyhow::Result<TokenCheckResult> {
-    let result = check_token_validity(target);
+pub fn ensure_token_valid(
+    result: &TokenCheckResult,
+    target: &ProviderTarget,
+) -> anyhow::Result<()> {
     if result.status != TokenValidity::Ok {
         bail!("Token validation failed: {}", result.message(target));
     }
-    Ok(result)
+    Ok(())
 }
 
 fn classify_error(_provider: ProviderKind, err: &anyhow::Error) -> TokenCheckResult {

@@ -82,7 +82,12 @@ pub fn perform_install_with_progress(
 ) -> anyhow::Result<InstallReport> {
     let status = install_status().ok();
     let is_update = status.as_ref().map(|s| s.installed).unwrap_or(false);
-    let install_path = default_install_path(exec_path)?;
+    let install_path = resolve_install_path(
+        exec_path,
+        status
+            .as_ref()
+            .and_then(|value| value.installed_path.as_deref()),
+    )?;
     let path_in_env = install_path
         .parent()
         .map(path_contains_dir)
@@ -353,6 +358,16 @@ fn default_install_path(exec_path: &Path) -> anyhow::Result<PathBuf> {
     Ok(default_install_dir()?.join(file_name))
 }
 
+fn resolve_install_path(
+    exec_path: &Path,
+    installed_path: Option<&Path>,
+) -> anyhow::Result<PathBuf> {
+    if let Some(path) = installed_path {
+        return Ok(path.to_path_buf());
+    }
+    default_install_path(exec_path)
+}
+
 fn default_install_dir() -> anyhow::Result<PathBuf> {
     if cfg!(target_os = "windows") {
         let base = BaseDirs::new().context("resolve base dirs")?;
@@ -579,6 +594,14 @@ mod tests {
         assert_eq!(resolve_installed_version(None), expected);
         assert_eq!(resolve_installed_version(Some("")), expected);
         assert_eq!(resolve_installed_version(Some("   ")), expected);
+    }
+
+    #[test]
+    fn resolve_install_path_prefers_installed_path() {
+        let exec_path = Path::new("/tmp/mirror-cli-new");
+        let installed_path = Path::new("/opt/mirror-cli");
+        let resolved = resolve_install_path(exec_path, Some(installed_path)).unwrap();
+        assert_eq!(resolved, installed_path);
     }
 
     #[cfg(windows)]

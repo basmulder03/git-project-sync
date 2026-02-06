@@ -2637,5 +2637,12 @@ mod tests {
             }
             _ => panic!("expected update command"),
         }
+        let cli = Cli::try_parse_from(["mirror-cli", "update", "--check"]).unwrap();
+        match cli.command {
+            Commands::Update(args) => {
+                assert!(args.check_only);
+            }
+            _ => panic!("expected update command"),
+        }
     }
 }

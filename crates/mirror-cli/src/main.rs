@@ -1273,20 +1273,20 @@ fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Result<()> {
         }
         let mut failure_count: u32 = 0;
         loop {
-            let mut ran = false;
-            match mirror_core::daemon::run_once_with_lock(&lock_path, &job) {
+            let ran = match mirror_core::daemon::run_once_with_lock(&lock_path, &job) {
                 Ok(ran_flag) => {
-                    ran = ran_flag;
                     if ran_flag {
                         info!("run completed");
                     }
                     failure_count = 0;
+                    ran_flag
                 }
                 Err(err) => {
                     failure_count = failure_count.saturating_add(1);
                     warn!(error = %err, failures = failure_count, "run failed");
+                    false
                 }
-            }
+            };
             if ran {
                 let update_applied = update::check_and_maybe_apply(update::AutoUpdateOptions {
                     cache_path: &cache_path,

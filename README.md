@@ -112,7 +112,7 @@ Auto-update behavior:
 - The daemon checks for updates on startup and then daily.
 - CLI runs check for updates only if the daemon has not performed a check yet.
 - Network failures are logged and do not fail the daemon.
-- If updates require elevated permissions, the CLI prompts to re-run with admin/sudo.
+- If updates require elevated permissions, the CLI prompts to re-run and triggers the OS admin-privileges prompt (UAC/sudo/etc.).
 
 PAT validation behavior:
 

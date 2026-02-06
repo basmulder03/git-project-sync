@@ -939,7 +939,10 @@ fn handle_validate_token(args: ValidateTokenArgs, audit: &AuditLogger) -> anyhow
             None => {
                 let validation = token_check::check_token_validity(&runtime_target);
                 if validation.status != token_check::TokenValidity::Ok {
-                    anyhow::bail!(validation.message(&runtime_target));
+                    anyhow::bail!(
+                        "Token validation failed: {}",
+                        validation.message(&runtime_target)
+                    );
                 }
                 println!(
                     "{} (scope validation not supported)",

@@ -2614,7 +2614,10 @@ impl TuiApp {
             None => {
                 let validity = crate::token_check::check_token_validity(&runtime_target);
                 if validity.status != crate::token_check::TokenValidity::Ok {
-                    anyhow::bail!(validity.message(&runtime_target));
+                    anyhow::bail!(
+                        "Token validation failed: {}",
+                        validity.message(&runtime_target)
+                    );
                 }
                 TokenValidationStatus::Unsupported
             }

@@ -1,7 +1,7 @@
 use crate::RepoProvider;
 use crate::auth;
 use crate::http::send_with_retry;
-use crate::spec::{AzureDevOpsSpec, host_or_default};
+use crate::spec::{AzureDevOpsSpec, host_or_default, pat_help};
 use anyhow::Context;
 use mirror_core::model::{ProviderKind, ProviderScope, ProviderTarget, RemoteRepo, RepoAuth};
 use mirror_core::provider::ProviderSpec;
@@ -170,6 +170,19 @@ impl RepoProvider for AzureDevOpsProvider {
             .context("Azure DevOps health check status")?;
         let _payload: ReposResponse = response.json().context("decode health response")?;
         Ok(())
+    }
+
+    fn token_scopes(&self, target: &ProviderTarget) -> anyhow::Result<Option<Vec<String>>> {
+        if target.provider != ProviderKind::AzureDevOps {
+            anyhow::bail!("invalid provider target for Azure DevOps");
+        }
+        self.health_check(target)?;
+        let scopes = pat_help(ProviderKind::AzureDevOps)
+            .scopes
+            .iter()
+            .map(|scope| scope.to_string())
+            .collect();
+        Ok(Some(scopes))
     }
 
     fn register_webhook(

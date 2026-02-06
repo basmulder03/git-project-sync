@@ -142,6 +142,28 @@ impl RepoProvider for GitLabProvider {
         Ok(())
     }
 
+    fn token_scopes(&self, target: &ProviderTarget) -> anyhow::Result<Option<Vec<String>>> {
+        if target.provider != ProviderKind::GitLab {
+            anyhow::bail!("invalid provider target for GitLab");
+        }
+        let spec = GitLabSpec;
+        let host = host_or_default(target.host.as_deref(), &spec);
+        Self::parse_scope(&target.scope)?;
+        let account = spec.account_key(&host, &target.scope)?;
+        let token = auth::get_pat(&account)?;
+
+        let url = format!("{host}/personal_access_tokens/self");
+        let builder = self.client.get(url).header("PRIVATE-TOKEN", token.as_str());
+        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
+            .context("call GitLab token scopes")?
+            .error_for_status()
+            .context("GitLab token scopes status")?;
+        let payload: TokenScopes = response
+            .json()
+            .context("decode GitLab token scopes response")?;
+        Ok(Some(payload.scopes))
+    }
+
     fn register_webhook(
         &self,
         target: &ProviderTarget,
@@ -173,6 +195,11 @@ impl RepoProvider for GitLabProvider {
         let _ = response.text();
         Ok(())
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct TokenScopes {
+    scopes: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -214,5 +241,16 @@ mod tests {
         });
         let repo: ProjectItem = serde_json::from_value(value).unwrap();
         assert_eq!(repo.archived, Some(true));
+    }
+
+    #[test]
+    fn token_scopes_deserialize_scopes() {
+        let value = json!({
+            "id": 1,
+            "name": "token",
+            "scopes": ["read_api", "read_repository"],
+        });
+        let token: TokenScopes = serde_json::from_value(value).unwrap();
+        assert_eq!(token.scopes, vec!["read_api", "read_repository"]);
     }
 }

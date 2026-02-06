@@ -500,4 +500,12 @@ mod tests {
         let resolved = resolve_installed_version(Some("9.9.9"));
         assert_eq!(resolved, "9.9.9");
     }
+
+    #[test]
+    fn resolve_installed_version_falls_back_for_blank_override() {
+        let expected = env!("CARGO_PKG_VERSION");
+        assert_eq!(resolve_installed_version(None), expected);
+        assert_eq!(resolve_installed_version(Some("")), expected);
+        assert_eq!(resolve_installed_version(Some("   ")), expected);
+    }
 }

@@ -40,6 +40,12 @@ mod update;
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Cli {
+    #[arg(
+        long,
+        global = true,
+        help = "Check for updates before running the command"
+    )]
+    check_updates: bool,
     #[command(subcommand)]
     command: Commands,
 }
@@ -431,7 +437,22 @@ fn main() -> anyhow::Result<()> {
     let is_interactive = stdin_is_tty() && stdout_is_tty();
     info!(command = command_label(&cli.command), "Running command");
 
-    if should_run_cli_update_check(&cli.command) {
+    if cli.check_updates
+        && !matches!(cli.command, Commands::Update(_))
+        && let Err(err) = run_update_check(&audit)
+    {
+        warn!(error = %err, "Update check failed");
+        let _ = audit.record(
+            "update.check",
+            AuditStatus::Failed,
+            Some("update"),
+            None,
+            Some(&err.to_string()),
+        );
+        eprintln!("Update check failed: {err}");
+    }
+
+    if should_run_cli_update_check(&cli.command, cli.check_updates) {
         let cache_path = default_cache_path()?;
         let now = current_epoch_seconds();
         let should_check = match RepoCache::load(&cache_path) {
@@ -1810,6 +1831,33 @@ fn handle_install(
     result
 }
 
+fn run_update_check(audit: &AuditLogger) -> anyhow::Result<()> {
+    let check = update::check_for_update(None)?;
+    let current = check.current.to_string();
+    let latest = check.latest.to_string();
+    if !check.is_newer {
+        println!("Up to date ({current}).");
+        let _ = audit.record("update.check", AuditStatus::Ok, Some("update"), None, None)?;
+        return Ok(());
+    }
+
+    println!("Update available: {current} -> {latest}");
+    if let Some(url) = check.release_url.as_deref() {
+        println!("Release: {url}");
+    }
+    if check.asset.is_none() {
+        println!("Update available but no release asset found for this platform.");
+    }
+    let _ = audit.record(
+        "update.check",
+        AuditStatus::Ok,
+        Some("update"),
+        Some(serde_json::json!({"current": current, "latest": latest, "available": true})),
+        None,
+    )?;
+    Ok(())
+}
+
 fn handle_task(args: TaskArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     let result: anyhow::Result<()> = (|| {
         if !cfg!(target_os = "windows") {
@@ -2080,8 +2128,8 @@ fn format_delayed_start(delay: Option<u64>) -> String {
     }
 }
 
-fn should_run_cli_update_check(command: &Commands) -> bool {
-    !matches!(command, Commands::Update(_) | Commands::Install(_))
+fn should_run_cli_update_check(command: &Commands, check_updates: bool) -> bool {
+    !check_updates && !matches!(command, Commands::Update(_) | Commands::Install(_))
 }
 
 fn stdin_is_tty() -> bool {
@@ -2731,6 +2779,12 @@ mod tests {
             }
             _ => panic!("expected update command"),
         }
+    }
+
+    #[test]
+    fn check_updates_flag_parses() {
+        let cli = Cli::try_parse_from(["mirror-cli", "--check-updates", "sync"]).unwrap();
+        assert!(cli.check_updates);
     }
 
     #[test]

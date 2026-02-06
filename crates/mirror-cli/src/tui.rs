@@ -3409,8 +3409,10 @@ mod tests {
             at: "2026-02-04 12:00:00".to_string(),
         };
         let message = validation.display();
-        assert!(message.contains("token valid"));
-        assert!(message.contains("scope validation not supported"));
+        assert_eq!(
+            message,
+            "token valid (scope validation not supported) at 2026-02-04 12:00:00"
+        );
     }
 
     #[test]

@@ -4,7 +4,7 @@
 
 - [x] Add GitHub Actions CI workflow (fmt, clippy, test, build)
 - [x] Add GitHub Release workflow with OS binaries
-- [x] Auto-release on merged PRs to main based on release/{major|minor|patch} branch names
+- [x] Manual release workflow with major/minor/patch bump selection
 - [x] Auto-update daemon/CLI (daemon startup + daily, CLI fallback) with auditing and elevation prompts
 - [x] Add CLI update command (check/apply)
 - [x] Add TUI update flow (main menu + install view)

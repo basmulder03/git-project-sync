@@ -22,12 +22,17 @@ Run the binary:
 
 ## Releases
 
-Push a release-ready version to `crates/mirror-cli/Cargo.toml` on `main` to trigger the GitHub Release workflow and prebuilt binaries.
+Releases are created manually via the GitHub Actions **Release** workflow. Choose the bump type (major, minor, patch) when dispatching; the workflow updates versions, creates the tag, and publishes binaries.
+
+Quick trigger with the GitHub CLI:
+
+```bash
+gh workflow run Release -f bump=patch
+```
 
 **Release Checklist**
-1. Update versions in `crates/mirror-cli/Cargo.toml`, `crates/mirror-core/Cargo.toml`, and `crates/mirror-providers/Cargo.toml`.
-2. Run `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all`.
-3. Merge to `main` and let the Release workflow create the tag and binaries.
+1. Run `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all`.
+2. Dispatch the **Release** workflow with the desired bump type.
 
 ### PATH behavior
 

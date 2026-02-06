@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(windows)]
+use tracing::debug;
 use tracing::info;
 
 pub struct InstallProgress {
@@ -41,6 +43,7 @@ pub struct InstallStatus {
     pub manifest_present: bool,
     pub installed_version: Option<String>,
     pub installed_at: Option<u64>,
+    pub delayed_start: Option<u64>,
     pub service_installed: bool,
     pub service_running: bool,
     pub service_last_run: Option<String>,
@@ -79,11 +82,20 @@ pub fn perform_install_with_progress(
 ) -> anyhow::Result<InstallReport> {
     let status = install_status().ok();
     let is_update = status.as_ref().map(|s| s.installed).unwrap_or(false);
-    let total = if matches!(options.path_choice, PathChoice::Add) {
-        5
-    } else {
-        4
-    };
+    let install_path = default_install_path(exec_path)?;
+    let path_in_env = install_path
+        .parent()
+        .map(path_contains_dir)
+        .unwrap_or(false);
+    let update_path = matches!(options.path_choice, PathChoice::Add) && !path_in_env;
+    let delayed_start = options.delayed_start.or_else(|| {
+        if is_update {
+            status.as_ref().and_then(|value| value.delayed_start)
+        } else {
+            None
+        }
+    });
+    let total = if update_path { 5 } else { 4 };
     let mut step = 0;
     step += 1;
     report_progress(
@@ -97,7 +109,6 @@ pub fn perform_install_with_progress(
         },
     );
     mirror_core::service::uninstall_service_if_exists().ok();
-    let install_path = default_install_path(exec_path)?;
     step += 1;
     report_progress(
         progress,
@@ -121,9 +132,9 @@ pub fn perform_install_with_progress(
             "Installing service"
         },
     );
-    mirror_core::service::install_service_with_delay(&install_path, options.delayed_start)?;
+    mirror_core::service::install_service_with_delay(&install_path, delayed_start)?;
     let service_action = if is_update { "updated" } else { "installed" };
-    let service = match options.delayed_start {
+    let service = match delayed_start {
         Some(delay) if delay > 0 => {
             format!(
                 "{} {service_action} with delayed start ({delay}s)",
@@ -132,18 +143,19 @@ pub fn perform_install_with_progress(
         }
         _ => format!("{} {service_action}", service_label()),
     };
-    let path = match options.path_choice {
-        PathChoice::Add => {
-            step += 1;
-            report_progress(progress, step, total, "Registering PATH entry");
-            register_path(&install_path)?
-        }
-        PathChoice::Skip => "PATH update skipped".to_string(),
+    let path = if update_path {
+        step += 1;
+        report_progress(progress, step, total, "Registering PATH entry");
+        register_path(&install_path)?
+    } else if matches!(options.path_choice, PathChoice::Add) {
+        "PATH already contains install directory".to_string()
+    } else {
+        "PATH update skipped".to_string()
     };
     step += 1;
     report_progress(progress, step, total, "Writing install metadata");
     write_marker()?;
-    write_manifest(&install_path, installed_version)?;
+    write_manifest(&install_path, installed_version, delayed_start)?;
     Ok(InstallReport {
         install: install_message,
         service,
@@ -212,6 +224,7 @@ pub fn install_status() -> anyhow::Result<InstallStatus> {
     let manifest_present = manifest.is_some();
     let installed_version = manifest.as_ref().map(|m| m.installed_version.clone());
     let installed_at = manifest.as_ref().map(|m| m.installed_at);
+    let delayed_start = manifest.as_ref().and_then(|m| m.delayed_start);
     let marker_present = marker_path()?.exists();
     let installed = installed_path
         .as_ref()
@@ -223,7 +236,12 @@ pub fn install_status() -> anyhow::Result<InstallStatus> {
     let path_dir = installed_path
         .as_ref()
         .and_then(|path| path.parent().map(|p| p.to_path_buf()));
-    let path_in_env = path_dir
+    let install_dir_for_path_check = if installed_path.is_none() {
+        default_install_dir().ok()
+    } else {
+        path_dir
+    };
+    let path_in_env = install_dir_for_path_check
         .as_ref()
         .map(|dir| path_contains_dir(dir))
         .unwrap_or(false);
@@ -233,6 +251,7 @@ pub fn install_status() -> anyhow::Result<InstallStatus> {
         manifest_present,
         installed_version,
         installed_at,
+        delayed_start,
         service_installed,
         service_running,
         service_last_run: service_status
@@ -283,6 +302,9 @@ struct InstallManifest {
     installed_path: PathBuf,
     installed_version: String,
     installed_at: u64,
+    /// Startup delay in seconds (optional for backward-compatible manifests).
+    #[serde(default)]
+    delayed_start: Option<u64>,
 }
 
 const INSTALL_MANIFEST_VERSION: u32 = 1;
@@ -418,7 +440,11 @@ fn read_manifest() -> anyhow::Result<Option<InstallManifest>> {
     Ok(Some(manifest))
 }
 
-fn write_manifest(install_path: &Path, installed_version: Option<&str>) -> anyhow::Result<()> {
+fn write_manifest(
+    install_path: &Path,
+    installed_version: Option<&str>,
+    delayed_start: Option<u64>,
+) -> anyhow::Result<()> {
     let path = manifest_path()?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).context("create install manifest dir")?;
@@ -428,6 +454,7 @@ fn write_manifest(install_path: &Path, installed_version: Option<&str>) -> anyho
         installed_path: install_path.to_path_buf(),
         installed_version: resolve_installed_version(installed_version),
         installed_at: current_epoch_seconds(),
+        delayed_start,
     };
     let data = serde_json::to_string_pretty(&manifest).context("serialize install manifest")?;
     fs::write(&path, data).context("write install manifest")?;
@@ -443,11 +470,56 @@ fn resolve_installed_version(override_version: Option<&str>) -> String {
 }
 
 fn path_contains_dir(dir: &Path) -> bool {
-    let current = std::env::var("PATH").unwrap_or_default();
-    let dir_str = dir.to_string_lossy();
-    current
-        .split(';')
-        .any(|p| p.trim().eq_ignore_ascii_case(dir_str.as_ref()))
+    let current = std::env::var_os("PATH").unwrap_or_default();
+    #[cfg(windows)]
+    let dir = resolve_windows_path(dir);
+    std::env::split_paths(&current).any(|path| {
+        #[cfg(windows)]
+        {
+            let path = resolve_windows_path(&path);
+            return eq_ignore_ascii_case_wide(&path, &dir);
+        }
+        #[cfg(not(windows))]
+        {
+            path == dir
+        }
+    })
+}
+
+#[cfg(windows)]
+fn resolve_windows_path(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|err| {
+        debug!(
+            path = %path.display(),
+            error = %err,
+            "Could not resolve absolute path for PATH entry (path may not exist yet), using original path"
+        );
+        path.to_path_buf()
+    })
+}
+
+#[cfg(windows)]
+fn eq_ignore_ascii_case_wide(left: &Path, right: &Path) -> bool {
+    use std::os::windows::ffi::OsStrExt;
+
+    let left = left.as_os_str().encode_wide();
+    let right = right.as_os_str().encode_wide();
+    left.map(ascii_lowercase_wide)
+        .eq(right.map(ascii_lowercase_wide))
+}
+
+/// Convert ASCII uppercase UTF-16 code units (A-Z) to lowercase for case-insensitive path
+/// comparisons on Windows, leaving other code units unchanged.
+#[cfg(windows)]
+fn ascii_lowercase_wide(value: u16) -> u16 {
+    const ASCII_UPPERCASE_A: u16 = b'A' as u16;
+    const ASCII_UPPERCASE_Z: u16 = b'Z' as u16;
+    const ASCII_CASE_OFFSET: u16 = 32;
+    if (ASCII_UPPERCASE_A..=ASCII_UPPERCASE_Z).contains(&value) {
+        value + ASCII_CASE_OFFSET
+    } else {
+        value
+    }
 }
 
 fn current_epoch_seconds() -> u64 {
@@ -507,5 +579,34 @@ mod tests {
         assert_eq!(resolve_installed_version(None), expected);
         assert_eq!(resolve_installed_version(Some("")), expected);
         assert_eq!(resolve_installed_version(Some("   ")), expected);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ascii_lowercase_wide_handles_ascii() {
+        assert_eq!(ascii_lowercase_wide(b'A' as u16), b'a' as u16);
+        assert_eq!(ascii_lowercase_wide(b'Z' as u16), b'z' as u16);
+        assert_eq!(ascii_lowercase_wide(b'a' as u16), b'a' as u16);
+        assert_eq!(ascii_lowercase_wide(0x00DF), 0x00DF);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn eq_ignore_ascii_case_wide_matches_paths() {
+        let left = Path::new("C:\\Test\\Path");
+        let right = Path::new("c:\\test\\path");
+        assert!(eq_ignore_ascii_case_wide(left, right));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolve_windows_path_uses_canonical_or_original() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let existing = temp.path().to_path_buf();
+        let canonical = existing.canonicalize().unwrap();
+        assert_eq!(resolve_windows_path(&existing), canonical);
+
+        let missing = existing.join("missing");
+        assert_eq!(resolve_windows_path(&missing), missing);
     }
 }

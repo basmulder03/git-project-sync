@@ -214,6 +214,7 @@ struct TuiApp {
     install_rx: Option<mpsc::Receiver<InstallEvent>>,
     install_progress: Option<InstallProgressState>,
     install_status: Option<crate::install::InstallStatus>,
+    install_scroll: usize,
     update_rx: Option<mpsc::Receiver<UpdateEvent>>,
     update_progress: Option<UpdateProgressState>,
     update_prompt: Option<update::UpdateCheck>,
@@ -271,6 +272,7 @@ impl TuiApp {
             install_rx: None,
             install_progress: None,
             install_status: None,
+            install_scroll: 0,
             update_rx: None,
             update_progress: None,
             update_prompt: None,
@@ -287,10 +289,26 @@ impl TuiApp {
     }
 
     fn prepare_install_form(&mut self) {
-        self.input_fields = vec![
-            InputField::new("Delayed start seconds (optional)"),
-            InputField::new("Add CLI to PATH? (y/n)"),
-        ];
+        let status = crate::install::install_status().ok();
+        let mut delayed_start = InputField::new("Delayed start seconds (optional)");
+        if let Some(value) = status
+            .as_ref()
+            .and_then(|state| state.delayed_start)
+            .filter(|value| *value > 0)
+        {
+            delayed_start.value = value.to_string();
+        }
+        let mut path = InputField::new("Add CLI to PATH? (y/n)");
+        if status
+            .as_ref()
+            .map(|state| state.path_in_env)
+            .unwrap_or(false)
+        {
+            path.value = "y".to_string();
+        } else {
+            path.value = "n".to_string();
+        }
+        self.input_fields = vec![delayed_start, path];
         self.input_index = 0;
     }
 
@@ -309,6 +327,7 @@ impl TuiApp {
         self.ensure_install_guard()?;
         info!("Entered install view");
         self.view = View::Install;
+        self.install_scroll = 0;
         self.prepare_install_form();
         self.drain_input_events()?;
         Ok(())
@@ -513,6 +532,10 @@ impl TuiApp {
                 ))));
             }
             lines.push(Line::from(Span::raw(format!(
+                "Startup delay: {}",
+                format_delayed_start(status.delayed_start)
+            ))));
+            lines.push(Line::from(Span::raw(format!(
                 "{} installed: {}",
                 service_label,
                 if status.service_installed {
@@ -576,8 +599,12 @@ impl TuiApp {
             lines.push(Line::from(Span::raw("")));
             lines.push(Line::from(Span::raw(format!("Validation: {message}"))));
         }
+        let body_height = area.height.saturating_sub(2) as usize;
+        let max_scroll = lines.len().saturating_sub(body_height);
+        let scroll = self.install_scroll.min(max_scroll);
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0))
             .block(Block::default().borders(Borders::ALL).title("Installer"));
         frame.render_widget(widget, area);
     }
@@ -668,6 +695,10 @@ impl TuiApp {
                 ))));
             }
             lines.push(Line::from(Span::raw(format!(
+                "Startup delay: {}",
+                format_delayed_start(status.delayed_start)
+            ))));
+            lines.push(Line::from(Span::raw(format!(
                 "{} installed: {}",
                 service_label,
                 if status.service_installed {
@@ -718,11 +749,17 @@ impl TuiApp {
         } else {
             lines.push(Line::from(Span::raw("Status unavailable.")));
         }
-        let widget = Paragraph::new(lines).wrap(Wrap { trim: false }).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Installer Status"),
-        );
+        let body_height = area.height.saturating_sub(2) as usize;
+        let max_scroll = lines.len().saturating_sub(body_height);
+        let scroll = self.install_scroll.min(max_scroll);
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Installer Status"),
+            );
         frame.render_widget(widget, area);
     }
 
@@ -1283,6 +1320,11 @@ impl TuiApp {
                 self.view = View::Main;
             }
             KeyCode::Tab => self.input_index = (self.input_index + 1) % self.input_fields.len(),
+            KeyCode::Down => self.install_scroll = self.install_scroll.saturating_add(1),
+            KeyCode::Up => self.install_scroll = self.install_scroll.saturating_sub(1),
+            KeyCode::PageDown => self.install_scroll = self.install_scroll.saturating_add(10),
+            KeyCode::PageUp => self.install_scroll = self.install_scroll.saturating_sub(10),
+            KeyCode::Home => self.install_scroll = 0,
             KeyCode::Enter => {
                 if let Err(err) = self.ensure_install_guard() {
                     error!(error = %err, "Installer lock unavailable");
@@ -1338,6 +1380,7 @@ impl TuiApp {
             }
             KeyCode::Char('s') => {
                 self.install_status = crate::install::install_status().ok();
+                self.install_scroll = 0;
                 self.view = View::InstallStatus;
             }
             KeyCode::Char('u') => {
@@ -2000,7 +2043,15 @@ impl TuiApp {
 
     fn handle_install_status(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
         match key.code {
-            KeyCode::Enter | KeyCode::Esc => self.view = View::Install,
+            KeyCode::Enter | KeyCode::Esc => {
+                self.install_scroll = 0;
+                self.view = View::Install;
+            }
+            KeyCode::Down => self.install_scroll = self.install_scroll.saturating_add(1),
+            KeyCode::Up => self.install_scroll = self.install_scroll.saturating_sub(1),
+            KeyCode::PageDown => self.install_scroll = self.install_scroll.saturating_add(10),
+            KeyCode::PageUp => self.install_scroll = self.install_scroll.saturating_sub(10),
+            KeyCode::Home => self.install_scroll = 0,
             _ => {}
         }
         Ok(false)
@@ -3135,6 +3186,13 @@ fn epoch_to_label(epoch: u64) -> String {
         .unwrap_or_else(|_| "unknown".to_string())
 }
 
+fn format_delayed_start(delay: Option<u64>) -> String {
+    match delay.filter(|value| *value > 0) {
+        Some(value) => format!("{value}s"),
+        None => "none".to_string(),
+    }
+}
+
 fn current_epoch_seconds() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -3162,6 +3220,13 @@ mod tests {
             labels,
             vec!["a".to_string(), "b".to_string(), "c".to_string()]
         );
+    }
+
+    #[test]
+    fn format_delayed_start_reports_none() {
+        assert_eq!(format_delayed_start(None), "none");
+        assert_eq!(format_delayed_start(Some(0)), "none");
+        assert_eq!(format_delayed_start(Some(15)), "15s");
     }
 
     #[test]
@@ -3194,6 +3259,7 @@ mod tests {
             install_rx: None,
             install_progress: None,
             install_status: None,
+            install_scroll: 0,
             update_rx: None,
             update_progress: None,
             update_prompt: None,
@@ -3266,6 +3332,7 @@ mod tests {
             install_rx: None,
             install_progress: None,
             install_status: None,
+            install_scroll: 0,
             update_rx: None,
             update_progress: None,
             update_prompt: None,
@@ -3328,6 +3395,7 @@ mod tests {
             install_rx: None,
             install_progress: None,
             install_status: None,
+            install_scroll: 0,
             update_rx: None,
             update_progress: None,
             update_prompt: None,

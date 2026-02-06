@@ -92,7 +92,7 @@ mirror-cli sync --status
 Check for updates:
 
 ```bash
-mirror-cli update --check
+mirror-cli update --check-only
 ```
 
 Apply the latest release:
@@ -104,7 +104,7 @@ mirror-cli update --apply
 Override the GitHub release repo:
 
 ```bash
-GIT_PROJECT_SYNC_UPDATE_REPO=owner/repo mirror-cli update --check
+GIT_PROJECT_SYNC_UPDATE_REPO=owner/repo mirror-cli update --check-only
 ```
 
 Auto-update behavior:

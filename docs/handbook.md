@@ -210,7 +210,7 @@ The installer lock is re-entrant within the same process, so updates can run whi
 Check for updates:
 
 ```bash
-mirror-cli update --check
+mirror-cli update --check-only
 ```
 
 Apply the latest release:
@@ -224,10 +224,10 @@ Updates require an existing install. If none is found, run `mirror-cli install` 
 Override the GitHub release repo:
 
 ```bash
-GIT_PROJECT_SYNC_UPDATE_REPO=owner/repo mirror-cli update --check
+GIT_PROJECT_SYNC_UPDATE_REPO=owner/repo mirror-cli update --check-only
 ```
 
-In the TUI, use the "Update" action from the main menu or press `u` in the installer view.
+In the TUI, use the "Update" action from the main menu, press `u` in the installer view, or press `u` on the dashboard.
 
 Auto-update behavior:
 

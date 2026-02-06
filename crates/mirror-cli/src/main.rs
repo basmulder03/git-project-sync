@@ -332,8 +332,12 @@ struct InstallArgs {
 
 #[derive(Parser)]
 struct UpdateArgs {
-    #[arg(long)]
-    check: bool,
+    #[arg(
+        long = "check-only",
+        alias = "check",
+        help = "Check for updates without installing"
+    )]
+    check_only: bool,
     #[arg(long)]
     apply: bool,
     #[arg(long)]
@@ -1824,7 +1828,7 @@ fn handle_update(args: UpdateArgs, audit: &AuditLogger) -> anyhow::Result<()> {
             anyhow::bail!("update available but no release asset found for this platform");
         }
 
-        if args.check && !args.apply {
+        if args.check_only && !args.apply {
             let _ = audit.record(
                 "update.check",
                 AuditStatus::Ok,
@@ -2622,5 +2626,16 @@ mod tests {
         assert!(message.contains("GitLab authentication failed"));
         let message = gitlab_status_message(scope, StatusCode::NOT_FOUND).unwrap();
         assert!(message.contains("scope not found"));
+    }
+
+    #[test]
+    fn update_check_only_parses() {
+        let cli = Cli::try_parse_from(["mirror-cli", "update", "--check-only"]).unwrap();
+        match cli.command {
+            Commands::Update(args) => {
+                assert!(args.check_only);
+            }
+            _ => panic!("expected update command"),
+        }
     }
 }

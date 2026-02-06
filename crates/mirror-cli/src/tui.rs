@@ -371,7 +371,8 @@ impl TuiApp {
         match self.view {
             View::Main => "Up/Down: navigate | Enter: select | q: quit".to_string(),
             View::Dashboard => {
-                "t: toggle targets | s: sync status | r: sync now | Esc: back".to_string()
+                "t: toggle targets | s: sync status | r: sync now | u: check updates | Esc: back"
+                    .to_string()
             }
             View::Install => {
                 "Tab: next | Enter: run install | s: status | u: update | Esc: back".to_string()
@@ -1362,6 +1363,9 @@ impl TuiApp {
             }
             KeyCode::Char('r') => {
                 self.start_sync_run()?;
+            }
+            KeyCode::Char('u') => {
+                self.start_update_check(View::Dashboard)?;
             }
             _ => {}
         }

@@ -2151,7 +2151,7 @@ fn maybe_escalate_and_reexec(reason: &str) -> anyhow::Result<bool> {
     }
     let prompt_label = admin_privileges_prompt_label();
     println!(
-        "Permission denied while attempting to {reason}. The system will show the {prompt_label} to allow admin privileges. Re-run with elevated permissions? (y/n):"
+        "Permission denied while attempting to {reason}. Re-run with elevated permissions? You will see the {prompt_label}. (y/n):"
     );
     let mut input = String::new();
     std::io::stdin().read_line(&mut input)?;

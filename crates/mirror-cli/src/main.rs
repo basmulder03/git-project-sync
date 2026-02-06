@@ -27,9 +27,11 @@ use std::io::IsTerminal;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tracing::warn;
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::prelude::*;
 mod install;
+mod logging;
 mod repo_overview;
 mod token_check;
 mod tui;
@@ -398,8 +400,12 @@ impl From<MissingRemotePolicyValue> for MissingRemotePolicy {
 }
 
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
+    let log_buffer = logging::LogBuffer::new(200);
+    let filter = EnvFilter::from_default_env();
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(tracing_subscriber::fmt::layer())
+        .with(logging::LogLayer::new(log_buffer.clone()))
         .init();
 
     let audit = AuditLogger::new()?;
@@ -407,17 +413,19 @@ fn main() -> anyhow::Result<()> {
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() == 1 {
+        info!(mode = "tui", "Launching default TUI");
         if install::is_installed().unwrap_or(false) {
             let mut cmd = Cli::command();
             cmd.print_help()?;
             println!();
             return Ok(());
         }
-        return tui::run_tui(&audit, tui::StartView::Install);
+        return tui::run_tui(&audit, log_buffer.clone(), tui::StartView::Install);
     }
 
     let cli = Cli::parse();
     let is_interactive = stdin_is_tty() && stdout_is_tty();
+    info!(command = command_label(&cli.command), "Running command");
 
     if should_run_cli_update_check(&cli.command) {
         let cache_path = default_cache_path()?;
@@ -486,9 +494,9 @@ fn main() -> anyhow::Result<()> {
             } else {
                 tui::StartView::Main
             };
-            tui::run_tui(&audit, start_view)
+            tui::run_tui(&audit, log_buffer.clone(), start_view)
         }
-        Commands::Install(args) => handle_install(args, &audit),
+        Commands::Install(args) => handle_install(args, &audit, log_buffer.clone()),
         Commands::Task(args) => handle_task(args, &audit),
         Commands::Update(args) => handle_update(args, &audit),
     };
@@ -504,6 +512,24 @@ fn main() -> anyhow::Result<()> {
     }
 
     result
+}
+
+fn command_label(command: &Commands) -> &'static str {
+    match command {
+        Commands::Config(_) => "config",
+        Commands::Target(_) => "target",
+        Commands::Token(_) => "token",
+        Commands::Sync(_) => "sync",
+        Commands::Daemon(_) => "daemon",
+        Commands::Service(_) => "service",
+        Commands::Health(_) => "health",
+        Commands::Webhook(_) => "webhook",
+        Commands::Cache(_) => "cache",
+        Commands::Tui(_) => "tui",
+        Commands::Install(_) => "install",
+        Commands::Task(_) => "task",
+        Commands::Update(_) => "update",
+    }
 }
 
 fn handle_config(args: ConfigArgs, audit: &AuditLogger) -> anyhow::Result<()> {
@@ -1551,7 +1577,11 @@ fn handle_cache_overview(args: CacheOverviewArgs, audit: &AuditLogger) -> anyhow
     result
 }
 
-fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+fn handle_install(
+    args: InstallArgs,
+    audit: &AuditLogger,
+    log_buffer: logging::LogBuffer,
+) -> anyhow::Result<()> {
     let result: anyhow::Result<()> = (|| {
         if args.status {
             let status = install::install_status()?;
@@ -1634,7 +1664,7 @@ fn handle_install(args: InstallArgs, audit: &AuditLogger) -> anyhow::Result<()> 
             }
         }
         if args.tui {
-            return tui::run_tui(audit, tui::StartView::Install);
+            return tui::run_tui(audit, log_buffer, tui::StartView::Install);
         }
         let _guard = install::acquire_install_lock()?;
         println!("Starting installer (non-interactive).");

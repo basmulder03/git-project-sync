@@ -28,19 +28,17 @@ The binary will be at `target/release/mirror-cli`.
 
 ## Releases
 
-Releases are created automatically when a PR is merged into `main`. The merged branch name determines the semver bump:
+Releases are created manually via the GitHub Actions **Release** workflow. Choose the semver bump (major, minor, patch) when dispatching. The workflow computes the next version from the latest `vX.Y.Z` tag, updates `crates/mirror-cli/Cargo.toml`, `crates/mirror-core/Cargo.toml`, and `crates/mirror-providers/Cargo.toml`, commits the bump, creates the tag, and publishes release binaries for Windows, macOS, and Linux.
 
-- `release/major/*` → major bump
-- `release/minor/*` → minor bump
-- `release/patch/*` → patch bump
+Quick trigger with the GitHub CLI:
 
-The workflow computes the next version from the latest `vX.Y.Z` tag, updates `crates/mirror-cli/Cargo.toml`, `crates/mirror-core/Cargo.toml`, and `crates/mirror-providers/Cargo.toml`, commits the bump, creates the tag, and publishes release binaries for Windows, macOS, and Linux.
-You can also trigger a manual release via `workflow_dispatch` and choose the bump type.
+```bash
+gh workflow run Release -f bump=patch
+```
 
 **Release Checklist**
-1. Create a branch named `release/{major|minor|patch}/...` with your changes.
-2. Run `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all`.
-3. Open and merge a PR to `main`; the Release workflow will bump the version, tag, and publish binaries.
+1. Run `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all`.
+2. Dispatch the **Release** workflow with the desired bump type.
 
 ## Quick Start
 

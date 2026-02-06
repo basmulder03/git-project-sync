@@ -1,9 +1,6 @@
 name: Release
 
 on:
-  pull_request:
-    types: [closed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       bump:
@@ -23,9 +20,6 @@ jobs:
   version:
     name: Compute Version
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     outputs:
       bump: ${{ steps.bump.outputs.bump }}
       version: ${{ steps.version.outputs.version }}
@@ -39,21 +33,7 @@ jobs:
       - name: Resolve bump type
         id: bump
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            BUMP="${{ inputs.bump }}"
-          else
-            BRANCH="${{ github.event.pull_request.head.ref }}"
-            case "$BRANCH" in
-              release/major/*) BUMP="major" ;;
-              release/minor/*) BUMP="minor" ;;
-              release/patch/*) BUMP="patch" ;;
-              *)
-                echo "Branch name does not match release/{major|minor|patch}/*; skipping release."
-                echo "should_release=false" >> $GITHUB_OUTPUT
-                exit 0
-                ;;
-            esac
-          fi
+          BUMP="${{ inputs.bump }}"
           echo "bump=$BUMP" >> $GITHUB_OUTPUT
       - name: Compute next version
         id: version

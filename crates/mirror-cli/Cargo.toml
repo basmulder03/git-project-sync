@@ -8,9 +8,9 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 mirror-core = { path = "../mirror-core" }
 mirror-providers = { path = "../mirror-providers" }
-reqwest = { version = "0.12", default-features = false }
-ratatui = "0.27"
-crossterm = "0.27"
+reqwest = { version = "0.13", default-features = false }
+ratatui = "0.30"
+crossterm = "0.29"
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 semver = "1"

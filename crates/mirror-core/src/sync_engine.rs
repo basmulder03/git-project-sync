@@ -102,7 +102,7 @@ impl SyncSummary {
     }
 }
 
-pub fn run_sync(
+pub async fn run_sync(
     provider: &dyn RepoProvider,
     target: &ProviderTarget,
     root: &Path,
@@ -115,7 +115,7 @@ pub fn run_sync(
         missing_decider,
         ..RunSyncOptions::default()
     };
-    run_sync_filtered(provider, target, root, cache_path, options)
+    run_sync_filtered(provider, target, root, cache_path, options).await
 }
 
 #[derive(Clone, Copy)]
@@ -145,15 +145,20 @@ impl Default for RunSyncOptions<'_, '_, '_> {
     }
 }
 
-pub fn run_sync_filtered(
+pub async fn run_sync_filtered(
     provider: &dyn RepoProvider,
     target: &ProviderTarget,
     root: &Path,
     cache_path: &Path,
     options: RunSyncOptions<'_, '_, '_>,
 ) -> anyhow::Result<SyncSummary> {
-    crate::provider::block_on(provider.validate_auth(target)).context("validate provider auth")?;
-    let target_auth = crate::provider::block_on(provider.auth_for_target(target))
+    provider
+        .validate_auth(target)
+        .await
+        .context("validate provider auth")?;
+    let target_auth = provider
+        .auth_for_target(target)
+        .await
         .context("resolve provider auth for target")?;
     let mut cache = RepoCache::load(cache_path).context("load cache")?;
     let mut summary = SyncSummary::default();
@@ -189,7 +194,7 @@ pub fn run_sync_filtered(
     );
 
     let (mut repos, used_cache) =
-        load_repos_with_cache(provider, target, &mut cache, options.refresh)?;
+        load_repos_with_cache(provider, target, &mut cache, options.refresh).await?;
     if options.detect_missing && !used_cache {
         let current_ids: HashSet<String> = repos.iter().map(|repo| repo.id.clone()).collect();
         let mut missing_events: Vec<(DeletedRepoAction, String, String)> = Vec::new();

@@ -37,13 +37,13 @@ pub(in crate::tui) fn run_tui_sync(
             refresh: force_refresh_all,
             verify: false,
         };
-        let summary = match run_sync_filtered(
+        let summary = match mirror_core::provider::block_on(run_sync_filtered(
             provider.as_ref(),
             &runtime_target,
             root,
             cache_path,
             options,
-        ) {
+        )) {
             Ok(summary) => summary,
             Err(err) => {
                 let error_text = format!("{err:#}");

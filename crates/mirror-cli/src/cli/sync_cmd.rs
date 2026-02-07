@@ -138,13 +138,13 @@ pub(super) fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result
                     refresh: args.refresh || force_refresh_all,
                     verify: args.verify,
                 };
-                run_sync_filtered(
+                mirror_core::provider::block_on(run_sync_filtered(
                     provider.as_ref(),
                     &runtime_target,
                     root,
                     &cache_path,
                     options,
-                )
+                ))
                 .or_else(|err| map_azdo_error(&runtime_target, err))?
             } else {
                 let filter =
@@ -159,13 +159,13 @@ pub(super) fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result
                     refresh: args.refresh || force_refresh_all,
                     verify: args.verify,
                 };
-                run_sync_filtered(
+                mirror_core::provider::block_on(run_sync_filtered(
                     provider.as_ref(),
                     &runtime_target,
                     root,
                     &cache_path,
                     options,
-                )
+                ))
                 .or_else(|err| map_azdo_error(&runtime_target, err))?
             };
 

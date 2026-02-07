@@ -19,6 +19,7 @@ The core engine depends on the `RepoProvider` trait. Providers implement:
 - `register_webhook` to configure webhooks (if supported)
 - Provider operations are exposed as futures at the boundary; current core/CLI flows bridge them via `mirror_core::provider::block_on`.
 - Provider adapters now use async `reqwest::Client` for HTTP calls and retry handling.
+- Core sync orchestration (`run_sync_filtered`) is async; synchronous command surfaces currently bridge at the edge.
 
 This isolates provider-specific APIs from the core sync logic.
 Repo inventory records are credential-free; auth is resolved per target during sync.

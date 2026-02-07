@@ -84,13 +84,13 @@ pub(in crate::cli) fn run_sync_job(
             refresh: false,
             verify: false,
         };
-        let result = run_sync_filtered(
+        let result = mirror_core::provider::block_on(run_sync_filtered(
             provider.as_ref(),
             &runtime_target,
             root,
             cache_path,
             options,
-        )
+        ))
         .or_else(|err| map_azdo_error(&runtime_target, err));
         match result {
             Ok(summary) => {

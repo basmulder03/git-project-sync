@@ -1,8 +1,17 @@
 pub mod auth;
 pub mod azure_devops;
+mod azure_models;
+mod azure_scope;
 pub mod github;
+mod github_auth;
+mod github_models;
+mod github_paging;
+mod github_scope;
 pub mod gitlab;
+mod gitlab_models;
+mod gitlab_scope;
 mod http;
+mod provider_paging;
 pub mod registry;
 pub mod spec;
 pub use mirror_core::provider::RepoProvider;

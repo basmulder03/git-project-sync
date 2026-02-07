@@ -1,26 +1,18 @@
 use crate::RepoProvider;
-use crate::auth;
+use crate::github_auth::get_pat_for_target;
+use crate::github_models::parse_scopes_header;
+use crate::github_paging::fetch_repos_page;
+use crate::github_scope::{ScopeKind, normalize_branch, owner_matches, parse_scope};
 use crate::http::{send_with_retry, send_with_retry_allow_statuses};
 use crate::spec::{GitHubSpec, host_or_default};
-use anyhow::{Context, anyhow};
-use mirror_core::model::{ProviderKind, ProviderScope, ProviderTarget, RemoteRepo, RepoAuth};
-use mirror_core::provider::ProviderSpec;
+use anyhow::Context;
+use mirror_core::model::{ProviderKind, ProviderTarget, RemoteRepo, RepoAuth};
 use reqwest::StatusCode;
 use reqwest::blocking::Client;
-use reqwest::header::HeaderMap;
-use serde::Deserialize;
 use serde_json::json;
-use tracing::info;
 
 pub struct GitHubProvider {
     client: Client,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ScopeKind {
-    Org,
-    User,
-    AuthenticatedUser,
 }
 
 impl GitHubProvider {
@@ -28,163 +20,6 @@ impl GitHubProvider {
         Ok(Self {
             client: Client::new(),
         })
-    }
-
-    fn parse_scope(scope: &ProviderScope) -> anyhow::Result<&str> {
-        let segments = scope.segments();
-        if segments.len() != 1 {
-            anyhow::bail!("github scope requires a single org/user segment");
-        }
-        Ok(segments[0].as_str())
-    }
-
-    fn normalize_branch(value: Option<String>) -> String {
-        value
-            .unwrap_or_else(|| "main".to_string())
-            .trim_start_matches("refs/heads/")
-            .to_string()
-    }
-
-    fn repos_url(host: &str, scope: &str, kind: ScopeKind, page: u32) -> String {
-        match kind {
-            ScopeKind::Org => format!("{host}/orgs/{scope}/repos?per_page=100&page={page}"),
-            ScopeKind::User => format!("{host}/users/{scope}/repos?per_page=100&page={page}"),
-            ScopeKind::AuthenticatedUser => {
-                format!("{host}/user/repos?per_page=100&page={page}&affiliation=owner")
-            }
-        }
-    }
-
-    fn owner_matches(scope: &str, repo: &RepoItem) -> bool {
-        repo.owner
-            .as_ref()
-            .map(|owner| owner.login == scope)
-            .unwrap_or(false)
-    }
-
-    fn next_page(headers: &HeaderMap) -> Option<u32> {
-        let link = headers.get("link")?.to_str().ok()?;
-        for part in link.split(',') {
-            let part = part.trim();
-            if !part.contains("rel=\"next\"") {
-                continue;
-            }
-            let start = part.find('<')? + 1;
-            let end = part.find('>')?;
-            let url = &part[start..end];
-            for pair in url.split('?').nth(1).unwrap_or("").split('&') {
-                let mut iter = pair.splitn(2, '=');
-                let key = iter.next().unwrap_or("");
-                let value = iter.next().unwrap_or("");
-                if key == "page"
-                    && let Ok(page) = value.parse::<u32>()
-                {
-                    return Some(page);
-                }
-            }
-        }
-        None
-    }
-
-    fn fetch_repos_page(
-        &self,
-        host: &str,
-        scope: &str,
-        token: &str,
-        kind: ScopeKind,
-        page: u32,
-    ) -> anyhow::Result<(Vec<RepoItem>, Option<u32>, StatusCode)> {
-        let url = Self::repos_url(host, scope, kind, page);
-        info!(scope, page, kind = ?kind, "listing GitHub repos");
-        let builder = self
-            .client
-            .get(url)
-            .header("User-Agent", "git-project-sync")
-            .bearer_auth(token);
-        let response = send_with_retry_allow_statuses(
-            || builder.try_clone().context("clone request"),
-            &[StatusCode::NOT_FOUND],
-        )
-        .context("call GitHub list repos")?;
-        let status = response.status();
-        if status == StatusCode::NOT_FOUND {
-            return Ok((Vec::new(), None, status));
-        }
-        let response = response
-            .error_for_status()
-            .context("GitHub list repos status")?;
-        let next_page = Self::next_page(response.headers());
-        let payload: Vec<RepoItem> = response.json().context("decode repos response")?;
-        Ok((payload, next_page, status))
-    }
-
-    fn account_candidates(
-        spec: &GitHubSpec,
-        host: &str,
-        scope: &ProviderScope,
-    ) -> anyhow::Result<Vec<String>> {
-        let mut hosts = vec![host.trim_end_matches('/').to_string()];
-        if Self::is_public_github_api_host(host) {
-            hosts.push("https://github.com".to_string());
-            hosts.push("github.com".to_string());
-        } else if Self::is_public_github_web_host(host) {
-            hosts.push("https://api.github.com".to_string());
-            hosts.push("api.github.com".to_string());
-        }
-        hosts.dedup();
-        hosts
-            .into_iter()
-            .map(|candidate| spec.account_key(&candidate, scope))
-            .collect()
-    }
-
-    fn get_pat_for_target(
-        spec: &GitHubSpec,
-        host: &str,
-        target: &ProviderTarget,
-    ) -> anyhow::Result<String> {
-        let accounts = Self::account_candidates(spec, host, &target.scope)?;
-        let mut last_no_entry: Option<anyhow::Error> = None;
-        let mut first_err: Option<String> = None;
-        for account in accounts {
-            match auth::get_pat(&account) {
-                Ok(token) => return Ok(token),
-                Err(err) if Self::is_missing_keyring_entry(&err) => {
-                    if first_err.is_none() {
-                        first_err = Some(format!("{err:#}"));
-                    }
-                    last_no_entry = Some(err);
-                }
-                Err(err) => {
-                    return Err(err);
-                }
-            }
-        }
-        if let Some(err) = last_no_entry {
-            return Err(err);
-        }
-        if let Some(err) = first_err {
-            return Err(anyhow!(err));
-        }
-        Err(anyhow!("read token from keyring"))
-    }
-
-    fn is_missing_keyring_entry(err: &anyhow::Error) -> bool {
-        let value = err.to_string().to_ascii_lowercase();
-        value.contains("no matching entry found")
-            || value.contains("no entry")
-            || value.contains("not found in secure storage")
-            || value.contains("item not found")
-    }
-
-    fn is_public_github_api_host(host: &str) -> bool {
-        let value = host.trim_end_matches('/').to_ascii_lowercase();
-        value == "https://api.github.com" || value == "api.github.com"
-    }
-
-    fn is_public_github_web_host(host: &str) -> bool {
-        let value = host.trim_end_matches('/').to_ascii_lowercase();
-        value == "https://github.com" || value == "http://github.com" || value == "github.com"
     }
 }
 
@@ -199,8 +34,8 @@ impl RepoProvider for GitHubProvider {
         }
         let spec = GitHubSpec;
         let host = host_or_default(target.host.as_deref(), &spec);
-        let scope = Self::parse_scope(&target.scope)?;
-        let token = Self::get_pat_for_target(&spec, &host, target)?;
+        let scope = parse_scope(&target.scope)?;
+        let token = get_pat_for_target(&spec, &host, target)?;
 
         let mut page = 1;
         let mut repos = Vec::new();
@@ -214,7 +49,7 @@ impl RepoProvider for GitHubProvider {
 
         loop {
             let (payload, next_page, status) =
-                self.fetch_repos_page(&host, scope, token.as_str(), scope_kind, page)?;
+                fetch_repos_page(&self.client, &host, scope, token.as_str(), scope_kind, page)?;
             if status == StatusCode::NOT_FOUND && scope_kind == ScopeKind::Org {
                 scope_kind = ScopeKind::AuthenticatedUser;
                 page = 1;
@@ -240,15 +75,14 @@ impl RepoProvider for GitHubProvider {
                 saw_authenticated = true;
             }
             for repo in payload {
-                if scope_kind == ScopeKind::AuthenticatedUser && !Self::owner_matches(scope, &repo)
-                {
+                if scope_kind == ScopeKind::AuthenticatedUser && !owner_matches(scope, &repo) {
                     continue;
                 }
                 repos.push(RemoteRepo {
                     id: repo.id.to_string(),
                     name: repo.name.clone(),
                     clone_url: repo.clone_url,
-                    default_branch: Self::normalize_branch(repo.default_branch),
+                    default_branch: normalize_branch(repo.default_branch),
                     archived: repo.archived.unwrap_or(false),
                     provider: ProviderKind::GitHub,
                     scope: target.scope.clone(),
@@ -281,16 +115,16 @@ impl RepoProvider for GitHubProvider {
     fn validate_auth(&self, target: &ProviderTarget) -> anyhow::Result<()> {
         let spec = GitHubSpec;
         let host = host_or_default(target.host.as_deref(), &spec);
-        let _ = Self::parse_scope(&target.scope)?;
-        let _ = Self::get_pat_for_target(&spec, &host, target)?;
+        let _ = parse_scope(&target.scope)?;
+        let _ = get_pat_for_target(&spec, &host, target)?;
         Ok(())
     }
 
     fn auth_for_target(&self, target: &ProviderTarget) -> anyhow::Result<Option<RepoAuth>> {
         let spec = GitHubSpec;
         let host = host_or_default(target.host.as_deref(), &spec);
-        let _ = Self::parse_scope(&target.scope)?;
-        let token = Self::get_pat_for_target(&spec, &host, target)?;
+        let _ = parse_scope(&target.scope)?;
+        let token = get_pat_for_target(&spec, &host, target)?;
         Ok(Some(RepoAuth {
             username: "pat".to_string(),
             token,
@@ -303,13 +137,20 @@ impl RepoProvider for GitHubProvider {
         }
         let spec = GitHubSpec;
         let host = host_or_default(target.host.as_deref(), &spec);
-        let scope = Self::parse_scope(&target.scope)?;
-        let token = Self::get_pat_for_target(&spec, &host, target)?;
+        let scope = parse_scope(&target.scope)?;
+        let token = get_pat_for_target(&spec, &host, target)?;
 
-        let (payload, _next, status) =
-            self.fetch_repos_page(&host, scope, token.as_str(), ScopeKind::Org, 1)?;
+        let (payload, _next, status) = fetch_repos_page(
+            &self.client,
+            &host,
+            scope,
+            token.as_str(),
+            ScopeKind::Org,
+            1,
+        )?;
         if status == StatusCode::NOT_FOUND {
-            let (payload, _next, status) = self.fetch_repos_page(
+            let (payload, _next, status) = fetch_repos_page(
+                &self.client,
                 &host,
                 scope,
                 token.as_str(),
@@ -317,18 +158,28 @@ impl RepoProvider for GitHubProvider {
                 1,
             )?;
             if status == StatusCode::NOT_FOUND {
-                let (_payload, _next, status) =
-                    self.fetch_repos_page(&host, scope, token.as_str(), ScopeKind::User, 1)?;
+                let (_payload, _next, status) = fetch_repos_page(
+                    &self.client,
+                    &host,
+                    scope,
+                    token.as_str(),
+                    ScopeKind::User,
+                    1,
+                )?;
                 if status == StatusCode::NOT_FOUND {
                     anyhow::bail!("GitHub scope not found: {scope}");
                 }
             } else {
-                let owned = payload
-                    .into_iter()
-                    .any(|repo| Self::owner_matches(scope, &repo));
+                let owned = payload.into_iter().any(|repo| owner_matches(scope, &repo));
                 if !owned {
-                    let (_payload, _next, status) =
-                        self.fetch_repos_page(&host, scope, token.as_str(), ScopeKind::User, 1)?;
+                    let (_payload, _next, status) = fetch_repos_page(
+                        &self.client,
+                        &host,
+                        scope,
+                        token.as_str(),
+                        ScopeKind::User,
+                        1,
+                    )?;
                     if status == StatusCode::NOT_FOUND {
                         anyhow::bail!("GitHub scope not found: {scope}");
                     }
@@ -351,8 +202,8 @@ impl RepoProvider for GitHubProvider {
         }
         let spec = GitHubSpec;
         let host = host_or_default(target.host.as_deref(), &spec);
-        let org = Self::parse_scope(&target.scope)?;
-        let token = Self::get_pat_for_target(&spec, &host, target)?;
+        let org = parse_scope(&target.scope)?;
+        let token = get_pat_for_target(&spec, &host, target)?;
 
         let mut config = json!({
             "url": url,
@@ -396,8 +247,8 @@ impl RepoProvider for GitHubProvider {
         }
         let spec = GitHubSpec;
         let host = host_or_default(target.host.as_deref(), &spec);
-        let _org = Self::parse_scope(&target.scope)?;
-        let token = Self::get_pat_for_target(&spec, &host, target)?;
+        let _org = parse_scope(&target.scope)?;
+        let token = get_pat_for_target(&spec, &host, target)?;
 
         let url = format!("{host}/user");
         let builder = self
@@ -418,67 +269,10 @@ impl RepoProvider for GitHubProvider {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct RepoItem {
-    id: u64,
-    name: String,
-    clone_url: String,
-    default_branch: Option<String>,
-    archived: Option<bool>,
-    owner: Option<RepoOwner>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RepoOwner {
-    login: String,
-}
-
-fn parse_scopes_header(value: &str) -> Vec<String> {
-    value
-        .split(',')
-        .map(|scope| scope.trim())
-        .filter(|scope| !scope.is_empty())
-        .map(|scope| scope.to_string())
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reqwest::header::HeaderValue;
-    use serde_json::json;
-
-    #[test]
-    fn next_page_parses_link_header() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "link",
-            HeaderValue::from_static(
-                "<https://api.github.com/orgs/test/repos?per_page=100&page=2>; rel=\"next\"",
-            ),
-        );
-        assert_eq!(GitHubProvider::next_page(&headers), Some(2));
-    }
-
-    #[test]
-    fn normalize_branch_trims_refs() {
-        let value = Some("refs/heads/main".to_string());
-        assert_eq!(GitHubProvider::normalize_branch(value), "main");
-    }
-
-    #[test]
-    fn repo_item_deserializes_archived_flag() {
-        let value = json!({
-            "id": 1,
-            "name": "repo",
-            "clone_url": "https://example.com/repo.git",
-            "default_branch": "main",
-            "archived": true,
-            "owner": { "login": "me" }
-        });
-        let repo: RepoItem = serde_json::from_value(value).unwrap();
-        assert_eq!(repo.archived, Some(true));
-    }
+    use crate::github_models::{RepoItem, RepoOwner};
 
     #[test]
     fn owner_matches_filters_user_scope() {
@@ -492,31 +286,7 @@ mod tests {
                 login: "me".to_string(),
             }),
         };
-        assert!(GitHubProvider::owner_matches("me", &repo));
-        assert!(!GitHubProvider::owner_matches("other", &repo));
-    }
-
-    #[test]
-    fn parse_scopes_header_splits() {
-        let scopes = parse_scopes_header("repo, read:org, ");
-        assert_eq!(scopes, vec!["repo".to_string(), "read:org".to_string()]);
-    }
-
-    #[test]
-    fn account_candidates_include_public_aliases() {
-        let spec = GitHubSpec;
-        let scope = ProviderScope::new(vec!["me".to_string()]).unwrap();
-        let candidates =
-            GitHubProvider::account_candidates(&spec, "https://api.github.com", &scope).unwrap();
-        assert!(
-            candidates
-                .iter()
-                .any(|item| item.contains("github:https://api.github.com:me"))
-        );
-        assert!(
-            candidates
-                .iter()
-                .any(|item| item.contains("github:https://github.com:me"))
-        );
+        assert!(owner_matches("me", &repo));
+        assert!(!owner_matches("other", &repo));
     }
 }

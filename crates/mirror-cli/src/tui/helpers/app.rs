@@ -83,7 +83,7 @@ impl TuiApp {
         entries
     }
 
-    pub(in crate::tui) fn validate_token(
+    pub(in crate::tui) async fn validate_token(
         &self,
         provider: ProviderKind,
         scope: mirror_core::model::ProviderScope,
@@ -96,7 +96,7 @@ impl TuiApp {
         };
         let registry = ProviderRegistry::new();
         let adapter = registry.provider(provider.clone())?;
-        let scopes = mirror_core::provider::block_on(adapter.token_scopes(&runtime_target))?;
+        let scopes = adapter.token_scopes(&runtime_target).await?;
         let help = pat_help(provider.clone());
         let status = match scopes {
             Some(scopes) => {
@@ -115,7 +115,8 @@ impl TuiApp {
                 }
             }
             None => {
-                let token_check_result = crate::token_check::check_token_validity(&runtime_target);
+                let token_check_result =
+                    crate::token_check::check_token_validity_async(&runtime_target).await;
                 crate::token_check::ensure_token_valid(&token_check_result, &runtime_target)
                     .context(
                         "Auth-based token validation failed; verify your token is valid and not expired",

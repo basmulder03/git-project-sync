@@ -89,7 +89,13 @@ impl TuiApp {
 
         thread::spawn(move || {
             let _lock = lock;
-            let result = run_tui_sync(&targets, &root, &cache_path, &audit, force_refresh_all);
+            let result = mirror_core::provider::block_on(run_tui_sync(
+                &targets,
+                &root,
+                &cache_path,
+                &audit,
+                force_refresh_all,
+            ));
             if let Err(err) = &result {
                 let error_text = format!("{err:#}");
                 let _ = audit.record(

@@ -17,6 +17,8 @@
 - [x] Move async/sync bridge for sync operations to CLI/TUI boundaries
 - [x] Convert CLI command dispatch and key handlers to async (`sync`, `daemon`, `token`, `health`, `webhook`)
 - [x] Remove CLI command-path `block_on` usage for provider/sync operations
+- [x] Make TUI helper token/sync paths async-first and move `block_on` to TUI event/job boundaries
+- [x] Remove unused synchronous token validity wrapper
 
 ## Milestone 55 — Core/Providers Modularization (in progress)
 
@@ -191,7 +193,7 @@
 - Provider boundary now returns boxed futures; full non-blocking HTTP runtime migration remains a follow-up.
 - Provider adapters now execute async HTTP requests; remaining `block_on` bridges in sync CLI/core flows are scheduled for incremental removal.
 - Core sync engine no longer blocks on provider futures internally; bridges remain only at non-async call boundaries.
-- CLI command paths now await provider/sync futures directly; remaining bridges are limited to process entry and synchronous TUI helper paths.
+- CLI command paths now await provider/sync futures directly; remaining bridges are limited to process entry and synchronous TUI event/job boundaries.
 - Focus: architecture tidy (per user request).
 - Breaking CLI/config changes: allowed (major ok).
 - Target OS: cross-platform parity.

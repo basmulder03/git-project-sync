@@ -1,6 +1,6 @@
 use super::*;
 
-pub(in crate::tui) fn run_tui_sync(
+pub(in crate::tui) async fn run_tui_sync(
     targets: &[TargetConfig],
     root: &std::path::Path,
     cache_path: &std::path::Path,
@@ -37,13 +37,15 @@ pub(in crate::tui) fn run_tui_sync(
             refresh: force_refresh_all,
             verify: false,
         };
-        let summary = match mirror_core::provider::block_on(run_sync_filtered(
+        let summary = match run_sync_filtered(
             provider.as_ref(),
             &runtime_target,
             root,
             cache_path,
             options,
-        )) {
+        )
+        .await
+        {
             Ok(summary) => summary,
             Err(err) => {
                 let error_text = format!("{err:#}");

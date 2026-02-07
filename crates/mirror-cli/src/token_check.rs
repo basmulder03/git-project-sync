@@ -63,10 +63,6 @@ pub async fn check_token_validity_async(target: &ProviderTarget) -> TokenCheckRe
     }
 }
 
-pub fn check_token_validity(target: &ProviderTarget) -> TokenCheckResult {
-    mirror_core::provider::block_on(check_token_validity_async(target))
-}
-
 pub fn ensure_token_valid(
     result: &TokenCheckResult,
     target: &ProviderTarget,

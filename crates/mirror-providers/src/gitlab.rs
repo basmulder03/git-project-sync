@@ -70,7 +70,7 @@ impl RepoProvider for GitLabProvider {
             let url = format!("{host}/groups/{group}/projects?per_page=100&page={page}");
             info!(group, page, "listing GitLab repos");
             let builder = self.client.get(url).header("PRIVATE-TOKEN", token.as_str());
-            let response = send_with_retry(|| builder.try_clone().expect("clone request"))
+            let response = send_with_retry(|| builder.try_clone().context("clone request"))
                 .context("call GitLab list repos")?
                 .error_for_status()
                 .context("GitLab list repos status")?;
@@ -134,7 +134,7 @@ impl RepoProvider for GitLabProvider {
 
         let url = format!("{host}/groups/{group}/projects?per_page=1&page=1");
         let builder = self.client.get(url).header("PRIVATE-TOKEN", token.as_str());
-        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
+        let response = send_with_retry(|| builder.try_clone().context("clone request"))
             .context("call GitLab health check")?
             .error_for_status()
             .context("GitLab health check status")?;
@@ -154,7 +154,7 @@ impl RepoProvider for GitLabProvider {
 
         let url = format!("{host}/personal_access_tokens/self");
         let builder = self.client.get(url).header("PRIVATE-TOKEN", token.as_str());
-        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
+        let response = send_with_retry(|| builder.try_clone().context("clone request"))
             .context("call GitLab token scopes")?
             .error_for_status()
             .context("GitLab token scopes status")?;
@@ -188,7 +188,7 @@ impl RepoProvider for GitLabProvider {
         if let Some(secret) = secret {
             builder = builder.form(&[("token", secret)]);
         }
-        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
+        let response = send_with_retry(|| builder.try_clone().context("clone request"))
             .context("call GitLab webhook register")?
             .error_for_status()
             .context("GitLab webhook register status")?;

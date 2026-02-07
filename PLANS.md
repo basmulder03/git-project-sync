@@ -1,5 +1,22 @@
 # PLANS.md
 
+## Milestone 53 — Token Doctor (completed)
+
+- [x] Add `token doctor` CLI command
+- [x] Report DBUS/session environment hints for keyring access
+- [x] Add keyring write/read/delete diagnostic roundtrip
+- [x] Add optional provider/scope account presence check
+- [x] Update docs and acceptance checklist
+
+## Milestone 52 — Force Refresh All (completed)
+
+- [x] Add `sync --force-refresh-all` CLI flag
+- [x] Force full target/repo selection in CLI when enabled (ignore target/scope/repo selectors)
+- [x] Force provider inventory refresh for forced runs
+- [x] Add TUI Dashboard hotkey `f` for forced full refresh run
+- [x] Include forced-run marker in CLI/TUI audit payloads
+- [x] Update README and acceptance checklist
+
 ## Milestone 51 — GitHub CI + Release + Self-Update (in progress)
 
 - [x] Add GitHub Actions CI workflow (fmt, clippy, test, build)

@@ -74,11 +74,23 @@ mirror-cli token set --provider gitlab --scope group --token <token>
 
 Tokens are validated on set; invalid or expired PATs are rejected.
 
+Diagnose keyring/session issues:
+
+```bash
+mirror-cli token doctor --provider github --scope org-or-user
+```
+
 
 Run a sync:
 
 ```bash
 mirror-cli sync
+```
+
+Force-refresh all configured targets and repos (ignores target/scope/repo filters):
+
+```bash
+mirror-cli sync --force-refresh-all
 ```
 
 Live status for sync:
@@ -137,6 +149,7 @@ mirror-cli tui --dashboard
 
 In the TUI:
 - Dashboard view: press `s` for Sync Status
+- Dashboard view: press `f` for Force Refresh All
 - Setup view: press `s` for Setup Status
 
 ## Scope Shapes

@@ -70,6 +70,7 @@ impl RepoCache {
             Some(4) => Ok(serde_json::from_value(json)?),
             Some(3) => Ok(migrate_v3(json)?),
             Some(2) => Ok(migrate_v2(json)?),
+            Some(0) => Ok(migrate_v0(json)?),
             Some(1) | None => Ok(migrate_v1(json)?),
             Some(other) => anyhow::bail!("unsupported cache version {other}"),
         }
@@ -119,6 +120,14 @@ impl RepoCache {
         self.target_backoff_until
             .insert(target_key, now.saturating_add(delay));
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+struct RepoCacheV0 {
+    #[serde(default)]
+    last_sync: HashMap<String, String>,
+    #[serde(default)]
+    repos: HashMap<String, RepoCacheEntry>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -175,10 +184,22 @@ struct RepoCacheV3 {
 
 fn migrate_v1(json: serde_json::Value) -> anyhow::Result<RepoCache> {
     let v1: RepoCacheV1 = serde_json::from_value(json)?;
-    Ok(RepoCache {
+    Ok(migrate_from_last_sync_repos(v1.last_sync, v1.repos))
+}
+
+fn migrate_v0(json: serde_json::Value) -> anyhow::Result<RepoCache> {
+    let v0: RepoCacheV0 = serde_json::from_value(json)?;
+    Ok(migrate_from_last_sync_repos(v0.last_sync, v0.repos))
+}
+
+fn migrate_from_last_sync_repos(
+    last_sync: HashMap<String, String>,
+    repos: HashMap<String, RepoCacheEntry>,
+) -> RepoCache {
+    RepoCache {
         version: 4,
-        last_sync: v1.last_sync,
-        repos: v1.repos,
+        last_sync,
+        repos,
         repo_inventory: HashMap::new(),
         repo_status: HashMap::new(),
         target_last_success: HashMap::new(),
@@ -192,7 +213,7 @@ fn migrate_v1(json: serde_json::Value) -> anyhow::Result<RepoCache> {
         token_last_check: None,
         token_last_source: None,
         token_status: HashMap::new(),
-    })
+    }
 }
 
 fn migrate_v2(json: serde_json::Value) -> anyhow::Result<RepoCache> {
@@ -462,6 +483,21 @@ mod tests {
         assert_eq!(loaded.version, 4);
         assert!(loaded.last_sync.contains_key("repo-1"));
         assert!(loaded.target_sync_status.is_empty());
+    }
+
+    #[test]
+    fn migrates_v0_cache_with_defaults() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("cache.json");
+        let v0 = serde_json::json!({
+            "version": 0
+        });
+        fs::write(&path, serde_json::to_string_pretty(&v0).unwrap()).unwrap();
+
+        let loaded = RepoCache::load(&path).unwrap();
+        assert_eq!(loaded.version, 4);
+        assert!(loaded.last_sync.is_empty());
+        assert!(loaded.repos.is_empty());
     }
 
     #[test]

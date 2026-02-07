@@ -89,7 +89,7 @@ impl RepoProvider for AzureDevOpsProvider {
                 .client
                 .get(url)
                 .basic_auth("", Some(auth.token.as_str()));
-            let response = send_with_retry(|| builder.try_clone().expect("clone request"))
+            let response = send_with_retry(|| builder.try_clone().context("clone request"))
                 .context("call Azure DevOps list repos")?
                 .error_for_status()
                 .context("Azure DevOps list repos status")?;
@@ -164,7 +164,7 @@ impl RepoProvider for AzureDevOpsProvider {
 
         let url = Self::build_repos_url(&host, org, project, None)?;
         let builder = self.client.get(url).basic_auth("", Some(pat.as_str()));
-        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
+        let response = send_with_retry(|| builder.try_clone().context("clone request"))
             .context("call Azure DevOps health check")?
             .error_for_status()
             .context("Azure DevOps health check status")?;

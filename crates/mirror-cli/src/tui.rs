@@ -992,7 +992,7 @@ impl TuiApp {
         ))));
         lines.push(Line::from(Span::raw(format!("Create PAT: {}", help.url))));
         lines.push(Line::from(Span::raw(format!(
-            "Required scopes: {}",
+            "Required access: {}",
             help.scopes.join(", ")
         ))));
         lines.push(Line::from(Span::raw(
@@ -1030,7 +1030,7 @@ impl TuiApp {
             provider_label(self.provider_index)
         ))));
         lines.push(Line::from(Span::raw(format!(
-            "Required scopes: {}",
+            "Required access: {}",
             help.scopes.join(", ")
         ))));
         lines.push(Line::from(Span::raw(
@@ -1823,6 +1823,17 @@ impl TuiApp {
                     return Ok(false);
                 }
                 auth::set_pat(&account, &token)?;
+                if let Err(err) =
+                    auth::get_pat(&account).context("read token from keyring after write")
+                {
+                    let _ = auth::delete_pat(&account);
+                    let message = format!("Token storage failed: {err:#}");
+                    warn!(account = %account, error = %message, "Token read-back failed");
+                    self.validation_message = Some(message.clone());
+                    self.message = message;
+                    self.view = View::Message;
+                    return Ok(false);
+                }
                 let runtime_target = mirror_core::model::ProviderTarget {
                     provider: provider.clone(),
                     scope: scope.clone(),
@@ -1831,7 +1842,11 @@ impl TuiApp {
                 let validity = crate::token_check::check_token_validity(&runtime_target);
                 if validity.status != crate::token_check::TokenValidity::Ok {
                     let _ = auth::delete_pat(&account);
-                    let message = validity.message(&runtime_target);
+                    let mut message = validity.message(&runtime_target);
+                    if let Some(error) = validity.error.as_deref() {
+                        message.push_str(": ");
+                        message.push_str(error);
+                    }
                     warn!(account = %account, status = ?validity.status, "Token validity check failed");
                     self.validation_message = Some(message.clone());
                     self.message = message;
@@ -2270,8 +2285,9 @@ impl TuiApp {
                     );
                 }
                 Err(err) => {
-                    error!(error = %err, "Sync failed");
-                    self.message = format!("Sync failed: {err}");
+                    let error_text = format!("{err:#}");
+                    error!(error = %error_text, "Sync failed");
+                    self.message = format!("Sync failed:\n{error_text}");
                 }
             }
             self.view = View::Message;
@@ -2553,15 +2569,16 @@ impl TuiApp {
             let _lock = lock;
             let result = run_tui_sync(&targets, &root, &cache_path, &audit, force_refresh_all);
             if let Err(err) = &result {
+                let error_text = format!("{err:#}");
                 let _ = audit.record(
                     "tui.sync.finish",
                     AuditStatus::Failed,
                     Some("tui"),
                     None,
-                    Some(&err.to_string()),
+                    Some(&error_text),
                 );
             }
-            let _ = tx.send(result.map_err(|err| err.to_string()));
+            let _ = tx.send(result.map_err(|err| format!("{err:#}")));
         });
 
         Ok(())
@@ -3174,6 +3191,7 @@ fn run_tui_sync(
         ) {
             Ok(summary) => summary,
             Err(err) => {
+                let error_text = format!("{err:#}");
                 let context = AuditContext {
                     provider: Some(target.provider.as_prefix().to_string()),
                     scope: Some(target.scope.segments().join("/")),
@@ -3186,9 +3204,13 @@ fn run_tui_sync(
                     Some("tui"),
                     context,
                     None,
-                    Some(&err.to_string()),
+                    Some(&error_text),
                 );
-                return Err(err);
+                return Err(err.context(format!(
+                    "target {}:{} sync failed",
+                    target.provider.as_prefix(),
+                    target.scope.segments().join("/")
+                )));
             }
         };
         let details = serde_json::json!({

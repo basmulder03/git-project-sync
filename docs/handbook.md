@@ -84,6 +84,9 @@ mirror-cli token set --provider azure-devops --scope org project --token <pat>
 
 Tokens are validated on set; invalid or expired PATs are rejected.
 
+GitHub note: use a Fine-grained personal access token (classic PATs are deprecated).
+The CLI `token guide` command prints the current GitHub token URL and required permissions.
+
 Get guidance:
 
 ```bash
@@ -94,6 +97,12 @@ Validate scopes (when supported):
 
 ```bash
 mirror-cli token validate --provider github --scope org-or-user
+```
+
+Diagnose keyring/session issues:
+
+```bash
+mirror-cli token doctor --provider github --scope org-or-user
 ```
 
 ## Sync Behavior

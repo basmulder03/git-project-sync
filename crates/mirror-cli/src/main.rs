@@ -146,6 +146,8 @@ enum TokenCommands {
     Guide(GuideTokenArgs),
     #[command(about = "Validate token scopes when supported")]
     Validate(ValidateTokenArgs),
+    #[command(about = "Diagnose keyring/session issues for token storage")]
+    Doctor(DoctorTokenArgs),
 }
 
 #[derive(Parser)]
@@ -175,6 +177,16 @@ struct ValidateTokenArgs {
     #[arg(long, value_enum)]
     provider: ProviderKindValue,
     #[arg(long, required = true)]
+    scope: Vec<String>,
+    #[arg(long)]
+    host: Option<String>,
+}
+
+#[derive(Parser)]
+struct DoctorTokenArgs {
+    #[arg(long, value_enum)]
+    provider: Option<ProviderKindValue>,
+    #[arg(long)]
     scope: Vec<String>,
     #[arg(long)]
     host: Option<String>,
@@ -805,6 +817,7 @@ fn handle_token(args: TokenArgs, audit: &AuditLogger) -> anyhow::Result<()> {
         TokenCommands::Set(args) => handle_set_token(args, audit),
         TokenCommands::Guide(args) => handle_guide_token(args, audit),
         TokenCommands::Validate(args) => handle_validate_token(args, audit),
+        TokenCommands::Doctor(args) => handle_doctor_token(args, audit),
     }
 }
 
@@ -816,6 +829,7 @@ fn handle_set_token(args: SetTokenArgs, audit: &AuditLogger) -> anyhow::Result<(
         let host = host_or_default(args.host.as_deref(), spec.as_ref());
         let account = spec.account_key(&host, &scope)?;
         auth::set_pat(&account, &args.token)?;
+        auth::get_pat(&account).context("read token from keyring after write")?;
         let runtime_target = ProviderTarget {
             provider: provider.clone(),
             scope: scope.clone(),
@@ -824,7 +838,11 @@ fn handle_set_token(args: SetTokenArgs, audit: &AuditLogger) -> anyhow::Result<(
         let validation = token_check::check_token_validity(&runtime_target);
         if validation.status != token_check::TokenValidity::Ok {
             let _ = auth::delete_pat(&account);
-            let message = validation.message(&runtime_target);
+            let mut message = validation.message(&runtime_target);
+            if let Some(error) = validation.error.as_deref() {
+                message.push_str(": ");
+                message.push_str(error);
+            }
             anyhow::bail!(message);
         }
         println!("Token stored for {account}");
@@ -866,7 +884,7 @@ fn handle_guide_token(args: GuideTokenArgs, audit: &AuditLogger) -> anyhow::Resu
         println!("Provider: {}", provider.as_prefix());
         println!("Scope: {}", scope.segments().join("/"));
         println!("Create PAT at: {}", help.url);
-        println!("Required scopes:");
+        println!("Required access:");
         for scope in help.scopes {
             println!("  - {scope}");
         }
@@ -993,6 +1011,59 @@ fn handle_validate_token(args: ValidateTokenArgs, audit: &AuditLogger) -> anyhow
             "token.validate",
             AuditStatus::Failed,
             Some("token.validate"),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+    result
+}
+
+fn handle_doctor_token(args: DoctorTokenArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = (|| {
+        println!(
+            "DBUS_SESSION_BUS_ADDRESS: {}",
+            std::env::var("DBUS_SESSION_BUS_ADDRESS")
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or_else(|| "(missing)".to_string())
+        );
+        println!(
+            "XDG_RUNTIME_DIR: {}",
+            std::env::var("XDG_RUNTIME_DIR")
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or_else(|| "(missing)".to_string())
+        );
+
+        match auth::probe_keyring_roundtrip() {
+            Ok(_) => println!("Keyring roundtrip: OK"),
+            Err(err) => anyhow::bail!("Keyring roundtrip failed: {err:#}"),
+        }
+
+        if !args.scope.is_empty() && args.provider.is_none() {
+            anyhow::bail!("--scope requires --provider");
+        }
+        if let Some(provider_value) = args.provider {
+            let provider: ProviderKind = provider_value.into();
+            let spec = spec_for(provider.clone());
+            let scope = spec.parse_scope(args.scope)?;
+            let host = host_or_default(args.host.as_deref(), spec.as_ref());
+            let account = spec.account_key(&host, &scope)?;
+            match auth::get_pat(&account) {
+                Ok(_) => println!("Stored token account check: found ({account})"),
+                Err(err) => println!("Stored token account check: missing ({account}) -> {err:#}"),
+            }
+        }
+        let audit_id = audit.record("token.doctor", AuditStatus::Ok, Some("token"), None, None)?;
+        println!("Audit ID: {audit_id}");
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "token.doctor",
+            AuditStatus::Failed,
+            Some("token"),
             None,
             Some(&err.to_string()),
         );
@@ -2819,6 +2890,17 @@ mod tests {
         match cli.command {
             Commands::Sync(args) => assert!(args.force_refresh_all),
             _ => panic!("expected sync command"),
+        }
+    }
+
+    #[test]
+    fn token_doctor_parses() {
+        let cli = Cli::try_parse_from(["mirror-cli", "token", "doctor"]).unwrap();
+        match cli.command {
+            Commands::Token(TokenArgs {
+                command: TokenCommands::Doctor(_),
+            }) => {}
+            _ => panic!("expected token doctor command"),
         }
     }
 

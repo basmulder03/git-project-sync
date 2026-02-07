@@ -74,6 +74,12 @@ mirror-cli token set --provider gitlab --scope group --token <token>
 
 Tokens are validated on set; invalid or expired PATs are rejected.
 
+Diagnose keyring/session issues:
+
+```bash
+mirror-cli token doctor --provider github --scope org-or-user
+```
+
 
 Run a sync:
 

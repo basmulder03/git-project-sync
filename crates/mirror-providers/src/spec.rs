@@ -17,8 +17,12 @@ pub fn pat_help(kind: ProviderKind) -> PatHelp {
             scopes: &["Code (Read)"],
         },
         ProviderKind::GitHub => PatHelp {
-            url: "https://github.com/settings/tokens",
-            scopes: &["repo", "read:org"],
+            url: "https://github.com/settings/personal-access-tokens/new",
+            scopes: &[
+                "Fine-grained PAT",
+                "Repository permissions: Contents (Read-only), Metadata (Read-only)",
+                "Organization permissions: Members (Read-only) when syncing org repos",
+            ],
         },
         ProviderKind::GitLab => PatHelp {
             url: "https://gitlab.com/-/profile/personal_access_tokens",
@@ -161,7 +165,13 @@ mod tests {
     #[test]
     fn pat_help_contains_scopes() {
         let github = pat_help(ProviderKind::GitHub);
-        assert!(github.scopes.contains(&"repo"));
+        assert!(github.url.contains("personal-access-tokens/new"));
+        assert!(
+            github
+                .scopes
+                .iter()
+                .any(|item| item.contains("Fine-grained"))
+        );
         let azdo = pat_help(ProviderKind::AzureDevOps);
         assert!(azdo.url.contains("dev.azure.com"));
     }

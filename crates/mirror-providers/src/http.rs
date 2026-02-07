@@ -7,11 +7,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub fn send_with_retry<F>(mut build: F) -> anyhow::Result<Response>
 where
-    F: FnMut() -> RequestBuilder,
+    F: FnMut() -> anyhow::Result<RequestBuilder>,
 {
     let max_attempts = 3;
     for attempt in 1..=max_attempts {
-        let response = build().send().context("send request")?;
+        let response = build()?.send().context("send request")?;
         let status = response.status();
         if status.is_success() {
             return Ok(response);
@@ -36,11 +36,11 @@ pub fn send_with_retry_allow_statuses<F>(
     allowed: &[StatusCode],
 ) -> anyhow::Result<Response>
 where
-    F: FnMut() -> RequestBuilder,
+    F: FnMut() -> anyhow::Result<RequestBuilder>,
 {
     let max_attempts = 3;
     for attempt in 1..=max_attempts {
-        let response = build().send().context("send request")?;
+        let response = build()?.send().context("send request")?;
         let status = response.status();
         if status.is_success() || allowed.contains(&status) {
             return Ok(response);

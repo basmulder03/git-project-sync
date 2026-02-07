@@ -2,7 +2,7 @@ use crate::RepoProvider;
 use crate::auth;
 use crate::http::{send_with_retry, send_with_retry_allow_statuses};
 use crate::spec::{GitHubSpec, host_or_default};
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use mirror_core::model::{ProviderKind, ProviderScope, ProviderTarget, RemoteRepo, RepoAuth};
 use mirror_core::provider::ProviderSpec;
 use reqwest::StatusCode;
@@ -102,7 +102,7 @@ impl GitHubProvider {
             .header("User-Agent", "git-project-sync")
             .bearer_auth(token);
         let response = send_with_retry_allow_statuses(
-            || builder.try_clone().expect("clone request"),
+            || builder.try_clone().context("clone request"),
             &[StatusCode::NOT_FOUND],
         )
         .context("call GitHub list repos")?;
@@ -116,6 +116,75 @@ impl GitHubProvider {
         let next_page = Self::next_page(response.headers());
         let payload: Vec<RepoItem> = response.json().context("decode repos response")?;
         Ok((payload, next_page, status))
+    }
+
+    fn account_candidates(
+        spec: &GitHubSpec,
+        host: &str,
+        scope: &ProviderScope,
+    ) -> anyhow::Result<Vec<String>> {
+        let mut hosts = vec![host.trim_end_matches('/').to_string()];
+        if Self::is_public_github_api_host(host) {
+            hosts.push("https://github.com".to_string());
+            hosts.push("github.com".to_string());
+        } else if Self::is_public_github_web_host(host) {
+            hosts.push("https://api.github.com".to_string());
+            hosts.push("api.github.com".to_string());
+        }
+        hosts.dedup();
+        hosts
+            .into_iter()
+            .map(|candidate| spec.account_key(&candidate, scope))
+            .collect()
+    }
+
+    fn get_pat_for_target(
+        spec: &GitHubSpec,
+        host: &str,
+        target: &ProviderTarget,
+    ) -> anyhow::Result<String> {
+        let accounts = Self::account_candidates(spec, host, &target.scope)?;
+        let mut last_no_entry: Option<anyhow::Error> = None;
+        let mut first_err: Option<String> = None;
+        for account in accounts {
+            match auth::get_pat(&account) {
+                Ok(token) => return Ok(token),
+                Err(err) if Self::is_missing_keyring_entry(&err) => {
+                    if first_err.is_none() {
+                        first_err = Some(format!("{err:#}"));
+                    }
+                    last_no_entry = Some(err);
+                }
+                Err(err) => {
+                    return Err(err);
+                }
+            }
+        }
+        if let Some(err) = last_no_entry {
+            return Err(err);
+        }
+        if let Some(err) = first_err {
+            return Err(anyhow!(err));
+        }
+        Err(anyhow!("read token from keyring"))
+    }
+
+    fn is_missing_keyring_entry(err: &anyhow::Error) -> bool {
+        let value = err.to_string().to_ascii_lowercase();
+        value.contains("no matching entry found")
+            || value.contains("no entry")
+            || value.contains("not found in secure storage")
+            || value.contains("item not found")
+    }
+
+    fn is_public_github_api_host(host: &str) -> bool {
+        let value = host.trim_end_matches('/').to_ascii_lowercase();
+        value == "https://api.github.com" || value == "api.github.com"
+    }
+
+    fn is_public_github_web_host(host: &str) -> bool {
+        let value = host.trim_end_matches('/').to_ascii_lowercase();
+        value == "https://github.com" || value == "http://github.com" || value == "github.com"
     }
 }
 
@@ -131,8 +200,7 @@ impl RepoProvider for GitHubProvider {
         let spec = GitHubSpec;
         let host = host_or_default(target.host.as_deref(), &spec);
         let scope = Self::parse_scope(&target.scope)?;
-        let account = spec.account_key(&host, &target.scope)?;
-        let token = auth::get_pat(&account)?;
+        let token = Self::get_pat_for_target(&spec, &host, target)?;
 
         let mut page = 1;
         let mut repos = Vec::new();
@@ -214,8 +282,7 @@ impl RepoProvider for GitHubProvider {
         let spec = GitHubSpec;
         let host = host_or_default(target.host.as_deref(), &spec);
         let _ = Self::parse_scope(&target.scope)?;
-        let account = spec.account_key(&host, &target.scope)?;
-        let _ = auth::get_pat(&account)?;
+        let _ = Self::get_pat_for_target(&spec, &host, target)?;
         Ok(())
     }
 
@@ -223,8 +290,7 @@ impl RepoProvider for GitHubProvider {
         let spec = GitHubSpec;
         let host = host_or_default(target.host.as_deref(), &spec);
         let _ = Self::parse_scope(&target.scope)?;
-        let account = spec.account_key(&host, &target.scope)?;
-        let token = auth::get_pat(&account)?;
+        let token = Self::get_pat_for_target(&spec, &host, target)?;
         Ok(Some(RepoAuth {
             username: "pat".to_string(),
             token,
@@ -238,8 +304,7 @@ impl RepoProvider for GitHubProvider {
         let spec = GitHubSpec;
         let host = host_or_default(target.host.as_deref(), &spec);
         let scope = Self::parse_scope(&target.scope)?;
-        let account = spec.account_key(&host, &target.scope)?;
-        let token = auth::get_pat(&account)?;
+        let token = Self::get_pat_for_target(&spec, &host, target)?;
 
         let (payload, _next, status) =
             self.fetch_repos_page(&host, scope, token.as_str(), ScopeKind::Org, 1)?;
@@ -287,8 +352,7 @@ impl RepoProvider for GitHubProvider {
         let spec = GitHubSpec;
         let host = host_or_default(target.host.as_deref(), &spec);
         let org = Self::parse_scope(&target.scope)?;
-        let account = spec.account_key(&host, &target.scope)?;
-        let token = auth::get_pat(&account)?;
+        let token = Self::get_pat_for_target(&spec, &host, target)?;
 
         let mut config = json!({
             "url": url,
@@ -312,7 +376,7 @@ impl RepoProvider for GitHubProvider {
             .bearer_auth(token.as_str())
             .json(&body);
         let response = send_with_retry_allow_statuses(
-            || builder.try_clone().expect("clone request"),
+            || builder.try_clone().context("clone request"),
             &[StatusCode::NOT_FOUND],
         )
         .context("call GitHub webhook register")?;
@@ -333,8 +397,7 @@ impl RepoProvider for GitHubProvider {
         let spec = GitHubSpec;
         let host = host_or_default(target.host.as_deref(), &spec);
         let _org = Self::parse_scope(&target.scope)?;
-        let account = spec.account_key(&host, &target.scope)?;
-        let token = auth::get_pat(&account)?;
+        let token = Self::get_pat_for_target(&spec, &host, target)?;
 
         let url = format!("{host}/user");
         let builder = self
@@ -342,7 +405,7 @@ impl RepoProvider for GitHubProvider {
             .get(url)
             .header("User-Agent", "git-project-sync")
             .bearer_auth(token.as_str());
-        let response = send_with_retry(|| builder.try_clone().expect("clone request"))
+        let response = send_with_retry(|| builder.try_clone().context("clone request"))
             .context("call GitHub token scopes")?
             .error_for_status()
             .context("GitHub token scopes status")?;
@@ -437,5 +500,23 @@ mod tests {
     fn parse_scopes_header_splits() {
         let scopes = parse_scopes_header("repo, read:org, ");
         assert_eq!(scopes, vec!["repo".to_string(), "read:org".to_string()]);
+    }
+
+    #[test]
+    fn account_candidates_include_public_aliases() {
+        let spec = GitHubSpec;
+        let scope = ProviderScope::new(vec!["me".to_string()]).unwrap();
+        let candidates =
+            GitHubProvider::account_candidates(&spec, "https://api.github.com", &scope).unwrap();
+        assert!(
+            candidates
+                .iter()
+                .any(|item| item.contains("github:https://api.github.com:me"))
+        );
+        assert!(
+            candidates
+                .iter()
+                .any(|item| item.contains("github:https://github.com:me"))
+        );
     }
 }

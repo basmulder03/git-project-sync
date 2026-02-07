@@ -77,7 +77,7 @@ fn classify_error(_provider: ProviderKind, err: &anyhow::Error) -> TokenCheckRes
     if update::is_network_error(err) {
         return TokenCheckResult {
             status: TokenValidity::Network,
-            error: Some(err.to_string()),
+            error: Some(format!("{err:#}")),
         };
     }
 
@@ -93,12 +93,12 @@ fn classify_error(_provider: ProviderKind, err: &anyhow::Error) -> TokenCheckRes
         };
         return TokenCheckResult {
             status: status_kind,
-            error: Some(err.to_string()),
+            error: Some(format!("{err:#}")),
         };
     }
 
     TokenCheckResult {
         status: TokenValidity::Error,
-        error: Some(err.to_string()),
+        error: Some(format!("{err:#}")),
     }
 }

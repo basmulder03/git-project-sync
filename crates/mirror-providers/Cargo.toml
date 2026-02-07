@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1"
-keyring = "3"
+keyring = { version = "3", features = ["linux-native"] }
 mirror-core = { path = "../mirror-core" }
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls", "form"] }
 serde = { version = "1", features = ["derive"] }

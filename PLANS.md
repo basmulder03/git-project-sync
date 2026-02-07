@@ -74,6 +74,14 @@ Ship **v2** with a cleaner async architecture, reduced coupling, and stable beha
   - worker execution
   - cache/status reducers
   - error mapping
+- [x] Extract duplicated sync outcome application from serial/parallel paths into shared helper module
+  - added `crates/mirror-core/src/sync_engine_apply.rs`
+  - centralized success/failure cache+status+audit updates
+  - preserved existing sync semantics and logging fields
+- [x] Extract sync worker execution (serial + threaded) into dedicated module
+  - added `crates/mirror-core/src/sync_engine_workers.rs`
+  - `run_sync_filtered` now delegates repo execution to worker helper
+  - kept orchestration decisions in `sync_engine.rs`
 - [ ] Preserve behavior and compatibility
   - no sync safety rule changes
   - no hidden data-loss paths

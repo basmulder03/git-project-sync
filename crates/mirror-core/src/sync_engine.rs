@@ -1,23 +1,21 @@
 use crate::cache::RepoCache;
 use crate::config::target_id;
 use crate::deleted::{DeletedRepoAction, MissingRemotePolicy};
-use crate::git_sync::{SyncOutcome, sync_repo};
+use crate::git_sync::SyncOutcome;
 use crate::model::{ProviderTarget, RemoteRepo};
 use crate::paths::repo_path;
 use crate::provider::RepoProvider;
 use crate::sync_engine_fs::move_repo_path;
 use crate::sync_engine_inventory::load_repos_with_cache;
 use crate::sync_engine_missing::handle_missing_repos;
-use crate::sync_engine_status::{
-    action_from_outcome, current_timestamp, emit_sync_status, should_record_sync,
-};
+use crate::sync_engine_status::emit_sync_status;
 use crate::sync_engine_types::{
-    MissingSummary, RepoEvent, RepoWorkItem, StatusEmitterState, merge_missing_summary,
+    MissingSummary, RepoWorkItem, StatusEmitterState, merge_missing_summary,
 };
+use crate::sync_engine_workers::run_work_items;
 use anyhow::Context;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
 use tracing::{info, warn};
 
@@ -87,7 +85,7 @@ pub struct SyncSummary {
 }
 
 impl SyncSummary {
-    fn record(&mut self, outcome: SyncOutcome) {
+    pub(crate) fn record(&mut self, outcome: SyncOutcome) {
         match outcome {
             SyncOutcome::Cloned => self.cloned += 1,
             SyncOutcome::FastForwarded => self.fast_forwarded += 1,
@@ -97,7 +95,7 @@ impl SyncSummary {
         }
     }
 
-    fn record_missing(&mut self, missing: MissingSummary) {
+    pub(crate) fn record_missing(&mut self, missing: MissingSummary) {
         merge_missing_summary(self, missing);
     }
 }
@@ -282,214 +280,17 @@ pub async fn run_sync_filtered(
     }
 
     let jobs = options.jobs.max(1).min(work_items.len().max(1));
-    if jobs <= 1 {
-        for item in work_items {
-            emit_sync_status(
-                &mut cache,
-                cache_path,
-                options.progress,
-                &mut status_state,
-                SyncAction::Syncing,
-                Some(&item.repo.name),
-                Some(&item.repo.id),
-                true,
-                summary,
-            )?;
-            let outcome = match sync_repo(
-                &item.path,
-                &item.repo.clone_url,
-                &item.repo.default_branch,
-                target_auth.as_ref(),
-                options.verify,
-            ) {
-                Ok(outcome) => outcome,
-                Err(err) => {
-                    summary.failed += 1;
-                    status_state.processed_repos += 1;
-                    emit_sync_status(
-                        &mut cache,
-                        cache_path,
-                        options.progress,
-                        &mut status_state,
-                        SyncAction::Failed,
-                        Some(&item.repo.name),
-                        Some(&item.repo.id),
-                        true,
-                        summary,
-                    )?;
-                    warn!(
-                        provider = %item.repo.provider,
-                        scope = ?item.repo.scope,
-                        repo_id = %item.repo.id,
-                        path = %item.path.display(),
-                        error = %err,
-                        "repo sync failed"
-                    );
-                    cache.record_repo(
-                        item.repo.id.clone(),
-                        item.repo.name.clone(),
-                        item.repo.provider.clone(),
-                        item.repo.scope.clone(),
-                        item.path.display().to_string(),
-                    );
-                    continue;
-                }
-            };
-
-            info!(
-                provider = %item.repo.provider,
-                scope = ?item.repo.scope,
-                repo_id = %item.repo.id,
-                path = %item.path.display(),
-                outcome = ?outcome,
-                "repo sync outcome"
-            );
-            summary.record(outcome);
-            status_state.processed_repos += 1;
-            emit_sync_status(
-                &mut cache,
-                cache_path,
-                options.progress,
-                &mut status_state,
-                action_from_outcome(outcome),
-                Some(&item.repo.name),
-                Some(&item.repo.id),
-                true,
-                summary,
-            )?;
-
-            cache.record_repo(
-                item.repo.id.clone(),
-                item.repo.name.clone(),
-                item.repo.provider.clone(),
-                item.repo.scope.clone(),
-                item.path.display().to_string(),
-            );
-
-            if should_record_sync(outcome) {
-                cache
-                    .last_sync
-                    .insert(item.repo.id.clone(), current_timestamp());
-            }
-        }
-    } else {
-        let queue = Arc::new(Mutex::new(work_items));
-        let (tx, rx) = mpsc::channel::<RepoEvent>();
-        for _ in 0..jobs {
-            let queue = Arc::clone(&queue);
-            let tx = tx.clone();
-            let verify = options.verify;
-            let target_auth = target_auth.clone();
-            std::thread::spawn(move || {
-                loop {
-                    let next = {
-                        let mut guard = queue.lock().unwrap();
-                        guard.pop()
-                    };
-                    let Some(item) = next else {
-                        break;
-                    };
-                    let _ = tx.send(RepoEvent::Started {
-                        repo_id: item.repo.id.clone(),
-                        repo_name: item.repo.name.clone(),
-                    });
-                    let outcome = sync_repo(
-                        &item.path,
-                        &item.repo.clone_url,
-                        &item.repo.default_branch,
-                        target_auth.as_ref(),
-                        verify,
-                    );
-                    let _ = tx.send(RepoEvent::Finished { item, outcome });
-                }
-            });
-        }
-        drop(tx);
-        while let Ok(event) = rx.recv() {
-            match event {
-                RepoEvent::Started { repo_id, repo_name } => {
-                    emit_sync_status(
-                        &mut cache,
-                        cache_path,
-                        options.progress,
-                        &mut status_state,
-                        SyncAction::Syncing,
-                        Some(&repo_name),
-                        Some(&repo_id),
-                        true,
-                        summary,
-                    )?;
-                }
-                RepoEvent::Finished { item, outcome } => match outcome {
-                    Ok(outcome) => {
-                        info!(
-                            provider = %item.repo.provider,
-                            scope = ?item.repo.scope,
-                            repo_id = %item.repo.id,
-                            path = %item.path.display(),
-                            outcome = ?outcome,
-                            "repo sync outcome"
-                        );
-                        summary.record(outcome);
-                        status_state.processed_repos += 1;
-                        emit_sync_status(
-                            &mut cache,
-                            cache_path,
-                            options.progress,
-                            &mut status_state,
-                            action_from_outcome(outcome),
-                            Some(&item.repo.name),
-                            Some(&item.repo.id),
-                            true,
-                            summary,
-                        )?;
-                        cache.record_repo(
-                            item.repo.id.clone(),
-                            item.repo.name.clone(),
-                            item.repo.provider.clone(),
-                            item.repo.scope.clone(),
-                            item.path.display().to_string(),
-                        );
-                        if should_record_sync(outcome) {
-                            cache
-                                .last_sync
-                                .insert(item.repo.id.clone(), current_timestamp());
-                        }
-                    }
-                    Err(err) => {
-                        summary.failed += 1;
-                        status_state.processed_repos += 1;
-                        emit_sync_status(
-                            &mut cache,
-                            cache_path,
-                            options.progress,
-                            &mut status_state,
-                            SyncAction::Failed,
-                            Some(&item.repo.name),
-                            Some(&item.repo.id),
-                            true,
-                            summary,
-                        )?;
-                        warn!(
-                            provider = %item.repo.provider,
-                            scope = ?item.repo.scope,
-                            repo_id = %item.repo.id,
-                            path = %item.path.display(),
-                            error = %err,
-                            "repo sync failed"
-                        );
-                        cache.record_repo(
-                            item.repo.id.clone(),
-                            item.repo.name.clone(),
-                            item.repo.provider.clone(),
-                            item.repo.scope.clone(),
-                            item.path.display().to_string(),
-                        );
-                    }
-                },
-            }
-        }
-    }
+    run_work_items(
+        &mut cache,
+        cache_path,
+        options.progress,
+        &mut status_state,
+        &mut summary,
+        work_items,
+        jobs,
+        target_auth,
+        options.verify,
+    )?;
 
     emit_sync_status(
         &mut cache,

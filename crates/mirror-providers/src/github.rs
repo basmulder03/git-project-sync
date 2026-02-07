@@ -8,8 +8,8 @@ use crate::spec::{GitHubSpec, host_or_default};
 use anyhow::Context;
 use mirror_core::model::{ProviderKind, ProviderTarget, RemoteRepo, RepoAuth};
 use mirror_core::provider::ProviderFuture;
+use reqwest::Client;
 use reqwest::StatusCode;
-use reqwest::blocking::Client;
 use serde_json::json;
 
 pub struct GitHubProvider {
@@ -46,7 +46,8 @@ impl RepoProvider for GitHubProvider {
             let mut auth_had_results = false;
             loop {
                 let (payload, next_page, status) =
-                    fetch_repos_page(&self.client, &host, scope, token.as_str(), scope_kind, page)?;
+                    fetch_repos_page(&self.client, &host, scope, token.as_str(), scope_kind, page)
+                        .await?;
                 if status == StatusCode::NOT_FOUND && scope_kind == ScopeKind::Org {
                     scope_kind = ScopeKind::AuthenticatedUser;
                     page = 1;
@@ -152,7 +153,8 @@ impl RepoProvider for GitHubProvider {
                 token.as_str(),
                 ScopeKind::Org,
                 1,
-            )?;
+            )
+            .await?;
             if status == StatusCode::NOT_FOUND {
                 let (payload, _next, status) = fetch_repos_page(
                     &self.client,
@@ -161,7 +163,8 @@ impl RepoProvider for GitHubProvider {
                     token.as_str(),
                     ScopeKind::AuthenticatedUser,
                     1,
-                )?;
+                )
+                .await?;
                 if status == StatusCode::NOT_FOUND {
                     let (_payload, _next, status) = fetch_repos_page(
                         &self.client,
@@ -170,7 +173,8 @@ impl RepoProvider for GitHubProvider {
                         token.as_str(),
                         ScopeKind::User,
                         1,
-                    )?;
+                    )
+                    .await?;
                     if status == StatusCode::NOT_FOUND {
                         anyhow::bail!("GitHub scope not found: {scope}");
                     }
@@ -184,7 +188,8 @@ impl RepoProvider for GitHubProvider {
                             token.as_str(),
                             ScopeKind::User,
                             1,
-                        )?;
+                        )
+                        .await?;
                         if status == StatusCode::NOT_FOUND {
                             anyhow::bail!("GitHub scope not found: {scope}");
                         }
@@ -239,6 +244,7 @@ impl RepoProvider for GitHubProvider {
                 || builder.try_clone().context("clone request"),
                 &[StatusCode::NOT_FOUND],
             )
+            .await
             .context("call GitHub webhook register")?;
             if response.status() == StatusCode::NOT_FOUND {
                 anyhow::bail!("GitHub org not found or webhooks unsupported for user scopes");
@@ -246,7 +252,7 @@ impl RepoProvider for GitHubProvider {
             let response = response
                 .error_for_status()
                 .context("GitHub webhook register status")?;
-            let _ = response.text();
+            let _ = response.text().await;
             Ok(())
         })
     }
@@ -271,6 +277,7 @@ impl RepoProvider for GitHubProvider {
                 .header("User-Agent", "git-project-sync")
                 .bearer_auth(token.as_str());
             let response = send_with_retry(|| builder.try_clone().context("clone request"))
+                .await
                 .context("call GitHub token scopes")?
                 .error_for_status()
                 .context("GitHub token scopes status")?;

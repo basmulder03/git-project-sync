@@ -1,34 +1,31 @@
 use crate::model::{ProviderKind, ProviderScope, ProviderTarget, RemoteRepo};
 use anyhow::bail;
+use std::cell::RefCell;
 use std::future::Future;
 use std::pin::Pin;
-use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+use tokio::runtime::{Builder, Runtime};
 
 pub type ProviderFuture<'a, T> = Pin<Box<dyn Future<Output = anyhow::Result<T>> + 'a>>;
 
-fn noop_raw_waker() -> RawWaker {
-    unsafe fn clone(_: *const ()) -> RawWaker {
-        noop_raw_waker()
-    }
-    unsafe fn wake(_: *const ()) {}
-    unsafe fn wake_by_ref(_: *const ()) {}
-    unsafe fn drop(_: *const ()) {}
-    RawWaker::new(
-        std::ptr::null(),
-        &RawWakerVTable::new(clone, wake, wake_by_ref, drop),
-    )
-}
-
 pub fn block_on<F: Future>(future: F) -> F::Output {
-    let waker = unsafe { Waker::from_raw(noop_raw_waker()) };
-    let mut future = std::pin::pin!(future);
-    let mut cx = Context::from_waker(&waker);
-    loop {
-        match Future::poll(future.as_mut(), &mut cx) {
-            Poll::Ready(value) => return value,
-            Poll::Pending => std::thread::yield_now(),
-        }
+    thread_local! {
+        static RUNTIME: RefCell<Option<Runtime>> = const { RefCell::new(None) };
     }
+
+    RUNTIME.with(|cell| {
+        let mut runtime = cell.borrow_mut();
+        if runtime.is_none() {
+            let created = Builder::new_current_thread()
+                .enable_time()
+                .build()
+                .expect("create provider runtime");
+            *runtime = Some(created);
+        }
+        runtime
+            .as_mut()
+            .expect("provider runtime initialized")
+            .block_on(future)
+    })
 }
 
 pub trait RepoProvider {

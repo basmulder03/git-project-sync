@@ -11,6 +11,8 @@
 - [x] Update docs for v2 breaking changes and migration notes
 - [x] Convert provider boundary to async-style futures without adding new dependencies
 - [x] Bridge core/CLI call sites via shared `mirror_core::provider::block_on`
+- [x] Migrate provider HTTP adapters from `reqwest::blocking::Client` to async `reqwest::Client`
+- [x] Replace custom future polling with Tokio runtime-backed provider `block_on`
 
 ## Milestone 55 — Core/Providers Modularization (in progress)
 
@@ -183,6 +185,7 @@
 - Keep sync safety invariants unchanged while introducing model-level breaking changes.
 - Async runtime/provider migration is deferred to a follow-up milestone after boundary cleanup lands.
 - Provider boundary now returns boxed futures; full non-blocking HTTP runtime migration remains a follow-up.
+- Provider adapters now execute async HTTP requests; remaining `block_on` bridges in sync CLI/core flows are scheduled for incremental removal.
 - Focus: architecture tidy (per user request).
 - Breaking CLI/config changes: allowed (major ok).
 - Target OS: cross-platform parity.

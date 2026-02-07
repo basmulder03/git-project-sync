@@ -1,13 +1,13 @@
 use anyhow::Context;
+use reqwest::Client;
 use reqwest::StatusCode;
-use reqwest::blocking::Client;
 
 use crate::github_models::RepoItem;
 use crate::github_scope::{ScopeKind, repos_url};
 use crate::http::send_with_retry_allow_statuses;
 use crate::provider_paging::next_page_from_link_header;
 
-pub(crate) fn fetch_repos_page(
+pub(crate) async fn fetch_repos_page(
     client: &Client,
     host: &str,
     scope: &str,
@@ -24,6 +24,7 @@ pub(crate) fn fetch_repos_page(
         || builder.try_clone().context("clone request"),
         &[StatusCode::NOT_FOUND],
     )
+    .await
     .context("call GitHub list repos")?;
     let status = response.status();
     if status == StatusCode::NOT_FOUND {
@@ -33,6 +34,6 @@ pub(crate) fn fetch_repos_page(
         .error_for_status()
         .context("GitHub list repos status")?;
     let next_page = next_page_from_link_header(response.headers());
-    let payload: Vec<RepoItem> = response.json().context("decode repos response")?;
+    let payload: Vec<RepoItem> = response.json().await.context("decode repos response")?;
     Ok((payload, next_page, status))
 }

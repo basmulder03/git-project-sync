@@ -7,7 +7,7 @@ use crate::spec::{AzureDevOpsSpec, host_or_default, pat_help};
 use anyhow::Context;
 use mirror_core::model::{ProviderKind, ProviderScope, ProviderTarget, RemoteRepo, RepoAuth};
 use mirror_core::provider::{ProviderFuture, ProviderSpec};
-use reqwest::blocking::Client;
+use reqwest::Client;
 use tracing::info;
 
 pub struct AzureDevOpsProvider {
@@ -46,11 +46,13 @@ impl RepoProvider for AzureDevOpsProvider {
                 info!(org, project = ?project, "listing Azure DevOps repos");
                 let builder = self.client.get(url).basic_auth("", Some(pat.as_str()));
                 let response = send_with_retry(|| builder.try_clone().context("clone request"))
+                    .await
                     .context("call Azure DevOps list repos")?
                     .error_for_status()
                     .context("Azure DevOps list repos status")?;
                 let next = continuation_token(response.headers());
-                let payload: ReposResponse = response.json().context("decode repos response")?;
+                let payload: ReposResponse =
+                    response.json().await.context("decode repos response")?;
 
                 for repo in payload.value {
                     let scope = match (project, repo.project.as_ref()) {
@@ -129,10 +131,12 @@ impl RepoProvider for AzureDevOpsProvider {
             let url = build_repos_url(&host, org, project, None)?;
             let builder = self.client.get(url).basic_auth("", Some(pat.as_str()));
             let response = send_with_retry(|| builder.try_clone().context("clone request"))
+                .await
                 .context("call Azure DevOps health check")?
                 .error_for_status()
                 .context("Azure DevOps health check status")?;
-            let _payload: ReposResponse = response.json().context("decode health response")?;
+            let _payload: ReposResponse =
+                response.json().await.context("decode health response")?;
             Ok(())
         })
     }

@@ -7,7 +7,7 @@ use crate::spec::{GitLabSpec, host_or_default};
 use anyhow::Context;
 use mirror_core::model::{ProviderKind, ProviderTarget, RemoteRepo, RepoAuth};
 use mirror_core::provider::{ProviderFuture, ProviderSpec};
-use reqwest::blocking::Client;
+use reqwest::Client;
 use tracing::info;
 
 pub struct GitLabProvider {
@@ -46,11 +46,13 @@ impl RepoProvider for GitLabProvider {
                 info!(group, page, "listing GitLab repos");
                 let builder = self.client.get(url).header("PRIVATE-TOKEN", token.as_str());
                 let response = send_with_retry(|| builder.try_clone().context("clone request"))
+                    .await
                     .context("call GitLab list repos")?
                     .error_for_status()
                     .context("GitLab list repos status")?;
                 let next_page = next_page(response.headers());
-                let payload: Vec<ProjectItem> = response.json().context("decode repos response")?;
+                let payload: Vec<ProjectItem> =
+                    response.json().await.context("decode repos response")?;
                 if payload.is_empty() {
                     break;
                 }
@@ -118,10 +120,12 @@ impl RepoProvider for GitLabProvider {
             let url = format!("{host}/groups/{group}/projects?per_page=1&page=1");
             let builder = self.client.get(url).header("PRIVATE-TOKEN", token.as_str());
             let response = send_with_retry(|| builder.try_clone().context("clone request"))
+                .await
                 .context("call GitLab health check")?
                 .error_for_status()
                 .context("GitLab health check status")?;
-            let _payload: Vec<ProjectItem> = response.json().context("decode health response")?;
+            let _payload: Vec<ProjectItem> =
+                response.json().await.context("decode health response")?;
             Ok(())
         })
     }
@@ -143,11 +147,13 @@ impl RepoProvider for GitLabProvider {
             let url = format!("{host}/personal_access_tokens/self");
             let builder = self.client.get(url).header("PRIVATE-TOKEN", token.as_str());
             let response = send_with_retry(|| builder.try_clone().context("clone request"))
+                .await
                 .context("call GitLab token scopes")?
                 .error_for_status()
                 .context("GitLab token scopes status")?;
             let payload: TokenScopes = response
                 .json()
+                .await
                 .context("decode GitLab token scopes response")?;
             Ok(Some(payload.scopes))
         })
@@ -181,10 +187,11 @@ impl RepoProvider for GitLabProvider {
                 builder = builder.form(&[("token", secret)]);
             }
             let response = send_with_retry(|| builder.try_clone().context("clone request"))
+                .await
                 .context("call GitLab webhook register")?
                 .error_for_status()
                 .context("GitLab webhook register status")?;
-            let _ = response.text();
+            let _ = response.text().await;
             Ok(())
         })
     }

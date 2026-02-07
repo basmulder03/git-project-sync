@@ -1,106 +1,61 @@
 # Git Project Sync
 
+[![CI](https://github.com/basmulder03/git-project-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/basmulder03/git-project-sync/actions/workflows/ci.yml)
+[![Release](https://github.com/basmulder03/git-project-sync/actions/workflows/release.yml/badge.svg)](https://github.com/basmulder03/git-project-sync/actions/workflows/release.yml)
+[![Latest Release](https://img.shields.io/github/v/release/basmulder03/git-project-sync)](https://github.com/basmulder03/git-project-sync/releases)
+[![Rust](https://img.shields.io/badge/Rust-2024-orange?logo=rust)](https://www.rust-lang.org)
+[![Platforms](https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-blue)](https://github.com/basmulder03/git-project-sync/releases)
+
 Mirror repositories from multiple Git providers into a local root folder with safe, fast-forward-only updates.
 
-## Highlights
+## Why this tool
 
 - Provider-agnostic core with Azure DevOps, GitHub, and GitLab adapters
 - Safe sync: never overwrites dirty trees, fast-forward only, logs diverged branches
-- Missing remote handling: prompt or policy-based archive/remove/skip
-- Staggered auto-sync across 7 days (daemon syncs the current day bucket)
-- Tokens stored in OS keychain; config/cache stored in OS AppData equivalents
-- Localization support with configurable language (`en-001`, `en-US`, `en-GB`, `nl`, `af`)
-
-## Documentation
-
-- `docs/handbook.md` — Operator guide
-- `docs/architecture.md` — System architecture
-- `docs/decisions.md` — Architectural decisions
+- Missing remote handling with interactive prompt or policy (`archive|remove|skip`)
+- 7-day staggered daemon sync bucket strategy
+- Tokens in OS keychain, config/cache in OS app data directories
+- Localized CLI/TUI text with selectable language
 
 ## Install
 
-Build the CLI with Cargo:
+Build with Cargo:
 
 ```bash
 cargo build --release
 ```
 
-The binary will be at `target/release/mirror-cli`.
-
-## Releases
-
-Releases are created manually via the GitHub Actions **Release** workflow. Choose the semver bump (major, minor, patch) when dispatching. The workflow computes the next version from the latest `vX.Y.Z` tag, updates `crates/mirror-cli/Cargo.toml`, `crates/mirror-core/Cargo.toml`, and `crates/mirror-providers/Cargo.toml`, commits the bump, creates the tag, and publishes release binaries for Windows, macOS, and Linux.
-
-Quick trigger with the GitHub CLI:
+Binary path:
 
 ```bash
-gh workflow run Release -f bump=patch
+target/release/mirror-cli
 ```
-
-**Release Checklist**
-1. Run `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all`.
-2. Dispatch the **Release** workflow with the desired bump type.
-
-## v2 Breaking Changes
-
-### Internal API/architecture changes
-
-- Provider inventory records are credential-free:
-  - `RemoteRepo.auth` was removed from the inventory model.
-  - Credentials are resolved per target during execution via provider `auth_for_target`.
-- Provider trait boundary is async-first:
-  - Core/provider interaction is future-based at the adapter boundary.
-  - Provider adapters use async `reqwest::Client` for HTTP and retry handling.
-- Sync engine internals were split into focused modules:
-  - orchestration, worker execution, missing-remote flow, outcome reducers, work-item preparation.
-  - this is an intentional internal refactor; behavior is preserved.
-- Runtime ownership is explicit:
-  - CLI process entry owns the Tokio runtime.
-  - synchronous TUI boundaries use a dedicated TUI runtime helper.
-
-### CLI/TUI behavior changes
-
-- Selector precedence is now explicit and consistent for `sync` and `health`:
-  - `--target-id` takes precedence over `--provider/--scope`.
-  - using both now emits a warning and applies `--target-id`.
-- TUI navigation/overflow behavior was unified:
-  - `Esc` returns to previous screen consistently.
-  - overflow content uses `PgUp/PgDn/Home/End` scrolling across screens.
 
 ## Quick Start
 
-Initialize config with a mirror root:
+1. Initialize config root.
 
 ```bash
 mirror-cli config init --root /path/to/mirrors
 ```
 
-Set display language:
-
-```bash
-mirror-cli config language set --lang en-001
-mirror-cli --lang nl sync
-```
-
-Language precedence: `--lang` > `MIRROR_LANG` > `config.language` > `en-001`.
-
-Add a target:
+2. Add a target.
 
 ```bash
 # Azure DevOps project scope
 mirror-cli target add --provider azure-devops --scope org project
 
-# Azure DevOps org-wide scope
+# Azure DevOps org scope
 mirror-cli target add --provider azure-devops --scope org
 
-# GitHub org or user
+# GitHub org/user
 mirror-cli target add --provider github --scope org-or-user
 
-# GitLab group or subgroup path
+# GitLab group/subgroup
 mirror-cli target add --provider gitlab --scope group subgroup
 ```
 
-Store a token:
+3. Store a token.
 
 ```bash
 mirror-cli token set --provider azure-devops --scope org project --token <pat>
@@ -108,102 +63,121 @@ mirror-cli token set --provider github --scope org-or-user --token <token>
 mirror-cli token set --provider gitlab --scope group --token <token>
 ```
 
-Tokens are validated on set; invalid or expired PATs are rejected.
-
-Diagnose keyring/session issues:
-
-```bash
-mirror-cli token doctor --provider github --scope org-or-user
-```
-
-
-Run a sync:
+4. Run sync.
 
 ```bash
 mirror-cli sync
 ```
 
-Force-refresh all configured targets and repos (ignores target/scope/repo filters):
+## Language and Localization
+
+Supported locales:
+
+- `en-001` (English International, default)
+- `en-US` (English American)
+- `en-GB` (English British)
+- `nl` (Dutch)
+- `af` (Afrikaans)
+
+Set persisted language:
 
 ```bash
-mirror-cli sync --force-refresh-all
+mirror-cli config language set --lang en-001
 ```
 
-Live status for sync:
+One-off override:
 
 ```bash
+mirror-cli --lang nl sync
+```
+
+Precedence:
+
+`--lang` > `MIRROR_LANG` > `config.language` > `en-001`
+
+TUI language switch:
+
+- Open `Language` from the main menu.
+- Selection is applied immediately and persisted.
+
+## Common Commands
+
+### Sync
+
+```bash
+# Standard sync
+mirror-cli sync
+
+# Show live progress
 mirror-cli sync --status
+
+# Force full refresh for all targets/repos
+mirror-cli sync --force-refresh-all
+
+# Non-interactive missing remote policy
+mirror-cli sync --non-interactive --missing-remote <archive|remove|skip>
 ```
 
-## Updates
+### Health and Cache
 
-Check for updates:
+```bash
+mirror-cli health --provider github --scope org-or-user
+mirror-cli cache prune
+mirror-cli cache overview
+```
+
+### Token workflows
+
+```bash
+mirror-cli token guide --provider github --scope org-or-user
+mirror-cli token validate --provider github --scope org-or-user
+mirror-cli token doctor --provider github --scope org-or-user
+```
+
+### Update workflows
 
 ```bash
 mirror-cli update --check-only
-```
-
-Check updates alongside any command:
-
-```bash
+mirror-cli update --apply
 mirror-cli sync --check-updates
 ```
 
-Apply the latest release:
-
-```bash
-mirror-cli update --apply
-```
-
-Override the GitHub release repo:
+Override update source repo:
 
 ```bash
 GIT_PROJECT_SYNC_UPDATE_REPO=owner/repo mirror-cli update --check-only
 ```
 
-Auto-update behavior:
+## Daemon and Service
 
-- The daemon checks for updates on startup and then daily.
-- CLI runs check for updates only if the daemon has not performed a check yet.
-- Network failures are logged and do not fail the daemon.
-- If updates require elevated permissions, the CLI prompts to re-run and triggers the OS admin-privileges prompt (UAC/sudo/etc.).
-- After applying updates, the running CLI/TUI/daemon restarts to load the new version.
-
-PAT validation behavior:
-
-- Tokens are validated on set; invalid or expired PATs are rejected.
-- The daemon checks PAT validity daily.
-- CLI checks PAT validity only if the daemon has not performed a check yet.
-
-## Dashboard
-
-Launch the dashboard TUI:
+Run daemon continuously:
 
 ```bash
-mirror-cli tui --dashboard
+mirror-cli daemon --missing-remote skip
 ```
 
-In the TUI:
-- Dashboard view: press `s` for Sync Status
-- Dashboard view: press `f` for Force Refresh All
-- Main menu: open `Language` to switch locale and persist it
-- Setup view: press `s` for Setup Status
-- General navigation: `Esc` goes back to previous screen
-- Overflow scrolling: `PgUp/PgDn/Home/End`
+Run one cycle:
 
-## Scope Shapes
+```bash
+mirror-cli daemon --run-once --missing-remote skip
+```
 
-- Azure DevOps: `<org>` or `<org>/<project>`
-- GitHub: `<org-or-user>`
-- GitLab: `<group>/<subgroup>/...`
+Install/uninstall OS background integration:
 
-For Azure DevOps org-wide listing, each repo is mapped to its project name so paths remain `<org>/<project>/<repo>`.
+```bash
+mirror-cli service install
+mirror-cli service uninstall
+```
+
+## TUI Shortcuts
+
+- Dashboard: `s` (sync status), `f` (force refresh all)
+- Setup: `s` (setup status), `u` (check updates)
+- Navigation: `Esc` back, `PgUp/PgDn/Home/End` scroll
 
 ## Mirror Layout
 
-Default layout on disk includes provider prefixes:
-
-```
+```text
 <root>/
   azure-devops/<org>/<project>/<repo>/
   github/<org>/<repo>/
@@ -211,102 +185,64 @@ Default layout on disk includes provider prefixes:
   _archive/...
 ```
 
-## Config, Cache, and Tokens
+## Scope Shapes
 
-- Config: `config.json` under the OS config directory (AppData equivalents)
-- Cache: `cache.json` under the OS cache directory
-- Lock file: `mirror.lock` under the OS runtime directory (or cache dir fallback)
-- Tokens: stored in the OS keychain via `keyring`
+- Azure DevOps: `<org>` or `<org>/<project>`
+- GitHub: `<org-or-user>`
+- GitLab: `<group>/<subgroup>/...`
 
-## Non-interactive Mode
+## Config, Cache, Token Storage
 
-When running unattended, pass a missing-remote policy:
-
-```bash
-mirror-cli sync --non-interactive --missing-remote <archive|remove|skip>
-```
-
-## Daemon
-
-Run a background loop:
-
-```bash
-mirror-cli daemon --missing-remote skip
-```
-
-Run one cycle only:
-
-```bash
-mirror-cli daemon --run-once --missing-remote skip
-```
-
-## Service Install
-
-Register the daemon with the OS:
-
-```bash
-mirror-cli service install
-mirror-cli service uninstall
-```
+- Config: `config.json` in OS config dir
+- Cache: `cache.json` in OS cache dir
+- Lock: `mirror.lock` in OS runtime dir (or cache fallback)
+- Tokens: OS keychain via `keyring`
 
 ## Install Flow
 
-Run the guided installer:
-
 ```bash
 mirror-cli install
-```
-
-Use the TUI installer:
-
-```bash
 mirror-cli install --tui
+mirror-cli install --status
+mirror-cli install --path add
 ```
 
 Optional flags:
 
-- `--delayed-start <seconds>`: delay startup on boot (OS-native where supported)
-- `--path <add|skip>`: opt-in PATH registration
-- `--status`: show install status (path, task/service state, PATH)
+- `--delayed-start <seconds>`
+- `--path <add|skip>`
+- `--status`
 
-Windows task helpers (when installed):
+Default no-arg behavior:
 
-```bash
-schtasks /Query /TN git-project-sync
-schtasks /Run /TN git-project-sync
-```
-
-Default launch behavior:
-
-- Running `mirror-cli` with no arguments will open the installer if not installed.
-- Once installed, running `mirror-cli` without arguments shows the CLI help.
-
-Notes:
-
-- The installer copies `mirror-cli` into the OS default per-user install location and reuses it for the service.
-- Re-running `mirror-cli install` replaces the existing install in place.
-- Linux: installs a systemd user service
-- macOS: installs a LaunchAgent
-- Windows: installs a Scheduled Task (Task Scheduler)
-- Only one installer can run at a time (guarded by a lock file under the OS app data directory).
+- Not installed: opens installer
+- Installed: shows CLI help
 
 ## Troubleshooting
 
-## Release Readiness (v2)
+- Dirty working tree: sync skips and logs
+- Diverged default branch: sync skips and logs
+- Missing/mismatched `origin`: sync rewrites origin URL before fetch
+- Azure DevOps 401/403/404: CLI prints scope/token guidance
 
-Before cutting a release:
+## Release
 
-1. Run quality gates:
-   - `cargo fmt --check`
-   - `cargo clippy --all-targets --all-features -- -D warnings`
-   - `cargo test --all`
-2. Run manual smoke checks:
-   - sync (normal + `--force-refresh-all`)
-   - daemon (`--run-once`)
-   - token set/validate/doctor flows
-   - TUI navigation and status screens
+Manual release via GitHub Actions workflow `Release` (`major|minor|patch`).
 
-- If a working tree is dirty, sync will skip it and log the reason
-- If the default branch diverges, sync will skip it and log the reason
-- If origin is missing or mismatched, sync will update the origin URL before fetch
-- For Azure DevOps 401/403/404 responses, the CLI prints a friendly scope/token hint
+```bash
+gh workflow run Release -f bump=patch
+```
+
+Release quality gate:
+
+1. `cargo fmt --check`
+2. `cargo clippy --all-targets --all-features -- -D warnings`
+3. `cargo test --all`
+
+## Documentation
+
+- `docs/handbook.md` - operator guide
+- `docs/architecture.md` - system architecture
+- `docs/decisions.md` - architecture decisions
+- `SPEC.md` - behavioral specification
+- `ACCEPTANCE.md` - manual acceptance scenarios

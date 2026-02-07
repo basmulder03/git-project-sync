@@ -1,4 +1,5 @@
 use super::*;
+use crate::i18n::{key, tf};
 pub(super) async fn handle_token(args: TokenArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     match args.command {
         TokenCommands::Set(args) => handle_set_token(args, audit).await,
@@ -35,7 +36,13 @@ pub(super) async fn handle_set_token(
             }
             anyhow::bail!(message);
         }
-        println!("Token stored for {account}");
+        println!(
+            "{}",
+            tf(
+                key::TOKEN_STORED_ACCOUNT,
+                &[("account", account.to_string())]
+            )
+        );
         let audit_id = audit.record_with_context(
             "token.set",
             AuditStatus::Ok,
@@ -49,7 +56,7 @@ pub(super) async fn handle_set_token(
             None,
             None,
         )?;
-        println!("Audit ID: {audit_id}");
+        println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
         Ok(())
     }
     .await;
@@ -72,10 +79,22 @@ pub(super) fn handle_guide_token(args: GuideTokenArgs, audit: &AuditLogger) -> a
         let spec = spec_for(provider.clone());
         let scope = spec.parse_scope(args.scope)?;
         let help = mirror_providers::spec::pat_help(provider.clone());
-        println!("Provider: {}", provider.as_prefix());
-        println!("Scope: {}", scope.segments().join("/"));
-        println!("Create PAT at: {}", help.url);
-        println!("Required access:");
+        println!(
+            "{}",
+            tf(
+                key::PROVIDER_LABEL,
+                &[("provider", provider.as_prefix().to_string())]
+            )
+        );
+        println!(
+            "{}",
+            tf(key::SCOPE_LABEL, &[("scope", scope.segments().join("/"))])
+        );
+        println!(
+            "{}",
+            tf(key::CREATE_PAT_URL, &[("url", help.url.to_string())])
+        );
+        println!("{}", tf(key::REQUIRED_ACCESS, &[]));
         for scope in help.scopes {
             println!("  - {scope}");
         }
@@ -92,7 +111,7 @@ pub(super) fn handle_guide_token(args: GuideTokenArgs, audit: &AuditLogger) -> a
             None,
             None,
         )?;
-        println!("Audit ID: {audit_id}");
+        println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
         Ok(())
     })();
 
@@ -138,7 +157,13 @@ pub(super) async fn handle_validate_token(
                     .filter(|required| !scopes.iter().any(|s| s == required))
                     .collect();
                 if missing.is_empty() {
-                    println!("Token scopes valid for {}", provider.as_prefix());
+                    println!(
+                        "{}",
+                        tf(
+                            key::TOKEN_SCOPES_VALID,
+                            &[("provider", provider.as_prefix().to_string())]
+                        )
+                    );
                     let audit_id = audit.record_with_context(
                         "token.validate",
                         AuditStatus::Ok,
@@ -152,9 +177,9 @@ pub(super) async fn handle_validate_token(
                         None,
                         None,
                     )?;
-                    println!("Audit ID: {audit_id}");
+                    println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
                 } else {
-                    println!("Missing scopes:");
+                    println!("{}", tf(key::TOKEN_SCOPES_MISSING, &[]));
                     for scope in missing {
                         println!("  - {scope}");
                     }
@@ -171,7 +196,7 @@ pub(super) async fn handle_validate_token(
                         None,
                         Some("missing scopes"),
                     )?;
-                    println!("Audit ID: {audit_id}");
+                    println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
                 }
             }
             None => {
@@ -195,7 +220,7 @@ pub(super) async fn handle_validate_token(
                     None,
                     Some("auth-based validation used (scope validation not supported)"),
                 )?;
-                println!("Audit ID: {audit_id}");
+                println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
             }
         }
         Ok(())
@@ -254,7 +279,7 @@ pub(super) fn handle_doctor_token(
             }
         }
         let audit_id = audit.record("token.doctor", AuditStatus::Ok, Some("token"), None, None)?;
-        println!("Audit ID: {audit_id}");
+        println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
         Ok(())
     })();
 

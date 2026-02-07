@@ -1,4 +1,5 @@
 use super::*;
+use crate::i18n::{key, tf, tr};
 
 #[derive(Debug)]
 pub(in crate::cli) struct TargetSelection {
@@ -199,8 +200,11 @@ pub(in crate::cli) fn select_targets_with_precedence(
 
 pub(in crate::cli) fn prompt_action(entry: &RepoCacheEntry) -> anyhow::Result<DeletedRepoAction> {
     println!(
-        "Remote repo missing: {} (path: {}). Choose [a]rchive / [r]emove / [s]kip:",
-        entry.name, entry.path
+        "{}",
+        tf(
+            key::REMOTE_MISSING_PROMPT,
+            &[("name", entry.name.clone()), ("path", entry.path.clone()),]
+        )
     );
     loop {
         print!("> ");
@@ -211,7 +215,7 @@ pub(in crate::cli) fn prompt_action(entry: &RepoCacheEntry) -> anyhow::Result<De
             "a" | "archive" => return Ok(DeletedRepoAction::Archive),
             "r" | "remove" => return Ok(DeletedRepoAction::Remove),
             "s" | "skip" => return Ok(DeletedRepoAction::Skip),
-            _ => println!("Please enter a, r, or s."),
+            _ => println!("{}", tr(key::PROMPT_ENTER_ARS)),
         }
     }
 }
@@ -270,6 +274,7 @@ mod tests {
                     labels: vec![],
                 },
             ],
+            language: None,
         }
     }
 

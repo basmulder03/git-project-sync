@@ -1,4 +1,5 @@
 use super::*;
+use crate::i18n::{key, tf, tr};
 
 impl TuiApp {
     pub(in crate::tui) fn handle_config_root(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
@@ -12,8 +13,8 @@ impl TuiApp {
                 if let Some(path) = value {
                     if path.is_empty() {
                         warn!("Root path empty in config root view");
-                        self.validation_message = Some("Root path cannot be empty.".to_string());
-                        self.message = "Root path cannot be empty.".to_string();
+                        self.validation_message = Some(tr(key::ROOT_PATH_EMPTY).to_string());
+                        self.message = tr(key::ROOT_PATH_EMPTY).to_string();
                         self.navigate_to(View::Message);
                         return Ok(false);
                     }
@@ -28,7 +29,10 @@ impl TuiApp {
                         None,
                         None,
                     )?;
-                    self.message = format!("Root saved. Audit ID: {audit_id}");
+                    self.message = tf(
+                        "Root saved. Audit ID: {audit_id}",
+                        &[("audit_id", audit_id)],
+                    );
                     self.navigate_to(View::Message);
                 }
             }
@@ -95,9 +99,9 @@ impl TuiApp {
                 self.validation_message = None;
                 self.navigate_to(View::TargetAdd);
                 self.input_fields = vec![
-                    InputField::new("Scope (space-separated)"),
-                    InputField::new("Host (optional)"),
-                    InputField::new("Labels (comma-separated)"),
+                    InputField::new(tr(key::LABEL_SCOPE_SPACED)),
+                    InputField::new(tr(key::LABEL_HOST_OPTIONAL)),
+                    InputField::new(tr(key::LABEL_LABELS_COMMA)),
                 ];
                 self.input_index = 0;
                 self.provider_index = 0;
@@ -105,7 +109,7 @@ impl TuiApp {
             KeyCode::Char('d') => {
                 self.validation_message = None;
                 self.navigate_to(View::TargetRemove);
-                self.input_fields = vec![InputField::new("Target id")];
+                self.input_fields = vec![InputField::new(tr(key::LABEL_TARGET_ID))];
                 self.input_index = 0;
             }
             _ => {}
@@ -162,7 +166,10 @@ impl TuiApp {
                         None,
                         Some("target already exists"),
                     )?;
-                    self.message = format!("Target already exists. Audit ID: {audit_id}");
+                    self.message = tf(
+                        "Target already exists. Audit ID: {audit_id}",
+                        &[("audit_id", audit_id)],
+                    );
                     self.navigate_to(View::Message);
                     return Ok(false);
                 }
@@ -190,7 +197,10 @@ impl TuiApp {
                     None,
                     None,
                 )?;
-                self.message = format!("Target added. Audit ID: {audit_id}");
+                self.message = tf(
+                    "Target added. Audit ID: {audit_id}",
+                    &[("audit_id", audit_id)],
+                );
                 self.navigate_to(View::Message);
             }
             _ => self.handle_text_input(key),
@@ -223,7 +233,10 @@ impl TuiApp {
                         None,
                         Some("target not found"),
                     )?;
-                    self.message = format!("No target found. Audit ID: {audit_id}");
+                    self.message = tf(
+                        "No target found. Audit ID: {audit_id}",
+                        &[("audit_id", audit_id)],
+                    );
                 } else {
                     self.config.save(&self.config_path)?;
                     self.validation_message = None;
@@ -235,7 +248,10 @@ impl TuiApp {
                         None,
                         None,
                     )?;
-                    self.message = format!("Target removed. Audit ID: {audit_id}");
+                    self.message = tf(
+                        "Target removed. Audit ID: {audit_id}",
+                        &[("audit_id", audit_id)],
+                    );
                 }
                 self.navigate_to(View::Message);
             }

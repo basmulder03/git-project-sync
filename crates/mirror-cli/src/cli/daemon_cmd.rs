@@ -1,5 +1,6 @@
 use super::shared::{run_sync_job, run_token_validity_checks};
 use super::*;
+use crate::i18n::{key, tf};
 pub(super) async fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     let result: anyhow::Result<()> = async {
         let interval = std::time::Duration::from_secs(args.interval_seconds);
@@ -29,7 +30,7 @@ pub(super) async fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyh
         }
         let _ = run_token_validity_checks(&config_path, &cache_path, audit, "daemon", true).await;
         let audit_id = audit.record("daemon.start", AuditStatus::Ok, Some("daemon"), None, None)?;
-        println!("Audit ID: {audit_id}");
+        println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
         let job = || async {
             run_sync_job(
                 &config_path,
@@ -69,7 +70,7 @@ pub(super) async fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyh
                 None,
                 None,
             )?;
-            println!("Audit ID: {audit_id}");
+            println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
             return Ok(());
         }
         let mut failure_count: u32 = 0;

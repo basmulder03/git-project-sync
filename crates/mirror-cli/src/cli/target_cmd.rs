@@ -1,4 +1,5 @@
 use super::*;
+use crate::i18n::{key, tf};
 pub(super) fn handle_target(args: TargetArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     match args.command {
         TargetCommands::Add(args) => handle_add_target(args, audit),
@@ -22,7 +23,7 @@ pub(super) fn handle_add_target(args: AddTargetArgs, audit: &AuditLogger) -> any
         let id = target_id(provider.clone(), host.as_deref(), &scope);
 
         if config.targets.iter().any(|target| target.id == id) {
-            println!("Target already exists: {id}");
+            println!("{}", tf(key::TARGET_EXISTS, &[("id", id.clone())]));
             let audit_id = audit.record_with_context(
                 "target.add",
                 AuditStatus::Skipped,
@@ -36,7 +37,7 @@ pub(super) fn handle_add_target(args: AddTargetArgs, audit: &AuditLogger) -> any
                 None,
                 Some("target already exists"),
             )?;
-            println!("Audit ID: {audit_id}");
+            println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
             return Ok(());
         }
 
@@ -56,7 +57,13 @@ pub(super) fn handle_add_target(args: AddTargetArgs, audit: &AuditLogger) -> any
                 config_path.display()
             );
         } else {
-            println!("Target added to {}", config_path.display());
+            println!(
+                "{}",
+                tf(
+                    key::TARGET_ADDED_TO_PATH,
+                    &[("path", config_path.display().to_string())]
+                )
+            );
         }
         let audit_id = audit.record_with_context(
             "target.add",
@@ -71,7 +78,7 @@ pub(super) fn handle_add_target(args: AddTargetArgs, audit: &AuditLogger) -> any
             None,
             None,
         )?;
-        println!("Audit ID: {audit_id}");
+        println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
         Ok(())
     })();
 
@@ -96,7 +103,7 @@ pub(super) fn handle_list_targets(audit: &AuditLogger) -> anyhow::Result<()> {
         }
 
         if config.targets.is_empty() {
-            println!("No targets configured.");
+            println!("{}", tf(key::NO_TARGETS_CONFIGURED, &[]));
             return Ok(());
         }
 
@@ -132,7 +139,7 @@ pub(super) fn handle_list_targets(audit: &AuditLogger) -> anyhow::Result<()> {
             None,
             None,
         )?;
-        println!("Audit ID: {audit_id}");
+        println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
     }
     result
 }
@@ -148,7 +155,10 @@ pub(super) fn handle_remove_target(
         config.targets.retain(|target| target.id != args.id);
         let after = config.targets.len();
         if before == after {
-            println!("No target found with id {}", args.id);
+            println!(
+                "{}",
+                tf(key::TARGET_NOT_FOUND_ID, &[("id", args.id.clone())])
+            );
             let audit_id = audit.record(
                 "target.remove",
                 AuditStatus::Skipped,
@@ -156,7 +166,7 @@ pub(super) fn handle_remove_target(
                 None,
                 Some("target not found"),
             )?;
-            println!("Audit ID: {audit_id}");
+            println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
             return Ok(());
         }
         config.save(&config_path)?;
@@ -166,7 +176,13 @@ pub(super) fn handle_remove_target(
                 config_path.display()
             );
         } else {
-            println!("Target removed from {}", config_path.display());
+            println!(
+                "{}",
+                tf(
+                    key::TARGET_REMOVED_FROM_PATH,
+                    &[("path", config_path.display().to_string())]
+                )
+            );
         }
         let audit_id = audit.record(
             "target.remove",
@@ -175,7 +191,7 @@ pub(super) fn handle_remove_target(
             None,
             None,
         )?;
-        println!("Audit ID: {audit_id}");
+        println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
         Ok(())
     })();
 

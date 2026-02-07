@@ -1,4 +1,5 @@
 use super::*;
+use crate::i18n::{key, tr};
 
 impl TuiApp {
     pub(in crate::tui) fn draw_token_menu(
@@ -25,8 +26,11 @@ impl TuiApp {
                 ListItem::new(line)
             })
             .collect();
-        let list =
-            List::new(list_items).block(Block::default().borders(Borders::ALL).title("Tokens"));
+        let list = List::new(list_items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(tr(key::TOKENS_TITLE)),
+        );
         frame.render_widget(list, area);
     }
 
@@ -37,12 +41,12 @@ impl TuiApp {
     ) {
         let entries = self.token_entries();
         let mut lines: Vec<Line> = Vec::new();
-        lines.push(Line::from(Span::raw(
+        lines.push(Line::from(Span::raw(tr(
             "Context: Tokens per configured target",
-        )));
+        ))));
         lines.push(Line::from(Span::raw("")));
         if entries.is_empty() {
-            lines.push(Line::from(Span::raw("No targets configured yet.")));
+            lines.push(Line::from(Span::raw(tr(key::TOKENS_NONE_CONFIGURED_YET))));
         } else {
             for entry in entries {
                 let status = if entry.present { "stored" } else { "missing" };
@@ -68,7 +72,11 @@ impl TuiApp {
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .scroll((scroll as u16, 0))
-            .block(Block::default().borders(Borders::ALL).title("Tokens"));
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(tr(key::TOKENS_TITLE)),
+            );
         frame.render_widget(widget, area);
     }
 
@@ -80,7 +88,7 @@ impl TuiApp {
         let provider = provider_kind(self.provider_index);
         let help = pat_help(provider.clone());
         let mut lines = Vec::new();
-        lines.push(Line::from(Span::raw("Context: Set or update a token")));
+        lines.push(Line::from(Span::raw(tr(key::TOKENS_CONTEXT_SET))));
         lines.push(Line::from(Span::raw("")));
         lines.push(Line::from(Span::raw(format!(
             "Provider: {}",
@@ -91,12 +99,15 @@ impl TuiApp {
             "Required access: {}",
             help.scopes.join(", ")
         ))));
-        lines.push(Line::from(Span::raw(
+        lines.push(Line::from(Span::raw(tr(
             "Tip: Scope uses space-separated segments.",
-        )));
+        ))));
         if let Some(message) = self.validation_message.as_deref() {
             lines.push(Line::from(Span::raw("")));
-            lines.push(Line::from(Span::raw(format!("Validation: {message}"))));
+            lines.push(Line::from(Span::raw(format!(
+                "{} {message}",
+                tr(key::VALIDATION_LABEL)
+            ))));
         }
         lines.push(Line::from(Span::raw("")));
         for (idx, field) in self.input_fields.iter().enumerate() {
@@ -113,7 +124,11 @@ impl TuiApp {
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .scroll((scroll as u16, 0))
-            .block(Block::default().borders(Borders::ALL).title("Token Set"));
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(tr(key::TOKEN_SET_TITLE)),
+            );
         frame.render_widget(widget, area);
     }
 
@@ -125,7 +140,9 @@ impl TuiApp {
         let provider = provider_kind(self.provider_index);
         let help = pat_help(provider.clone());
         let mut lines = Vec::new();
-        lines.push(Line::from(Span::raw("Context: Validate required scopes")));
+        lines.push(Line::from(Span::raw(tr(
+            "Context: Validate required scopes",
+        ))));
         lines.push(Line::from(Span::raw("")));
         lines.push(Line::from(Span::raw(format!(
             "Provider: {}",
@@ -135,12 +152,15 @@ impl TuiApp {
             "Required access: {}",
             help.scopes.join(", ")
         ))));
-        lines.push(Line::from(Span::raw(
+        lines.push(Line::from(Span::raw(tr(
             "Tip: Host optional; defaults to provider host.",
-        )));
+        ))));
         if let Some(message) = self.validation_message.as_deref() {
             lines.push(Line::from(Span::raw("")));
-            lines.push(Line::from(Span::raw(format!("Validation: {message}"))));
+            lines.push(Line::from(Span::raw(format!(
+                "{} {message}",
+                tr(key::VALIDATION_LABEL)
+            ))));
         }
         lines.push(Line::from(Span::raw("")));
         for (idx, field) in self.input_fields.iter().enumerate() {
@@ -160,7 +180,7 @@ impl TuiApp {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title("Token Validate"),
+                    .title(tr(key::TOKEN_VALIDATE_TITLE)),
             );
         frame.render_widget(widget, area);
     }
@@ -178,11 +198,13 @@ impl TuiApp {
             _ => "service helper",
         };
         let lines = vec![
-            Line::from(Span::raw("Install or uninstall the background service.")),
+            Line::from(Span::raw(tr(
+                "Install or uninstall the background service.",
+            ))),
             Line::from(Span::raw(format!("Detected OS: {os} ({os_hint})"))),
             Line::from(Span::raw("")),
-            Line::from(Span::raw("Press i to install")),
-            Line::from(Span::raw("Press u to uninstall")),
+            Line::from(Span::raw(tr(key::SERVICE_PRESS_INSTALL))),
+            Line::from(Span::raw(tr(key::SERVICE_PRESS_UNINSTALL))),
         ];
         let max_scroll = max_scroll_for_lines(lines.len(), area.height);
         let scroll = self.scroll_offset(View::Service).min(max_scroll);
@@ -190,7 +212,11 @@ impl TuiApp {
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .scroll((scroll as u16, 0))
-            .block(Block::default().borders(Borders::ALL).title("Service"));
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(tr(key::SERVICE_TITLE)),
+            );
         frame.render_widget(widget, area);
     }
 
@@ -206,19 +232,22 @@ impl TuiApp {
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "<unset>".to_string());
         let mut lines = vec![
-            Line::from(Span::raw("Context: Select the mirror root folder")),
+            Line::from(Span::raw(tr(key::CONFIG_ROOT_CONTEXT))),
             Line::from(Span::raw(format!("Current root: {current}"))),
             Line::from(Span::raw("")),
-            Line::from(Span::raw(
+            Line::from(Span::raw(tr(
                 "Tip: Use an absolute path (e.g. /path/to/mirrors)",
-            )),
+            ))),
         ];
         if let Some(message) = self.validation_message.as_deref() {
             lines.push(Line::from(Span::raw("")));
-            lines.push(Line::from(Span::raw(format!("Validation: {message}"))));
+            lines.push(Line::from(Span::raw(format!(
+                "{} {message}",
+                tr(key::VALIDATION_LABEL)
+            ))));
         }
         lines.push(Line::from(Span::raw("")));
-        lines.push(Line::from(Span::raw("New root:")));
+        lines.push(Line::from(Span::raw(tr(key::CONFIG_ROOT_NEW_ROOT))));
         lines.push(Line::from(Span::raw(
             self.input_fields
                 .first()
@@ -231,7 +260,11 @@ impl TuiApp {
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .scroll((scroll as u16, 0))
-            .block(Block::default().borders(Borders::ALL).title("Config Root"));
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(tr(key::CONFIG_ROOT_TITLE)),
+            );
         frame.render_widget(widget, area);
     }
 }

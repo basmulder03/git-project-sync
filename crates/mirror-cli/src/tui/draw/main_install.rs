@@ -1,4 +1,5 @@
 use super::*;
+use crate::i18n::{active_locale, key, supported_locales, tr};
 
 impl TuiApp {
     pub(in crate::tui) fn draw_main(
@@ -10,7 +11,7 @@ impl TuiApp {
         let action = install_action_from_status(status.as_ref());
         let state = install_state_from_status(status.as_ref(), action);
         let items = vec![
-            "Dashboard".to_string(),
+            tr(key::DASHBOARD),
             state.menu_label().to_string(),
             "Config".to_string(),
             "Targets".to_string(),
@@ -19,6 +20,7 @@ impl TuiApp {
             "Audit Log".to_string(),
             "Repo Overview".to_string(),
             "Update".to_string(),
+            format!("{}: {}", tr(key::LANGUAGE_LABEL), active_locale().label()),
             "Quit".to_string(),
         ];
         let body_height = area.height.saturating_sub(2) as usize;
@@ -39,8 +41,11 @@ impl TuiApp {
                 ListItem::new(line)
             })
             .collect();
-        let list =
-            List::new(list_items).block(Block::default().borders(Borders::ALL).title("Main Menu"));
+        let list = List::new(list_items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(tr(key::MAIN_MENU)),
+        );
         frame.render_widget(list, area);
     }
 
@@ -51,7 +56,7 @@ impl TuiApp {
     ) {
         let stats = self.dashboard_stats();
         let mut lines = vec![
-            Line::from(Span::raw("Dashboard: System status")),
+            Line::from(Span::raw(tr(key::DASHBOARD_SYSTEM_STATUS))),
             Line::from(Span::raw("")),
             Line::from(Span::raw(format!("Targets: {} total", stats.total_targets))),
             Line::from(Span::raw(format!("Healthy: {}", stats.healthy_targets))),
@@ -71,7 +76,7 @@ impl TuiApp {
         ];
         if self.show_target_stats {
             lines.push(Line::from(Span::raw("")));
-            lines.push(Line::from(Span::raw("Per-target status:")));
+            lines.push(Line::from(Span::raw(tr(key::DASHBOARD_PER_TARGET))));
             for target in stats.targets {
                 lines.push(Line::from(Span::raw(format!(
                     "{} | {} | {}",
@@ -80,7 +85,9 @@ impl TuiApp {
             }
         } else {
             lines.push(Line::from(Span::raw("")));
-            lines.push(Line::from(Span::raw("Press t to show per-target status")));
+            lines.push(Line::from(Span::raw(tr(
+                "Press t to show per-target status",
+            ))));
         }
         let max_scroll = max_scroll_for_lines(lines.len(), area.height);
         let scroll = self.scroll_offset(View::Dashboard).min(max_scroll);
@@ -88,7 +95,11 @@ impl TuiApp {
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .scroll((scroll as u16, 0))
-            .block(Block::default().borders(Borders::ALL).title("Dashboard"));
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(tr(key::DASHBOARD)),
+            );
         frame.render_widget(widget, area);
     }
 
@@ -100,9 +111,9 @@ impl TuiApp {
         let status = crate::install::install_status().ok();
         let action = install_action_from_status(status.as_ref());
         let mut lines = vec![
-            Line::from(Span::raw(
+            Line::from(Span::raw(tr(
                 "Context: Setup status with install/update actions",
-            )),
+            ))),
             Line::from(Span::raw("")),
             Line::from(Span::raw(format!(
                 "Current version: {}",
@@ -186,7 +197,7 @@ impl TuiApp {
                 if let Some(value) = status.service_task_to_run.as_deref() {
                     lines.push(Line::from(Span::raw(format!("Task command: {value}"))));
                 }
-                lines.push(Line::from(Span::raw("Task name: git-project-sync")));
+                lines.push(Line::from(Span::raw(tr(key::TASK_NAME))));
             }
             lines.push(Line::from(Span::raw(format!(
                 "PATH contains install dir (current shell): {}",
@@ -198,10 +209,12 @@ impl TuiApp {
                 "Action: {} (press Enter)",
                 action.label()
             ))));
-            lines.push(Line::from(Span::raw("Status unavailable.")));
+            lines.push(Line::from(Span::raw(tr(key::STATUS_UNAVAILABLE))));
             lines.push(Line::from(Span::raw("")));
         }
-        lines.push(Line::from(Span::raw("Tip: Press u to check for updates.")));
+        lines.push(Line::from(Span::raw(tr(
+            "Tip: Press u to check for updates.",
+        ))));
         lines.push(Line::from(Span::raw("")));
         for (idx, field) in self.input_fields.iter().enumerate() {
             let label = if idx == self.input_index {
@@ -213,7 +226,10 @@ impl TuiApp {
         }
         if let Some(message) = self.validation_message.as_deref() {
             lines.push(Line::from(Span::raw("")));
-            lines.push(Line::from(Span::raw(format!("Validation: {message}"))));
+            lines.push(Line::from(Span::raw(format!(
+                "{} {message}",
+                tr(key::VALIDATION_LABEL)
+            ))));
         }
         let max_scroll = max_scroll_for_lines(lines.len(), area.height);
         let scroll = self.scroll_offset(View::Install).min(max_scroll);
@@ -221,7 +237,47 @@ impl TuiApp {
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .scroll((scroll as u16, 0))
-            .block(Block::default().borders(Borders::ALL).title("Setup"));
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(tr(key::SETUP_TITLE)),
+            );
+        frame.render_widget(widget, area);
+    }
+
+    pub(in crate::tui) fn draw_language(
+        &mut self,
+        frame: &mut ratatui::Frame,
+        area: ratatui::layout::Rect,
+    ) {
+        let mut lines = vec![
+            Line::from(Span::raw(tr(key::LANGUAGE_CONTEXT))),
+            Line::from(Span::raw("")),
+        ];
+        for (idx, locale) in supported_locales().iter().enumerate() {
+            let marker = if idx == self.language_index { ">" } else { " " };
+            let selected = if *locale == active_locale() {
+                " (active)"
+            } else {
+                ""
+            };
+            lines.push(Line::from(Span::raw(format!(
+                "{marker} {} ({}){selected}",
+                locale.label(),
+                locale.as_bcp47()
+            ))));
+        }
+        let max_scroll = max_scroll_for_lines(lines.len(), area.height);
+        let scroll = self.scroll_offset(View::Language).min(max_scroll);
+        self.set_scroll_offset(View::Language, scroll);
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(tr(key::LANGUAGE_LABEL)),
+            );
         frame.render_widget(widget, area);
     }
 }

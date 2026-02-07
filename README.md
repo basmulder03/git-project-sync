@@ -9,6 +9,7 @@ Mirror repositories from multiple Git providers into a local root folder with sa
 - Missing remote handling: prompt or policy-based archive/remove/skip
 - Staggered auto-sync across 7 days (daemon syncs the current day bucket)
 - Tokens stored in OS keychain; config/cache stored in OS AppData equivalents
+- Localization support with configurable language (`en-001`, `en-US`, `en-GB`, `nl`, `af`)
 
 ## Documentation
 
@@ -73,6 +74,15 @@ Initialize config with a mirror root:
 ```bash
 mirror-cli config init --root /path/to/mirrors
 ```
+
+Set display language:
+
+```bash
+mirror-cli config language set --lang en-001
+mirror-cli --lang nl sync
+```
+
+Language precedence: `--lang` > `MIRROR_LANG` > `config.language` > `en-001`.
 
 Add a target:
 
@@ -176,6 +186,7 @@ mirror-cli tui --dashboard
 In the TUI:
 - Dashboard view: press `s` for Sync Status
 - Dashboard view: press `f` for Force Refresh All
+- Main menu: open `Language` to switch locale and persist it
 - Setup view: press `s` for Setup Status
 - General navigation: `Esc` goes back to previous screen
 - Overflow scrolling: `PgUp/PgDn/Home/End`

@@ -50,3 +50,7 @@
 43) In TUI, navigate Main -> Targets -> Add Target, press `Esc`, and confirm it returns to Targets (not Main).
 44) In TUI, navigate Main -> Tokens -> Set/Validate, press `Esc`, and confirm it returns to Tokens.
 45) In long-content TUI screens (Dashboard, Sync Status, Install Status, Audit Log, Token List), verify `PgUp/PgDn/Home/End` scrolls content when overflowing.
+46) Run `config language set --lang nl`, then run `sync --status` and verify localized Dutch output where supported.
+47) Set `MIRROR_LANG=af` and run a command; verify Afrikaans output where supported.
+48) Run with explicit override `--lang en-GB` while config/env are different and verify CLI flag takes precedence.
+49) Run `config language show` and verify configured + effective language values.

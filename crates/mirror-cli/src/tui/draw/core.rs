@@ -20,6 +20,7 @@ impl TuiApp {
         match self.view {
             View::Main => self.draw_main(frame, layout[1]),
             View::Dashboard => self.draw_dashboard(frame, layout[1]),
+            View::Language => self.draw_language(frame, layout[1]),
             View::Install => self.draw_install(frame, layout[1]),
             View::UpdatePrompt => self.draw_update_prompt(frame, layout[1]),
             View::UpdateProgress => self.draw_update_progress(frame, layout[1]),
@@ -51,6 +52,7 @@ impl TuiApp {
         match self.view {
             View::Main => "Up/Down: navigate | Enter: open | q: quit".to_string(),
             View::Dashboard => dashboard_footer_text().to_string(),
+            View::Language => "Up/Down: navigate | Enter: apply | Esc: back".to_string(),
             View::Install => {
                 let status = crate::install::install_status().ok();
                 let action = install_action_from_status(status.as_ref());

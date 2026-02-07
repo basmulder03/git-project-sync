@@ -1,4 +1,5 @@
 use super::*;
+use crate::i18n::{key, tf};
 pub(in crate::cli) fn handle_service(args: ServiceArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     let result: anyhow::Result<()> = (|| {
         let exe = std::env::current_exe().context("resolve current executable")?;
@@ -13,7 +14,7 @@ pub(in crate::cli) fn handle_service(args: ServiceArgs, audit: &AuditLogger) -> 
                     None,
                     None,
                 )?;
-                println!("Audit ID: {audit_id}");
+                println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
             }
             ServiceAction::Uninstall => {
                 mirror_core::service::uninstall_service()?;
@@ -27,7 +28,7 @@ pub(in crate::cli) fn handle_service(args: ServiceArgs, audit: &AuditLogger) -> 
                     None,
                     None,
                 )?;
-                println!("Audit ID: {audit_id}");
+                println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
             }
         }
         Ok(())
@@ -69,13 +70,16 @@ pub(in crate::cli) async fn handle_health(
             &args.scope,
         )?;
         if let Some(warning) = selection.warning.as_deref() {
-            println!("Warning: {warning}");
+            println!(
+                "{}",
+                tf(key::WARNING_GENERIC, &[("warning", warning.to_string())])
+            );
         } else if target_id_ignores_selectors {
-            println!("Warning: --target-id takes precedence; ignoring --provider/--scope");
+            println!("{}", tf(key::WARNING_TARGET_ID_PRECEDENCE, &[]));
         }
         let targets = selection.targets;
         if targets.is_empty() {
-            println!("No matching targets found.");
+            println!("{}", tf(key::NO_MATCHING_TARGETS, &[]));
             let audit_id = audit.record(
                 "health.check",
                 AuditStatus::Skipped,
@@ -83,7 +87,7 @@ pub(in crate::cli) async fn handle_health(
                 None,
                 Some("no matching targets"),
             )?;
-            println!("Audit ID: {audit_id}");
+            println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
             return Ok(());
         }
 
@@ -121,7 +125,7 @@ pub(in crate::cli) async fn handle_health(
                         None,
                         None,
                     )?;
-                    println!("Audit ID: {audit_id}");
+                    println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
                 }
                 Err(err) => {
                     eprintln!(
@@ -142,7 +146,7 @@ pub(in crate::cli) async fn handle_health(
                         None,
                         Some(&err.to_string()),
                     )?;
-                    println!("Audit ID: {audit_id}");
+                    println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
                 }
             }
         }

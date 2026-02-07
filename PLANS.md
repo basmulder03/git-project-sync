@@ -4,6 +4,27 @@
 
 Ship **v2** with a cleaner async architecture, reduced coupling, and stable behavior for safe mirroring.
 
+## Session Plan — Localization (2026-02-07)
+
+- [ ] Add locale preference to config and resolve effective locale with precedence:
+  - CLI `--lang`
+  - `MIRROR_LANG`
+  - config `language`
+  - default `en-001`
+- [ ] Add centralized i18n module with catalogs for:
+  - `en-001`, `en-US`, `en-GB`, `nl`, `af`
+- [ ] Localize CLI user-visible output and prompts
+- [ ] Localize TUI user-visible labels/messages/forms/footers
+- [ ] Add `config language set/show`
+- [ ] Add tests for locale parsing and config roundtrip
+- [ ] Update docs (`README.md`, `SPEC.md`, `ACCEPTANCE.md`)
+
+### Session Decisions / Assumptions
+
+- Use BCP47 language tags (`en-001`, `en-US`, `en-GB`, `nl`, `af`).
+- Fallback locale is `en-001` when an unknown locale is provided.
+- Keep audit event names and structured log keys unchanged.
+
 ## Scope for V2
 
 - In scope:

@@ -1,17 +1,24 @@
-use crate::archive::{archive_repo, remove_repo};
-use crate::cache::{RepoCache, RepoInventoryEntry, RepoInventoryRepo, SyncSummarySnapshot};
+use crate::cache::RepoCache;
 use crate::config::target_id;
-use crate::deleted::{DeletedRepoAction, MissingRemotePolicy, detect_deleted_repos};
+use crate::deleted::{DeletedRepoAction, MissingRemotePolicy};
 use crate::git_sync::{SyncOutcome, sync_repo};
 use crate::model::{ProviderTarget, RemoteRepo};
 use crate::paths::repo_path;
 use crate::provider::RepoProvider;
+use crate::sync_engine_fs::move_repo_path;
+use crate::sync_engine_inventory::load_repos_with_cache;
+use crate::sync_engine_missing::handle_missing_repos;
+use crate::sync_engine_status::{
+    action_from_outcome, current_timestamp, emit_sync_status, should_record_sync,
+};
+use crate::sync_engine_types::{
+    MissingSummary, RepoEvent, RepoWorkItem, StatusEmitterState, merge_missing_summary,
+};
 use anyhow::Context;
 use std::collections::HashSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, mpsc};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 use tracing::{info, warn};
 
 pub type MissingDecider =
@@ -91,9 +98,7 @@ impl SyncSummary {
     }
 
     fn record_missing(&mut self, missing: MissingSummary) {
-        self.missing_archived += missing.archived;
-        self.missing_removed += missing.removed;
-        self.missing_skipped += missing.skipped;
+        merge_missing_summary(self, missing);
     }
 }
 
@@ -495,324 +500,10 @@ pub fn run_sync_filtered(
     Ok(summary)
 }
 
-fn move_repo_path(from: &Path, to: &Path) -> anyhow::Result<()> {
-    if let Some(parent) = to.parent() {
-        fs::create_dir_all(parent).context("create repo rename parent")?;
-    }
-    if let Err(err) = fs::rename(from, to) {
-        copy_dir_recursive(from, to)
-            .with_context(|| format!("copy repo after rename failed: {err}"))?;
-        fs::remove_dir_all(from).context("remove old repo path after rename copy")?;
-    }
-    Ok(())
-}
-
-fn copy_dir_recursive(source: &Path, destination: &Path) -> anyhow::Result<()> {
-    if !source.exists() {
-        return Ok(());
-    }
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent).context("create repo copy parent")?;
-    }
-    fs::create_dir_all(destination).context("create repo copy dir")?;
-    for entry in fs::read_dir(source).context("read repo source dir")? {
-        let entry = entry.context("read repo entry")?;
-        let file_type = entry.file_type().context("read repo entry type")?;
-        let from = entry.path();
-        let to = destination.join(entry.file_name());
-        if file_type.is_dir() {
-            copy_dir_recursive(&from, &to)?;
-        } else if file_type.is_file() {
-            fs::copy(&from, &to).with_context(|| format!("copy repo file {}", from.display()))?;
-        }
-    }
-    Ok(())
-}
-
-fn load_repos_with_cache(
-    provider: &dyn RepoProvider,
-    target: &ProviderTarget,
-    cache: &mut RepoCache,
-    refresh: bool,
-) -> anyhow::Result<(Vec<RemoteRepo>, bool)> {
-    let target_key = target_id(
-        target.provider.clone(),
-        target.host.as_deref(),
-        &target.scope,
-    );
-    let now = current_timestamp_secs();
-    if !refresh
-        && let Some(entry) = cache.repo_inventory.get(&target_key)
-        && cache_is_valid(entry, now)
-    {
-        let auth = provider.auth_for_target(target)?;
-        let repos = entry
-            .repos
-            .iter()
-            .cloned()
-            .map(|repo| RemoteRepo {
-                id: repo.id,
-                name: repo.name,
-                clone_url: repo.clone_url,
-                default_branch: repo.default_branch,
-                archived: repo.archived,
-                provider: repo.provider,
-                scope: repo.scope,
-                auth: auth.clone(),
-            })
-            .collect();
-        return Ok((repos, true));
-    }
-
-    let repos = provider.list_repos(target).context("list repos")?;
-    let inventory = RepoInventoryEntry {
-        fetched_at: now,
-        repos: repos
-            .iter()
-            .map(|repo| RepoInventoryRepo {
-                id: repo.id.clone(),
-                name: repo.name.clone(),
-                clone_url: repo.clone_url.clone(),
-                default_branch: repo.default_branch.clone(),
-                archived: repo.archived,
-                provider: repo.provider.clone(),
-                scope: repo.scope.clone(),
-            })
-            .collect(),
-    };
-    cache.repo_inventory.insert(target_key, inventory);
-    Ok((repos, false))
-}
-
-fn cache_is_valid(entry: &RepoInventoryEntry, now: u64) -> bool {
-    const TTL_SECS: u64 = 15 * 60;
-    now.saturating_sub(entry.fetched_at) <= TTL_SECS
-}
-
-fn action_from_outcome(outcome: SyncOutcome) -> SyncAction {
-    match outcome {
-        SyncOutcome::Cloned => SyncAction::Cloned,
-        SyncOutcome::FastForwarded => SyncAction::FastForwarded,
-        SyncOutcome::UpToDate => SyncAction::UpToDate,
-        SyncOutcome::Dirty => SyncAction::Dirty,
-        SyncOutcome::Diverged => SyncAction::Diverged,
-    }
-}
-
-fn summary_snapshot(summary: SyncSummary) -> SyncSummarySnapshot {
-    SyncSummarySnapshot {
-        cloned: summary.cloned,
-        fast_forwarded: summary.fast_forwarded,
-        up_to_date: summary.up_to_date,
-        dirty: summary.dirty,
-        diverged: summary.diverged,
-        failed: summary.failed,
-        missing_archived: summary.missing_archived,
-        missing_removed: summary.missing_removed,
-        missing_skipped: summary.missing_skipped,
-    }
-}
-
-struct StatusEmitterState {
-    target_key: String,
-    last_status_flush: Instant,
-    status_dirty: bool,
-    total_repos: usize,
-    processed_repos: usize,
-}
-
-struct RepoWorkItem {
-    repo: RemoteRepo,
-    path: PathBuf,
-}
-
-enum RepoEvent {
-    Started {
-        repo_id: String,
-        repo_name: String,
-    },
-    Finished {
-        item: RepoWorkItem,
-        outcome: anyhow::Result<SyncOutcome>,
-    },
-}
-
-#[allow(clippy::too_many_arguments)]
-fn emit_sync_status(
-    cache: &mut RepoCache,
-    cache_path: &Path,
-    progress: Option<&SyncProgressReporter<'_>>,
-    state: &mut StatusEmitterState,
-    action: SyncAction,
-    repo_name: Option<&str>,
-    repo_id: Option<&str>,
-    in_progress: bool,
-    summary: SyncSummary,
-) -> anyhow::Result<()> {
-    let entry = cache
-        .target_sync_status
-        .entry(state.target_key.clone())
-        .or_default();
-    entry.in_progress = in_progress;
-    entry.last_action = Some(action.as_str().to_string());
-    entry.last_repo = repo_name.map(|value| value.to_string());
-    entry.last_repo_id = repo_id.map(|value| value.to_string());
-    entry.last_updated = current_timestamp_secs();
-    entry.total_repos = state.total_repos;
-    entry.processed_repos = state.processed_repos;
-    entry.summary = summary_snapshot(summary);
-    state.status_dirty = true;
-
-    if let Some(progress) = progress {
-        progress(SyncProgress {
-            target_id: state.target_key.clone(),
-            total_repos: state.total_repos,
-            processed_repos: state.processed_repos,
-            action,
-            repo_id: repo_id.map(|value| value.to_string()),
-            repo_name: repo_name.map(|value| value.to_string()),
-            summary,
-            in_progress,
-        });
-    }
-
-    if state.status_dirty
-        && (!in_progress || state.last_status_flush.elapsed() >= Duration::from_millis(500))
-    {
-        cache.save(cache_path).context("save cache")?;
-        state.status_dirty = false;
-        state.last_status_flush = Instant::now();
-    }
-    Ok(())
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-struct MissingSummary {
-    archived: u32,
-    removed: u32,
-    skipped: u32,
-}
-
-#[allow(clippy::type_complexity)]
-fn handle_missing_repos(
-    cache: &mut RepoCache,
-    root: &Path,
-    current_repo_ids: &HashSet<String>,
-    policy: MissingRemotePolicy,
-    decider: Option<&MissingDecider>,
-    mut on_action: Option<&mut dyn FnMut(DeletedRepoAction, &crate::deleted::DeletedRepo)>,
-) -> anyhow::Result<MissingSummary> {
-    let missing = detect_deleted_repos(cache, current_repo_ids);
-    if missing.is_empty() {
-        return Ok(MissingSummary::default());
-    }
-
-    let mut remove_ids: Vec<String> = Vec::new();
-    let mut summary = MissingSummary::default();
-    for repo in missing {
-        let action = resolve_action(repo.entry, policy, decider)?;
-        match action {
-            DeletedRepoAction::Archive => {
-                let destination = archive_repo(
-                    root,
-                    repo.entry.provider.clone(),
-                    &repo.entry.scope,
-                    &repo.entry.name,
-                )?;
-                info!(
-                    provider = %repo.entry.provider,
-                    scope = ?repo.entry.scope,
-                    repo_id = %repo.repo_id,
-                    path = %destination.display(),
-                    "archived missing repo"
-                );
-                if let Some(callback) = on_action.as_mut() {
-                    callback(DeletedRepoAction::Archive, &repo);
-                }
-                remove_ids.push(repo.repo_id.to_string());
-                summary.archived += 1;
-            }
-            DeletedRepoAction::Remove => {
-                remove_repo(
-                    root,
-                    repo.entry.provider.clone(),
-                    &repo.entry.scope,
-                    &repo.entry.name,
-                )?;
-                info!(
-                    provider = %repo.entry.provider,
-                    scope = ?repo.entry.scope,
-                    repo_id = %repo.repo_id,
-                    "removed missing repo"
-                );
-                if let Some(callback) = on_action.as_mut() {
-                    callback(DeletedRepoAction::Remove, &repo);
-                }
-                remove_ids.push(repo.repo_id.to_string());
-                summary.removed += 1;
-            }
-            DeletedRepoAction::Skip => {
-                warn!(
-                    provider = %repo.entry.provider,
-                    scope = ?repo.entry.scope,
-                    repo_id = %repo.repo_id,
-                    "skipped missing repo"
-                );
-                if let Some(callback) = on_action.as_mut() {
-                    callback(DeletedRepoAction::Skip, &repo);
-                }
-                summary.skipped += 1;
-            }
-        }
-    }
-
-    for repo_id in remove_ids {
-        cache.repos.remove(&repo_id);
-    }
-
-    Ok(summary)
-}
-
-fn resolve_action(
-    entry: &crate::cache::RepoCacheEntry,
-    policy: MissingRemotePolicy,
-    decider: Option<&MissingDecider>,
-) -> anyhow::Result<DeletedRepoAction> {
-    match policy {
-        MissingRemotePolicy::Prompt => {
-            let decider = decider.context("missing-remote prompt requires a decider")?;
-            decider(entry)
-        }
-        MissingRemotePolicy::Archive => Ok(DeletedRepoAction::Archive),
-        MissingRemotePolicy::Remove => Ok(DeletedRepoAction::Remove),
-        MissingRemotePolicy::Skip => Ok(DeletedRepoAction::Skip),
-    }
-}
-
-fn should_record_sync(outcome: SyncOutcome) -> bool {
-    matches!(
-        outcome,
-        SyncOutcome::Cloned | SyncOutcome::FastForwarded | SyncOutcome::UpToDate
-    )
-}
-
-fn current_timestamp() -> String {
-    let since_epoch = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    since_epoch.as_secs().to_string()
-}
-
-fn current_timestamp_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::RepoInventoryEntry;
     use tempfile::TempDir;
 
     #[test]
@@ -821,8 +512,14 @@ mod tests {
             fetched_at: 100,
             repos: Vec::new(),
         };
-        assert!(cache_is_valid(&entry, 100 + 60));
-        assert!(!cache_is_valid(&entry, 100 + 16 * 60));
+        assert!(crate::sync_engine_inventory::cache_is_valid(
+            &entry,
+            100 + 60
+        ));
+        assert!(!crate::sync_engine_inventory::cache_is_valid(
+            &entry,
+            100 + 16 * 60
+        ));
     }
 
     #[test]
@@ -830,11 +527,18 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let from = tmp.path().join("old");
         let to = tmp.path().join("new");
-        fs::create_dir_all(&from).unwrap();
-        fs::write(from.join("file.txt"), "data").unwrap();
+        std::fs::create_dir_all(&from).unwrap();
+        std::fs::write(from.join("file.txt"), "data").unwrap();
 
         move_repo_path(&from, &to).unwrap();
         assert!(!from.exists());
         assert!(to.join("file.txt").exists());
+    }
+
+    #[test]
+    fn current_timestamp_secs_is_monotonicish() {
+        let first = crate::sync_engine_status::current_timestamp_secs();
+        let second = crate::sync_engine_status::current_timestamp_secs();
+        assert!(second >= first);
     }
 }

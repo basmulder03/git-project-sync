@@ -1,110 +1,4 @@
-use anyhow::Context;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use anyhow::bail;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use directories::BaseDirs;
-#[cfg(target_os = "macos")]
-use directories::ProjectDirs;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::fs;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::io::ErrorKind;
 use std::path::Path;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const SERVICE_NAME: &str = "git-project-sync";
-#[cfg(target_os = "linux")]
-const SYSTEMD_UNIT_NAME: &str = "git-project-sync.service";
-#[cfg(target_os = "linux")]
-const SYSTEMD_TIMER_NAME: &str = "git-project-sync.timer";
-#[cfg(target_os = "macos")]
-const LAUNCHD_LABEL: &str = "com.git-project-sync.daemon";
-
-pub fn install_service(exec_path: &Path) -> anyhow::Result<()> {
-    install_service_with_delay(exec_path, None)
-}
-
-pub fn install_service_with_delay(
-    exec_path: &Path,
-    delay_seconds: Option<u64>,
-) -> anyhow::Result<()> {
-    #[cfg(target_os = "linux")]
-    {
-        install_systemd(exec_path, delay_seconds)
-    }
-    #[cfg(target_os = "macos")]
-    {
-        return install_launchd(exec_path, delay_seconds);
-    }
-    #[cfg(target_os = "windows")]
-    {
-        install_windows(exec_path, delay_seconds)
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    {
-        bail!("service install not supported on this OS");
-    }
-}
-
-pub fn uninstall_service() -> anyhow::Result<()> {
-    #[cfg(target_os = "linux")]
-    {
-        uninstall_systemd()
-    }
-    #[cfg(target_os = "macos")]
-    {
-        return uninstall_launchd();
-    }
-    #[cfg(target_os = "windows")]
-    {
-        uninstall_windows()
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    {
-        bail!("service uninstall not supported on this OS");
-    }
-}
-
-pub fn service_exists() -> anyhow::Result<bool> {
-    #[cfg(target_os = "windows")]
-    {
-        windows_service_exists()
-    }
-    #[cfg(target_os = "linux")]
-    {
-        Ok(systemd_unit_path()?.exists() || systemd_timer_path()?.exists())
-    }
-    #[cfg(target_os = "macos")]
-    {
-        return Ok(launchd_plist_path()?.exists());
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    {
-        Ok(false)
-    }
-}
-
-pub fn service_running() -> anyhow::Result<bool> {
-    #[cfg(target_os = "windows")]
-    {
-        windows_service_running()
-    }
-    #[cfg(target_os = "linux")]
-    {
-        systemd_service_running()
-    }
-    #[cfg(target_os = "macos")]
-    {
-        return launchd_service_running();
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    {
-        Ok(false)
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct ServiceStatusInfo {
@@ -121,100 +15,134 @@ pub struct ServiceStatusInfo {
     pub task_to_run: Option<String>,
 }
 
-pub fn service_status() -> anyhow::Result<ServiceStatusInfo> {
-    #[cfg(target_os = "windows")]
-    {
-        windows_task_status()
+pub(crate) fn default_service_status(installed: bool, running: bool) -> ServiceStatusInfo {
+    ServiceStatusInfo {
+        installed,
+        running,
+        last_run_time: None,
+        last_result: None,
+        next_run_time: None,
+        task_state: None,
+        schedule_type: None,
+        start_time: None,
+        start_date: None,
+        run_as_user: None,
+        task_to_run: None,
     }
+}
+
+pub fn install_service(exec_path: &Path) -> anyhow::Result<()> {
+    install_service_with_delay(exec_path, None)
+}
+
+pub fn install_service_with_delay(
+    exec_path: &Path,
+    delay_seconds: Option<u64>,
+) -> anyhow::Result<()> {
     #[cfg(target_os = "linux")]
     {
-        let installed = service_exists().unwrap_or(false);
-        let running = service_running().unwrap_or(false);
-        Ok(ServiceStatusInfo {
-            installed,
-            running,
-            last_run_time: None,
-            last_result: None,
-            next_run_time: None,
-            task_state: None,
-            schedule_type: None,
-            start_time: None,
-            start_date: None,
-            run_as_user: None,
-            task_to_run: None,
-        })
+        crate::service_linux::install_systemd(exec_path, delay_seconds)
     }
     #[cfg(target_os = "macos")]
     {
-        let installed = service_exists().unwrap_or(false);
-        let running = service_running().unwrap_or(false);
-        return Ok(ServiceStatusInfo {
-            installed,
-            running,
-            last_run_time: None,
-            last_result: None,
-            next_run_time: None,
-            task_state: None,
-            schedule_type: None,
-            start_time: None,
-            start_date: None,
-            run_as_user: None,
-            task_to_run: None,
-        });
+        return crate::service_macos::install_launchd(exec_path, delay_seconds);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        crate::service_windows::install_windows(exec_path, delay_seconds)
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
-        Ok(ServiceStatusInfo {
-            installed: false,
-            running: false,
-            last_run_time: None,
-            last_result: None,
-            next_run_time: None,
-            task_state: None,
-            schedule_type: None,
-            start_time: None,
-            start_date: None,
-            run_as_user: None,
-            task_to_run: None,
-        })
+        anyhow::bail!("service install not supported on this OS");
+    }
+}
+
+pub fn uninstall_service() -> anyhow::Result<()> {
+    #[cfg(target_os = "linux")]
+    {
+        crate::service_linux::uninstall_systemd()
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return crate::service_macos::uninstall_launchd();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        crate::service_windows::uninstall_windows()
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        anyhow::bail!("service uninstall not supported on this OS");
+    }
+}
+
+pub fn service_exists() -> anyhow::Result<bool> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::service_windows::service_exists()
+    }
+    #[cfg(target_os = "linux")]
+    {
+        crate::service_linux::service_exists()
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return crate::service_macos::service_exists();
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        Ok(false)
+    }
+}
+
+pub fn service_running() -> anyhow::Result<bool> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::service_windows::service_running()
+    }
+    #[cfg(target_os = "linux")]
+    {
+        crate::service_linux::service_running()
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return crate::service_macos::service_running();
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        Ok(false)
+    }
+}
+
+pub fn service_status() -> anyhow::Result<ServiceStatusInfo> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::service_windows::service_status()
+    }
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    {
+        let installed = service_exists().unwrap_or(false);
+        let running = service_running().unwrap_or(false);
+        Ok(default_service_status(installed, running))
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        Ok(default_service_status(false, false))
     }
 }
 
 pub fn start_service_now() -> anyhow::Result<()> {
     #[cfg(target_os = "windows")]
     {
-        run_schtasks(&[
-            "/Run".to_string(),
-            "/TN".to_string(),
-            SERVICE_NAME.to_string(),
-        ])?;
-        Ok(())
+        crate::service_windows::start_service_now()
     }
     #[cfg(target_os = "linux")]
     {
-        if systemd_timer_path()?.exists() {
-            run_command(
-                "systemctl",
-                &["--user", "start", SYSTEMD_TIMER_NAME],
-                "start systemd user timer",
-            )?;
-        } else {
-            run_command(
-                "systemctl",
-                &["--user", "start", SYSTEMD_UNIT_NAME],
-                "start systemd user service",
-            )?;
-        }
-        Ok(())
+        crate::service_linux::start_service_now()
     }
     #[cfg(target_os = "macos")]
     {
-        run_command(
-            "launchctl",
-            &["start", LAUNCHD_LABEL],
-            "start launchd agent",
-        )?;
-        return Ok(());
+        return crate::service_macos::start_service_now();
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
@@ -225,563 +153,21 @@ pub fn start_service_now() -> anyhow::Result<()> {
 pub fn uninstall_service_if_exists() -> anyhow::Result<()> {
     #[cfg(target_os = "windows")]
     {
-        if !windows_service_exists()? {
+        if !crate::service_windows::service_exists()? {
             return Ok(());
         }
-        uninstall_windows()
+        crate::service_windows::uninstall_windows()
     }
     #[cfg(target_os = "linux")]
     {
-        uninstall_systemd()
+        crate::service_linux::uninstall_systemd()
     }
     #[cfg(target_os = "macos")]
     {
-        return uninstall_launchd();
+        return crate::service_macos::uninstall_launchd();
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
         Ok(())
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn install_systemd(exec_path: &Path, delay_seconds: Option<u64>) -> anyhow::Result<()> {
-    let unit_path = systemd_unit_path()?;
-    ensure_dir_writable(unit_path.parent(), "systemd user dir")?;
-    let unit = systemd_unit_contents(exec_path);
-    if let Some(parent) = unit_path.parent() {
-        fs::create_dir_all(parent).context("create systemd user dir")?;
-    }
-    fs::write(&unit_path, unit).context("write systemd unit")?;
-    run_command(
-        "systemctl",
-        &["--user", "daemon-reload"],
-        "reload systemd user units",
-    )?;
-    if let Some(delay) = delay_seconds.filter(|value| *value > 0) {
-        let timer_path = systemd_timer_path()?;
-        ensure_dir_writable(timer_path.parent(), "systemd user dir")?;
-        let timer = systemd_timer_contents(delay);
-        fs::write(&timer_path, timer).context("write systemd timer")?;
-        run_command(
-            "systemctl",
-            &["--user", "daemon-reload"],
-            "reload systemd user units",
-        )?;
-        run_command(
-            "systemctl",
-            &["--user", "enable", "--now", SYSTEMD_TIMER_NAME],
-            "enable systemd user timer",
-        )?;
-    } else {
-        run_command(
-            "systemctl",
-            &["--user", "enable", "--now", SYSTEMD_UNIT_NAME],
-            "enable systemd user service",
-        )?;
-    }
-    Ok(())
-}
-
-#[cfg(target_os = "linux")]
-fn uninstall_systemd() -> anyhow::Result<()> {
-    let unit_path = systemd_unit_path()?;
-    let timer_path = systemd_timer_path()?;
-    run_command(
-        "systemctl",
-        &["--user", "disable", "--now", SYSTEMD_UNIT_NAME],
-        "disable systemd user service",
-    )
-    .ok();
-    run_command(
-        "systemctl",
-        &["--user", "disable", "--now", SYSTEMD_TIMER_NAME],
-        "disable systemd user timer",
-    )
-    .ok();
-    if unit_path.exists() {
-        fs::remove_file(&unit_path).context("remove systemd unit")?;
-    }
-    if timer_path.exists() {
-        fs::remove_file(&timer_path).context("remove systemd timer")?;
-    }
-    run_command(
-        "systemctl",
-        &["--user", "daemon-reload"],
-        "reload systemd user units",
-    )?;
-    Ok(())
-}
-
-#[cfg(target_os = "linux")]
-fn systemd_unit_path() -> anyhow::Result<PathBuf> {
-    let base = BaseDirs::new().context("resolve base dirs")?;
-    Ok(base
-        .config_dir()
-        .join("systemd")
-        .join("user")
-        .join(SYSTEMD_UNIT_NAME))
-}
-
-#[cfg(target_os = "linux")]
-fn systemd_unit_contents(exec_path: &Path) -> String {
-    let exec = exec_path.to_string_lossy();
-    format!(
-        "[Unit]\n\
-Description=git-project-sync daemon\n\
-After=network-online.target\n\n\
-[Service]\n\
-Type=simple\n\
-ExecStart={exec} daemon --missing-remote skip\n\
-Restart=on-failure\n\
-RestartSec=10\n\n\
-[Install]\n\
-WantedBy=default.target\n"
-    )
-}
-
-#[cfg(target_os = "linux")]
-fn systemd_timer_path() -> anyhow::Result<PathBuf> {
-    let base = BaseDirs::new().context("resolve base dirs")?;
-    Ok(base
-        .config_dir()
-        .join("systemd")
-        .join("user")
-        .join(SYSTEMD_TIMER_NAME))
-}
-
-#[cfg(target_os = "linux")]
-fn systemd_timer_contents(delay_seconds: u64) -> String {
-    format!(
-        "[Unit]\n\
-Description=git-project-sync daemon timer\n\n\
-[Timer]\n\
-OnBootSec={delay_seconds}\n\
-Unit={SYSTEMD_UNIT_NAME}\n\n\
-[Install]\n\
-WantedBy=timers.target\n"
-    )
-}
-
-#[cfg(target_os = "macos")]
-fn install_launchd(exec_path: &Path, delay_seconds: Option<u64>) -> anyhow::Result<()> {
-    let plist_path = launchd_plist_path()?;
-    let log_dir = launchd_log_dir()?;
-    ensure_dir_writable(plist_path.parent(), "launchd agents dir")?;
-    ensure_dir_writable(Some(&log_dir), "launchd log dir")?;
-    let plist = launchd_plist_contents(exec_path, delay_seconds)?;
-    if let Some(parent) = plist_path.parent() {
-        fs::create_dir_all(parent).context("create launchd agents dir")?;
-    }
-    fs::create_dir_all(&log_dir).context("create launchd log dir")?;
-    fs::write(&plist_path, plist).context("write launchd plist")?;
-    run_command(
-        "launchctl",
-        &["load", "-w", plist_path.to_string_lossy().as_ref()],
-        "load launchd agent",
-    )?;
-    Ok(())
-}
-
-#[cfg(target_os = "macos")]
-fn uninstall_launchd() -> anyhow::Result<()> {
-    let plist_path = launchd_plist_path()?;
-    run_command(
-        "launchctl",
-        &["unload", "-w", plist_path.to_string_lossy().as_ref()],
-        "unload launchd agent",
-    )
-    .ok();
-    if plist_path.exists() {
-        fs::remove_file(&plist_path).context("remove launchd plist")?;
-    }
-    Ok(())
-}
-
-#[cfg(target_os = "macos")]
-fn launchd_plist_path() -> anyhow::Result<PathBuf> {
-    let base = BaseDirs::new().context("resolve base dirs")?;
-    Ok(base
-        .home_dir()
-        .join("Library")
-        .join("LaunchAgents")
-        .join(format!("{LAUNCHD_LABEL}.plist")))
-}
-
-#[cfg(target_os = "macos")]
-fn launchd_plist_contents(exec_path: &Path, delay_seconds: Option<u64>) -> anyhow::Result<String> {
-    let exec = exec_path.to_string_lossy();
-    let log_dir = launchd_log_dir()?;
-    let stdout = log_dir.join("daemon.out.log");
-    let stderr = log_dir.join("daemon.err.log");
-    let start_interval = delay_seconds.filter(|value| *value > 0);
-    let start_interval_block = start_interval.map(|value| {
-        format!(
-            "  <key>StartInterval</key>\n\
-  <integer>{value}</integer>\n"
-        )
-    });
-    Ok(format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
-<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
-<plist version=\"1.0\">\n\
-<dict>\n\
-  <key>Label</key>\n\
-  <string>{label}</string>\n\
-  <key>ProgramArguments</key>\n\
-  <array>\n\
-    <string>{exec}</string>\n\
-    <string>daemon</string>\n\
-    <string>--missing-remote</string>\n\
-    <string>skip</string>\n\
-  </array>\n\
-  <key>RunAtLoad</key>\n\
-  <true/>\n\
-  <key>KeepAlive</key>\n\
-  <true/>\n\
-{start_interval}\
-  <key>StandardOutPath</key>\n\
-  <string>{stdout}</string>\n\
-  <key>StandardErrorPath</key>\n\
-  <string>{stderr}</string>\n\
-</dict>\n\
-</plist>\n",
-        label = LAUNCHD_LABEL,
-        exec = exec,
-        stdout = stdout.to_string_lossy(),
-        stderr = stderr.to_string_lossy(),
-        start_interval = start_interval_block.unwrap_or_default(),
-    ))
-}
-
-#[cfg(target_os = "macos")]
-fn launchd_log_dir() -> anyhow::Result<PathBuf> {
-    let project =
-        ProjectDirs::from("com", SERVICE_NAME, SERVICE_NAME).context("resolve project dirs")?;
-    Ok(project.data_local_dir().join("logs"))
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-fn ensure_dir_writable(path: Option<&Path>, label: &str) -> anyhow::Result<()> {
-    let Some(path) = path else {
-        return Ok(());
-    };
-    fs::create_dir_all(path).with_context(|| format!("create {label} at {}", path.display()))?;
-    let probe = path.join(".mirror_cli_perm_check");
-    match fs::write(&probe, b"") {
-        Ok(()) => {
-            let _ = fs::remove_file(&probe);
-            Ok(())
-        }
-        Err(err) if err.kind() == ErrorKind::PermissionDenied => {
-            bail!(
-                "{label} is not writable at {}. \
-If you intended a system-wide install, run with sudo (not yet supported). \
-Otherwise, check your home directory permissions.",
-                path.display()
-            )
-        }
-        Err(err) => Err(err).with_context(|| format!("write permission check for {label}")),
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn install_windows(exec_path: &Path, delay_seconds: Option<u64>) -> anyhow::Result<()> {
-    let task_name = SERVICE_NAME;
-    let exec = exec_path.to_string_lossy();
-    let task = format!("\"{}\" daemon --missing-remote skip", exec);
-    let mut args = vec![
-        "/Create".to_string(),
-        "/TN".to_string(),
-        task_name.to_string(),
-        "/TR".to_string(),
-        task,
-        "/SC".to_string(),
-        "ONSTART".to_string(),
-        "/RL".to_string(),
-        "HIGHEST".to_string(),
-        "/RU".to_string(),
-        "SYSTEM".to_string(),
-        "/F".to_string(),
-    ];
-    if let Some(delay) = delay_seconds.filter(|value| *value > 0) {
-        let delay_value = schtasks_delay(delay);
-        args.push("/DELAY".to_string());
-        args.push(delay_value);
-    }
-    run_schtasks(&args).with_context(|| {
-        "install scheduled task failed. \
-Run this command from an Administrator PowerShell and try again."
-    })?;
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn uninstall_windows() -> anyhow::Result<()> {
-    let _ = run_schtasks(&[
-        "/End".to_string(),
-        "/TN".to_string(),
-        SERVICE_NAME.to_string(),
-    ]);
-    let _ = run_schtasks(&[
-        "/Delete".to_string(),
-        "/TN".to_string(),
-        SERVICE_NAME.to_string(),
-        "/F".to_string(),
-    ]);
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn windows_service_exists() -> anyhow::Result<bool> {
-    Ok(run_schtasks(&[
-        "/Query".to_string(),
-        "/TN".to_string(),
-        SERVICE_NAME.to_string(),
-    ])
-    .is_ok())
-}
-
-#[cfg(target_os = "windows")]
-fn windows_service_running() -> anyhow::Result<bool> {
-    let output = run_schtasks_output(&[
-        "/Query".to_string(),
-        "/TN".to_string(),
-        SERVICE_NAME.to_string(),
-        "/FO".to_string(),
-        "LIST".to_string(),
-    ])?;
-    Ok(output
-        .lines()
-        .any(|line| line.trim_start().starts_with("Status:") && line.contains("Running")))
-}
-
-#[cfg(target_os = "windows")]
-fn windows_task_status() -> anyhow::Result<ServiceStatusInfo> {
-    let output = match run_schtasks_output(&[
-        "/Query".to_string(),
-        "/TN".to_string(),
-        SERVICE_NAME.to_string(),
-        "/FO".to_string(),
-        "LIST".to_string(),
-        "/V".to_string(),
-    ]) {
-        Ok(output) => output,
-        Err(_) => {
-            return Ok(ServiceStatusInfo {
-                installed: false,
-                running: false,
-                last_run_time: None,
-                last_result: None,
-                next_run_time: None,
-                task_state: None,
-                schedule_type: None,
-                start_time: None,
-                start_date: None,
-                run_as_user: None,
-                task_to_run: None,
-            });
-        }
-    };
-    let mut status = None;
-    let mut last_run_time = None;
-    let mut last_result = None;
-    let mut next_run_time = None;
-    let mut task_state = None;
-    let mut schedule_type = None;
-    let mut start_time = None;
-    let mut start_date = None;
-    let mut run_as_user = None;
-    let mut task_to_run = None;
-    for line in output.lines() {
-        let line = line.trim();
-        if let Some(value) = line.strip_prefix("Status:") {
-            status = Some(value.trim().to_string());
-        } else if let Some(value) = line.strip_prefix("Last Run Time:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                last_run_time = Some(value.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("Last Result:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                last_result = Some(value.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("Next Run Time:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                next_run_time = Some(value.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("Scheduled Task State:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                task_state = Some(value.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("Schedule Type:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                schedule_type = Some(value.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("Start Time:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                start_time = Some(value.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("Start Date:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                start_date = Some(value.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("Run As User:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                run_as_user = Some(value.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("Task To Run:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                task_to_run = Some(value.to_string());
-            }
-        }
-    }
-    let running = status
-        .as_deref()
-        .map(|value| value.eq_ignore_ascii_case("Running"))
-        .unwrap_or(false);
-    Ok(ServiceStatusInfo {
-        installed: true,
-        running,
-        last_run_time,
-        last_result,
-        next_run_time,
-        task_state,
-        schedule_type,
-        start_time,
-        start_date,
-        run_as_user,
-        task_to_run,
-    })
-}
-
-#[cfg(target_os = "linux")]
-fn systemd_service_running() -> anyhow::Result<bool> {
-    if systemd_timer_path()?.exists() {
-        return Ok(command_success(
-            "systemctl",
-            &["--user", "is-active", SYSTEMD_TIMER_NAME],
-        ));
-    }
-    Ok(command_success(
-        "systemctl",
-        &["--user", "is-active", SYSTEMD_UNIT_NAME],
-    ))
-}
-
-#[cfg(target_os = "macos")]
-fn launchd_service_running() -> anyhow::Result<bool> {
-    Ok(command_success("launchctl", &["list", LAUNCHD_LABEL]))
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-fn command_success(binary: &str, args: &[&str]) -> bool {
-    Command::new(binary)
-        .args(args)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
-}
-
-#[cfg(target_os = "windows")]
-fn run_schtasks(args: &[String]) -> anyhow::Result<()> {
-    let status = Command::new("schtasks")
-        .args(args)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .context("run schtasks")?;
-    if !status.success() {
-        anyhow::bail!("schtasks failed with status {status}");
-    }
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn run_schtasks_output(args: &[String]) -> anyhow::Result<String> {
-    let output = Command::new("schtasks")
-        .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .context("run schtasks")?;
-    if !output.status.success() {
-        anyhow::bail!("schtasks failed with status {}", output.status);
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-}
-
-#[cfg(target_os = "windows")]
-fn schtasks_delay(delay_seconds: u64) -> String {
-    let minutes = delay_seconds.div_ceil(60);
-    let hours = minutes / 60;
-    let mins = minutes % 60;
-    format!("{:04}:{:02}", hours, mins)
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-fn run_command(binary: &str, args: &[&str], context_label: &str) -> anyhow::Result<()> {
-    let status = Command::new(binary)
-        .args(args)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .with_context(|| format!("run {binary} for {context_label}"))?;
-    if !status.success() {
-        bail!("{context_label} failed with status {status}");
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    use std::path::Path;
-
-    #[cfg(target_os = "macos")]
-    use super::launchd_plist_contents;
-    #[cfg(target_os = "linux")]
-    use super::{systemd_timer_contents, systemd_unit_contents};
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn systemd_unit_includes_daemon_args() {
-        let unit = systemd_unit_contents(Path::new("/usr/bin/mirror-cli"));
-        assert!(unit.contains("daemon --missing-remote skip"));
-        assert!(!unit.contains("git-project-sync.service"));
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn systemd_timer_includes_delay() {
-        let timer = systemd_timer_contents(120);
-        assert!(timer.contains("OnBootSec=120"));
-        assert!(timer.contains("git-project-sync.service"));
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn launchd_plist_includes_daemon_args() {
-        let plist = launchd_plist_contents(Path::new("/usr/bin/mirror-cli"), None).unwrap();
-        assert!(plist.contains("<string>daemon</string>"));
-        assert!(plist.contains("<string>skip</string>"));
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn launchd_plist_includes_start_interval() {
-        let plist = launchd_plist_contents(Path::new("/usr/bin/mirror-cli"), Some(60)).unwrap();
-        assert!(plist.contains("<key>StartInterval</key>"));
-        assert!(plist.contains("<integer>60</integer>"));
     }
 }

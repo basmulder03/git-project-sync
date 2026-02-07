@@ -1,5 +1,16 @@
 # PLANS.md
 
+## Milestone 55 — Core/Providers Modularization (in progress)
+
+- [x] Split `crates/mirror-providers/src/github.rs` into focused flat helper modules
+- [x] Split `crates/mirror-providers/src/azure_devops.rs` into focused flat helper modules
+- [x] Split `crates/mirror-providers/src/gitlab.rs` into focused flat helper modules
+- [x] Split `crates/mirror-core/src/sync_engine.rs` into focused flat helper modules
+- [x] Split `crates/mirror-core/src/service.rs` into focused flat helper modules
+- [x] Keep behavior and public APIs unchanged
+- [x] Move/retain tests with equivalent coverage
+- [x] Run fmt and tests for `mirror-providers`, `mirror-core`, and workspace
+
 ## Milestone 54 — CLI/TUI Modularization (in progress)
 
 - [x] Split `crates/mirror-cli/src/main.rs` into focused `cli/*` modules

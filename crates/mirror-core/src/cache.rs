@@ -5,6 +5,12 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+mod backoff;
+mod migration;
+
+use backoff::compute_backoff_delay;
+use migration::{migrate_v0, migrate_v1, migrate_v2, migrate_v3};
+
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct RepoCache {
     pub version: u32,
@@ -120,144 +126,6 @@ impl RepoCache {
         self.target_backoff_until
             .insert(target_key, now.saturating_add(delay));
     }
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct RepoCacheV0 {
-    #[serde(default)]
-    last_sync: HashMap<String, String>,
-    #[serde(default)]
-    repos: HashMap<String, RepoCacheEntry>,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct RepoCacheV1 {
-    last_sync: HashMap<String, String>,
-    repos: HashMap<String, RepoCacheEntry>,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct RepoCacheV2 {
-    version: u32,
-    last_sync: HashMap<String, String>,
-    repos: HashMap<String, RepoCacheEntry>,
-    #[serde(default)]
-    repo_inventory: HashMap<String, RepoInventoryEntry>,
-    #[serde(default)]
-    repo_status: HashMap<String, RepoLocalStatus>,
-    #[serde(default)]
-    target_last_success: HashMap<String, u64>,
-    #[serde(default)]
-    target_backoff_until: HashMap<String, u64>,
-    #[serde(default)]
-    target_backoff_attempts: HashMap<String, u32>,
-    #[serde(default)]
-    target_sync_status: HashMap<String, SyncStatus>,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct RepoCacheV3 {
-    version: u32,
-    last_sync: HashMap<String, String>,
-    repos: HashMap<String, RepoCacheEntry>,
-    #[serde(default)]
-    repo_inventory: HashMap<String, RepoInventoryEntry>,
-    #[serde(default)]
-    repo_status: HashMap<String, RepoLocalStatus>,
-    #[serde(default)]
-    target_last_success: HashMap<String, u64>,
-    #[serde(default)]
-    target_backoff_until: HashMap<String, u64>,
-    #[serde(default)]
-    target_backoff_attempts: HashMap<String, u32>,
-    #[serde(default)]
-    target_sync_status: HashMap<String, SyncStatus>,
-    #[serde(default)]
-    update_last_check: Option<u64>,
-    #[serde(default)]
-    update_last_result: Option<String>,
-    #[serde(default)]
-    update_last_version: Option<String>,
-    #[serde(default)]
-    update_last_source: Option<String>,
-}
-
-fn migrate_v1(json: serde_json::Value) -> anyhow::Result<RepoCache> {
-    let v1: RepoCacheV1 = serde_json::from_value(json)?;
-    Ok(migrate_from_last_sync_repos(v1.last_sync, v1.repos))
-}
-
-fn migrate_v0(json: serde_json::Value) -> anyhow::Result<RepoCache> {
-    let v0: RepoCacheV0 = serde_json::from_value(json)?;
-    Ok(migrate_from_last_sync_repos(v0.last_sync, v0.repos))
-}
-
-fn migrate_from_last_sync_repos(
-    last_sync: HashMap<String, String>,
-    repos: HashMap<String, RepoCacheEntry>,
-) -> RepoCache {
-    RepoCache {
-        version: 4,
-        last_sync,
-        repos,
-        repo_inventory: HashMap::new(),
-        repo_status: HashMap::new(),
-        target_last_success: HashMap::new(),
-        target_backoff_until: HashMap::new(),
-        target_backoff_attempts: HashMap::new(),
-        target_sync_status: HashMap::new(),
-        update_last_check: None,
-        update_last_result: None,
-        update_last_version: None,
-        update_last_source: None,
-        token_last_check: None,
-        token_last_source: None,
-        token_status: HashMap::new(),
-    }
-}
-
-fn migrate_v2(json: serde_json::Value) -> anyhow::Result<RepoCache> {
-    let v2: RepoCacheV2 = serde_json::from_value(json)?;
-    Ok(RepoCache {
-        version: 4,
-        last_sync: v2.last_sync,
-        repos: v2.repos,
-        repo_inventory: v2.repo_inventory,
-        repo_status: v2.repo_status,
-        target_last_success: v2.target_last_success,
-        target_backoff_until: v2.target_backoff_until,
-        target_backoff_attempts: v2.target_backoff_attempts,
-        target_sync_status: v2.target_sync_status,
-        update_last_check: None,
-        update_last_result: None,
-        update_last_version: None,
-        update_last_source: None,
-        token_last_check: None,
-        token_last_source: None,
-        token_status: HashMap::new(),
-    })
-}
-
-fn migrate_v3(json: serde_json::Value) -> anyhow::Result<RepoCache> {
-    let v3: RepoCacheV3 = serde_json::from_value(json)?;
-    Ok(RepoCache {
-        version: 4,
-        last_sync: v3.last_sync,
-        repos: v3.repos,
-        repo_inventory: v3.repo_inventory,
-        repo_status: v3.repo_status,
-        target_last_success: v3.target_last_success,
-        target_backoff_until: v3.target_backoff_until,
-        target_backoff_attempts: v3.target_backoff_attempts,
-        target_sync_status: v3.target_sync_status,
-        update_last_check: v3.update_last_check,
-        update_last_result: v3.update_last_result,
-        update_last_version: v3.update_last_version,
-        update_last_source: v3.update_last_source,
-        token_last_check: None,
-        token_last_source: None,
-        token_status: HashMap::new(),
-    })
 }
 
 pub fn prune_cache_for_targets(path: &Path, target_ids: &[String]) -> anyhow::Result<u32> {
@@ -399,14 +267,6 @@ pub fn record_token_status(cache: &mut RepoCache, account: String, status: Token
     cache.token_status.insert(account, status);
 }
 
-fn compute_backoff_delay(attempts: u32) -> u64 {
-    const BASE: u64 = 60;
-    const MAX: u64 = 3600;
-    let exp = attempts.saturating_sub(1).min(10);
-    let delay = BASE.saturating_mul(2u64.saturating_pow(exp));
-    delay.min(MAX)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -471,7 +331,7 @@ mod tests {
     fn migrates_v1_cache() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("cache.json");
-        let mut v1 = RepoCacheV1 {
+        let mut v1 = migration::RepoCacheV1 {
             last_sync: HashMap::new(),
             repos: HashMap::new(),
         };

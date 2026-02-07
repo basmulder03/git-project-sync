@@ -57,11 +57,14 @@ Ship **v2** with a cleaner async architecture, reduced coupling, and stable beha
 
 ## Milestone V2.2 — Core Maintainability Refactor
 
-- [ ] Split `crates/mirror-core/src/cache.rs` into focused modules
+- [x] Split `crates/mirror-core/src/cache.rs` internals into focused modules
+  - `cache/migration.rs` for schema migration structs/functions
+  - `cache/backoff.rs` for retry-delay policy logic
+  - preserve external `cache` API shape
+- [ ] Continue cache split into dedicated store-facing modules
   - inventory store
   - runtime/sync status store
   - token/update health store
-  - migration helpers
 - [ ] Break down `crates/mirror-core/src/sync_engine.rs` into smaller modules
   - orchestration
   - worker execution

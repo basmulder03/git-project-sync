@@ -413,7 +413,7 @@ impl TuiApp {
                 Constraint::Length(LOG_PANEL_HEIGHT),
                 Constraint::Length(3),
             ])
-            .split(frame.size());
+            .split(frame.area());
 
         let header = Paragraph::new("Git Project Sync — Terminal UI")
             .block(Block::default().borders(Borders::ALL).title("Header"));

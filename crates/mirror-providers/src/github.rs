@@ -42,11 +42,6 @@ impl RepoProvider for GitHubProvider {
         let mut scope_kind = ScopeKind::Org;
         let mut saw_authenticated = false;
         let mut auth_had_results = false;
-        let auth = RepoAuth {
-            username: "pat".to_string(),
-            token: token.clone(),
-        };
-
         loop {
             let (payload, next_page, status) =
                 fetch_repos_page(&self.client, &host, scope, token.as_str(), scope_kind, page)?;
@@ -86,7 +81,6 @@ impl RepoProvider for GitHubProvider {
                     archived: repo.archived.unwrap_or(false),
                     provider: ProviderKind::GitHub,
                     scope: target.scope.clone(),
-                    auth: Some(auth.clone()),
                 });
             }
             if scope_kind == ScopeKind::AuthenticatedUser {

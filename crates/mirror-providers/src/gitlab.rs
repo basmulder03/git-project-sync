@@ -39,10 +39,6 @@ impl RepoProvider for GitLabProvider {
 
         let mut page = 1;
         let mut repos = Vec::new();
-        let auth = RepoAuth {
-            username: "pat".to_string(),
-            token: token.clone(),
-        };
 
         loop {
             let url = format!("{host}/groups/{group}/projects?per_page=100&page={page}");
@@ -66,7 +62,6 @@ impl RepoProvider for GitLabProvider {
                     archived: repo.archived.unwrap_or(false),
                     provider: ProviderKind::GitLab,
                     scope: target.scope.clone(),
-                    auth: Some(auth.clone()),
                 });
             }
             if let Some(next) = next_page {

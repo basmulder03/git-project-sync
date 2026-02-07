@@ -1,4 +1,4 @@
-use super::shared::{daemon_backoff_delay, run_sync_job, run_token_validity_checks};
+use super::shared::{run_sync_job, run_token_validity_checks};
 use super::*;
 pub(super) fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     let result: anyhow::Result<()> = (|| {
@@ -104,7 +104,10 @@ pub(super) fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Re
                 let _ =
                     run_token_validity_checks(&config_path, &cache_path, audit, "daemon", false);
             }
-            std::thread::sleep(daemon_backoff_delay(interval, failure_count));
+            std::thread::sleep(mirror_core::daemon::daemon_backoff_delay(
+                interval,
+                failure_count,
+            ));
         }
     })();
 

@@ -44,6 +44,12 @@ This document captures key architectural decisions and the rationale behind them
 
 **Rationale:** Reduces API calls and speeds up frequent syncs.
 
+## Credential-free repo inventory
+
+**Decision:** Keep provider credentials out of `RemoteRepo` inventory records and resolve auth via `auth_for_target` during sync execution.
+
+**Rationale:** Keeps inventory data provider-agnostic and non-sensitive, and simplifies provider/cache boundaries.
+
 ## PATH modification is opt-in
 
 **Decision:** The installer only modifies PATH when explicitly requested.

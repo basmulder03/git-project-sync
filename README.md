@@ -40,6 +40,11 @@ gh workflow run Release -f bump=patch
 1. Run `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all`.
 2. Dispatch the **Release** workflow with the desired bump type.
 
+## v2 Breaking Changes (implemented)
+
+- Internal provider inventory model removed `RemoteRepo.auth`; credentials are resolved per target during sync execution.
+- Daemon retry backoff logic is now centralized in `mirror-core` and shared by CLI daemon flows.
+
 ## Quick Start
 
 Initialize config with a mirror root:

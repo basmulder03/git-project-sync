@@ -59,7 +59,6 @@ pub struct RemoteRepo {
     pub archived: bool,
     pub provider: ProviderKind,
     pub scope: ProviderScope,
-    pub auth: Option<RepoAuth>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

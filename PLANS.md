@@ -1,5 +1,15 @@
 # PLANS.md
 
+## Milestone 56 — V2 Core Cleanup (in progress)
+
+- [x] Record v2 implementation plan and defaults
+- [x] Remove `RemoteRepo.auth` from provider inventory model
+- [x] Resolve provider git auth per target during sync execution
+- [x] Update all providers to return auth via `auth_for_target` only
+- [x] Deduplicate daemon backoff logic by using `mirror-core` implementation
+- [x] Run fmt, clippy, and workspace tests
+- [x] Update docs for v2 breaking changes and migration notes
+
 ## Milestone 55 — Core/Providers Modularization (in progress)
 
 - [x] Split `crates/mirror-providers/src/github.rs` into focused flat helper modules
@@ -167,6 +177,9 @@
 
 ## Notes / Decisions
 
+- v2 implementation starts with core/provider boundary cleanup and logic deduplication.
+- Keep sync safety invariants unchanged while introducing model-level breaking changes.
+- Async runtime/provider migration is deferred to a follow-up milestone after boundary cleanup lands.
 - Focus: architecture tidy (per user request).
 - Breaking CLI/config changes: allowed (major ok).
 - Target OS: cross-platform parity.

@@ -37,20 +37,13 @@ impl RepoProvider for AzureDevOpsProvider {
         let account = spec.account_key(&host, &target.scope)?;
         let pat = auth::get_pat(&account)?;
 
-        let auth = RepoAuth {
-            username: "pat".to_string(),
-            token: pat,
-        };
         let mut repos = Vec::new();
         let mut continuation: Option<String> = None;
 
         loop {
             let url = build_repos_url(&host, org, project, continuation.as_deref())?;
             info!(org, project = ?project, "listing Azure DevOps repos");
-            let builder = self
-                .client
-                .get(url)
-                .basic_auth("", Some(auth.token.as_str()));
+            let builder = self.client.get(url).basic_auth("", Some(pat.as_str()));
             let response = send_with_retry(|| builder.try_clone().context("clone request"))
                 .context("call Azure DevOps list repos")?
                 .error_for_status()
@@ -80,7 +73,6 @@ impl RepoProvider for AzureDevOpsProvider {
                     archived: repo.is_disabled.unwrap_or(false),
                     provider: ProviderKind::AzureDevOps,
                     scope,
-                    auth: Some(auth.clone()),
                 });
             }
 

@@ -38,11 +38,11 @@ where
                 warn!(error = %err, failures = failure_count, "run failed");
             }
         }
-        thread::sleep(backoff_delay(interval, failure_count));
+        thread::sleep(daemon_backoff_delay(interval, failure_count));
     }
 }
 
-fn backoff_delay(interval: Duration, failures: u32) -> Duration {
+pub fn daemon_backoff_delay(interval: Duration, failures: u32) -> Duration {
     if failures == 0 {
         return interval;
     }

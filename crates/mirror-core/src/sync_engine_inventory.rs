@@ -21,7 +21,6 @@ pub(crate) fn load_repos_with_cache(
         && let Some(entry) = cache.repo_inventory.get(&target_key)
         && cache_is_valid(entry, now)
     {
-        let auth = provider.auth_for_target(target)?;
         let repos = entry
             .repos
             .iter()
@@ -34,7 +33,6 @@ pub(crate) fn load_repos_with_cache(
                 archived: repo.archived,
                 provider: repo.provider,
                 scope: repo.scope,
-                auth: auth.clone(),
             })
             .collect();
         return Ok((repos, true));

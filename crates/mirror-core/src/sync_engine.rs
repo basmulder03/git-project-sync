@@ -155,6 +155,9 @@ pub fn run_sync_filtered(
     provider
         .validate_auth(target)
         .context("validate provider auth")?;
+    let target_auth = provider
+        .auth_for_target(target)
+        .context("resolve provider auth for target")?;
     let mut cache = RepoCache::load(cache_path).context("load cache")?;
     let mut summary = SyncSummary::default();
     let target_key = target_id(
@@ -294,7 +297,7 @@ pub fn run_sync_filtered(
                 &item.path,
                 &item.repo.clone_url,
                 &item.repo.default_branch,
-                item.repo.auth.as_ref(),
+                target_auth.as_ref(),
                 options.verify,
             ) {
                 Ok(outcome) => outcome,
@@ -374,6 +377,7 @@ pub fn run_sync_filtered(
             let queue = Arc::clone(&queue);
             let tx = tx.clone();
             let verify = options.verify;
+            let target_auth = target_auth.clone();
             std::thread::spawn(move || {
                 loop {
                     let next = {
@@ -391,7 +395,7 @@ pub fn run_sync_filtered(
                         &item.path,
                         &item.repo.clone_url,
                         &item.repo.default_branch,
-                        item.repo.auth.as_ref(),
+                        target_auth.as_ref(),
                         verify,
                     );
                     let _ = tx.send(RepoEvent::Finished { item, outcome });

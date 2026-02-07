@@ -35,6 +35,7 @@
 - Adapter pattern:
   - Core engine only depends on provider trait.
   - Providers implement listing repos + returning normalized RemoteRepo info.
+  - Provider credentials are resolved per target at sync execution time (not stored on repo inventory records).
 - Must support: Azure DevOps, GitHub, GitLab (others later).
 
 ## CLI

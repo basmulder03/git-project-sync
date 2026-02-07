@@ -14,11 +14,12 @@ The core engine depends on the `RepoProvider` trait. Providers implement:
 
 - `list_repos` to enumerate remote repositories
 - `validate_auth` and `health_check` to verify credentials
-- `auth_for_target` to return git auth info
+- `auth_for_target` to return git auth info for a target at execution time
 - `token_scopes` to validate scopes (when supported)
 - `register_webhook` to configure webhooks (if supported)
 
 This isolates provider-specific APIs from the core sync logic.
+Repo inventory records are credential-free; auth is resolved per target during sync.
 
 ## Data flow: sync
 

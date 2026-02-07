@@ -1,0 +1,151 @@
+use super::*;
+pub(in crate::cli) fn handle_service(args: ServiceArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = (|| {
+        let exe = std::env::current_exe().context("resolve current executable")?;
+        match args.action {
+            ServiceAction::Install => {
+                mirror_core::service::install_service(&exe)?;
+                println!("Service installed for {}", exe.display());
+                let audit_id = audit.record(
+                    "service.install",
+                    AuditStatus::Ok,
+                    Some("service.install"),
+                    None,
+                    None,
+                )?;
+                println!("Audit ID: {audit_id}");
+            }
+            ServiceAction::Uninstall => {
+                mirror_core::service::uninstall_service()?;
+                let _ = install::remove_marker();
+                let _ = install::remove_manifest();
+                println!("Service uninstalled.");
+                let audit_id = audit.record(
+                    "service.uninstall",
+                    AuditStatus::Ok,
+                    Some("service.uninstall"),
+                    None,
+                    None,
+                )?;
+                println!("Audit ID: {audit_id}");
+            }
+        }
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let action = match args.action {
+            ServiceAction::Install => "service.install",
+            ServiceAction::Uninstall => "service.uninstall",
+        };
+        let _ = audit.record(
+            action,
+            AuditStatus::Failed,
+            Some(action),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+    result
+}
+
+pub(in crate::cli) fn handle_health(args: HealthArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = (|| {
+        let config_path = args.config.unwrap_or(default_config_path()?);
+        let (config, migrated) = load_or_migrate(&config_path)?;
+        if migrated {
+            config.save(&config_path)?;
+        }
+
+        let targets = select_targets(
+            &config,
+            args.target_id.as_deref(),
+            args.provider,
+            &args.scope,
+        )?;
+        if targets.is_empty() {
+            println!("No matching targets found.");
+            let audit_id = audit.record(
+                "health.check",
+                AuditStatus::Skipped,
+                Some("health"),
+                None,
+                Some("no matching targets"),
+            )?;
+            println!("Audit ID: {audit_id}");
+            return Ok(());
+        }
+
+        let registry = ProviderRegistry::new();
+        for target in targets {
+            let provider_kind = target.provider.clone();
+            let provider = registry.provider(provider_kind.clone())?;
+            let runtime_target = ProviderTarget {
+                provider: provider_kind,
+                scope: target.scope.clone(),
+                host: target.host.clone(),
+            };
+
+            let outcome = provider
+                .health_check(&runtime_target)
+                .or_else(|err| map_provider_error(&runtime_target, err));
+            match outcome {
+                Ok(()) => {
+                    println!(
+                        "Health OK: {} {}",
+                        target.provider.as_prefix(),
+                        target.scope.segments().join("/")
+                    );
+                    let audit_id = audit.record_with_context(
+                        "health.check",
+                        AuditStatus::Ok,
+                        Some("health"),
+                        AuditContext {
+                            provider: Some(target.provider.as_prefix().to_string()),
+                            scope: Some(target.scope.segments().join("/")),
+                            repo_id: Some(target.id.clone()),
+                            path: None,
+                        },
+                        None,
+                        None,
+                    )?;
+                    println!("Audit ID: {audit_id}");
+                }
+                Err(err) => {
+                    eprintln!(
+                        "Health FAILED: {} {} -> {err}",
+                        target.provider.as_prefix(),
+                        target.scope.segments().join("/")
+                    );
+                    let audit_id = audit.record_with_context(
+                        "health.check",
+                        AuditStatus::Failed,
+                        Some("health"),
+                        AuditContext {
+                            provider: Some(target.provider.as_prefix().to_string()),
+                            scope: Some(target.scope.segments().join("/")),
+                            repo_id: Some(target.id.clone()),
+                            path: None,
+                        },
+                        None,
+                        Some(&err.to_string()),
+                    )?;
+                    println!("Audit ID: {audit_id}");
+                }
+            }
+        }
+        Ok(())
+    })();
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "health.check",
+            AuditStatus::Failed,
+            Some("health"),
+            None,
+            Some(&err.to_string()),
+        );
+    }
+
+    result
+}

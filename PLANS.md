@@ -61,6 +61,10 @@ Ship **v2** with a cleaner async architecture, reduced coupling, and stable beha
   - `cache/migration.rs` for schema migration structs/functions
   - `cache/backoff.rs` for retry-delay policy logic
   - preserve external `cache` API shape
+- [x] Split cache free-function concerns into dedicated modules and re-export via facade
+  - `cache/inventory.rs` for prune/inventory maintenance
+  - `cache/runtime.rs` for target backoff/success runtime functions
+  - `cache/health.rs` for token/update check and status functions
 - [ ] Continue cache split into dedicated store-facing modules
   - inventory store
   - runtime/sync status store

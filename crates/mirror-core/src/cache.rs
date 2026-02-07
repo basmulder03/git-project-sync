@@ -6,10 +6,18 @@ use std::fs;
 use std::path::Path;
 
 mod backoff;
+mod health;
+mod inventory;
 mod migration;
+mod runtime;
 
 use backoff::compute_backoff_delay;
+pub use health::{
+    record_token_check, record_token_status, record_update_check, token_check_due, update_check_due,
+};
+pub use inventory::prune_cache_for_targets;
 use migration::{migrate_v0, migrate_v1, migrate_v2, migrate_v3};
+pub use runtime::{backoff_until, update_target_failure, update_target_success};
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct RepoCache {
@@ -128,32 +136,6 @@ impl RepoCache {
     }
 }
 
-pub fn prune_cache_for_targets(path: &Path, target_ids: &[String]) -> anyhow::Result<u32> {
-    let mut cache = RepoCache::load(path)?;
-    let mut removed = 0;
-    cache.repo_inventory.retain(|key, _| {
-        let keep = target_ids.contains(key);
-        if !keep {
-            removed += 1;
-        }
-        keep
-    });
-    cache
-        .target_last_success
-        .retain(|key, _| target_ids.contains(key));
-    cache
-        .target_backoff_until
-        .retain(|key, _| target_ids.contains(key));
-    cache
-        .target_backoff_attempts
-        .retain(|key, _| target_ids.contains(key));
-    cache
-        .target_sync_status
-        .retain(|key, _| target_ids.contains(key));
-    cache.save(path)?;
-    Ok(removed)
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RepoCacheEntry {
     pub name: String,
@@ -213,58 +195,6 @@ pub struct TokenStatus {
     pub last_checked: u64,
     pub status: String,
     pub error: Option<String>,
-}
-
-pub fn update_target_success(path: &Path, target_key: &str, now: u64) -> anyhow::Result<()> {
-    let mut cache = RepoCache::load(path)?;
-    cache.record_target_success(target_key.to_string(), now);
-    cache.save(path)
-}
-
-pub fn update_target_failure(path: &Path, target_key: &str, now: u64) -> anyhow::Result<()> {
-    let mut cache = RepoCache::load(path)?;
-    cache.record_target_failure(target_key.to_string(), now);
-    cache.save(path)
-}
-
-pub fn backoff_until(cache: &RepoCache, target_key: &str) -> Option<u64> {
-    cache.target_backoff_until.get(target_key).copied()
-}
-
-pub fn token_check_due(cache: &RepoCache, now: u64, interval_secs: u64) -> bool {
-    match cache.token_last_check {
-        Some(last) => now.saturating_sub(last) >= interval_secs,
-        None => true,
-    }
-}
-
-pub fn update_check_due(cache: &RepoCache, now: u64, interval_secs: u64) -> bool {
-    match cache.update_last_check {
-        Some(last) => now.saturating_sub(last) >= interval_secs,
-        None => true,
-    }
-}
-
-pub fn record_update_check(
-    cache: &mut RepoCache,
-    now: u64,
-    result: String,
-    latest_version: Option<String>,
-    source: &str,
-) {
-    cache.update_last_check = Some(now);
-    cache.update_last_result = Some(result);
-    cache.update_last_version = latest_version;
-    cache.update_last_source = Some(source.to_string());
-}
-
-pub fn record_token_check(cache: &mut RepoCache, now: u64, source: &str) {
-    cache.token_last_check = Some(now);
-    cache.token_last_source = Some(source.to_string());
-}
-
-pub fn record_token_status(cache: &mut RepoCache, account: String, status: TokenStatus) {
-    cache.token_status.insert(account, status);
 }
 
 #[cfg(test)]

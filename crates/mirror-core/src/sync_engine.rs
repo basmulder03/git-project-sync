@@ -3,21 +3,17 @@ use crate::config::target_id;
 use crate::deleted::{DeletedRepoAction, MissingRemotePolicy};
 use crate::git_sync::SyncOutcome;
 use crate::model::{ProviderTarget, RemoteRepo};
-use crate::paths::repo_path;
 use crate::provider::RepoProvider;
-use crate::sync_engine_fs::move_repo_path;
 use crate::sync_engine_inventory::load_repos_with_cache;
-use crate::sync_engine_missing::handle_missing_repos;
+use crate::sync_engine_missing_events::{MissingStatusSink, detect_and_emit_missing_repos};
 use crate::sync_engine_status::emit_sync_status;
-use crate::sync_engine_types::{
-    MissingSummary, RepoWorkItem, StatusEmitterState, merge_missing_summary,
-};
+use crate::sync_engine_types::{MissingSummary, StatusEmitterState, merge_missing_summary};
+use crate::sync_engine_work_items::build_work_items;
 use crate::sync_engine_workers::run_work_items;
 use anyhow::Context;
-use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Instant;
-use tracing::{info, warn};
+use tracing::info;
 
 pub type MissingDecider =
     dyn Fn(&crate::cache::RepoCacheEntry) -> anyhow::Result<DeletedRepoAction>;
@@ -194,38 +190,19 @@ pub async fn run_sync_filtered(
     let (mut repos, used_cache) =
         load_repos_with_cache(provider, target, &mut cache, options.refresh).await?;
     if options.detect_missing && !used_cache {
-        let current_ids: HashSet<String> = repos.iter().map(|repo| repo.id.clone()).collect();
-        let mut missing_events: Vec<(DeletedRepoAction, String, String)> = Vec::new();
-        let mut on_missing = |action: DeletedRepoAction, repo: &crate::deleted::DeletedRepo| {
-            missing_events.push((action, repo.repo_id.to_string(), repo.entry.name.clone()));
-        };
-        let missing_summary = handle_missing_repos(
+        detect_and_emit_missing_repos(
             &mut cache,
             root,
-            &current_ids,
+            &repos,
             options.missing_policy,
             options.missing_decider,
-            Some(&mut on_missing),
-        )?;
-        summary.record_missing(missing_summary);
-        for (action, repo_id, repo_name) in missing_events {
-            let sync_action = match action {
-                DeletedRepoAction::Archive => SyncAction::MissingArchived,
-                DeletedRepoAction::Remove => SyncAction::MissingRemoved,
-                DeletedRepoAction::Skip => SyncAction::MissingSkipped,
-            };
-            emit_sync_status(
-                &mut cache,
+            MissingStatusSink {
                 cache_path,
-                options.progress,
-                &mut status_state,
-                sync_action,
-                Some(&repo_name),
-                Some(&repo_id),
-                true,
-                summary,
-            )?;
-        }
+                progress: options.progress,
+                state: &mut status_state,
+                summary: &mut summary,
+            },
+        )?;
     }
     if let Some(filter) = options.repo_filter {
         repos.retain(|repo| filter(repo));
@@ -243,41 +220,7 @@ pub async fn run_sync_filtered(
         summary,
     )?;
 
-    let mut work_items: Vec<RepoWorkItem> = Vec::new();
-    for repo in repos {
-        let path = repo_path(root, &repo.provider, &repo.scope, &repo.name);
-        if let Some(entry) = cache.repos.get(&repo.id) {
-            let cached_path = PathBuf::from(&entry.path);
-            if cached_path != path {
-                if cached_path.exists() && !path.exists() {
-                    if let Err(err) = move_repo_path(&cached_path, &path) {
-                        warn!(
-                            repo_id = %repo.id,
-                            from = %cached_path.display(),
-                            to = %path.display(),
-                            error = %err,
-                            "failed to move repo after rename"
-                        );
-                    } else {
-                        info!(
-                            repo_id = %repo.id,
-                            from = %cached_path.display(),
-                            to = %path.display(),
-                            "moved repo to match rename"
-                        );
-                    }
-                } else if !cached_path.exists() {
-                    info!(
-                        repo_id = %repo.id,
-                        from = %cached_path.display(),
-                        to = %path.display(),
-                        "cached repo path missing; updating to new path"
-                    );
-                }
-            }
-        }
-        work_items.push(RepoWorkItem { repo, path });
-    }
+    let work_items = build_work_items(&cache, root, repos);
 
     let jobs = options.jobs.max(1).min(work_items.len().max(1));
     run_work_items(
@@ -309,7 +252,6 @@ pub async fn run_sync_filtered(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::cache::RepoInventoryEntry;
     use tempfile::TempDir;
 
@@ -337,7 +279,7 @@ mod tests {
         std::fs::create_dir_all(&from).unwrap();
         std::fs::write(from.join("file.txt"), "data").unwrap();
 
-        move_repo_path(&from, &to).unwrap();
+        crate::sync_engine_fs::move_repo_path(&from, &to).unwrap();
         assert!(!from.exists());
         assert!(to.join("file.txt").exists());
     }

@@ -82,6 +82,17 @@ Ship **v2** with a cleaner async architecture, reduced coupling, and stable beha
   - added `crates/mirror-core/src/sync_engine_workers.rs`
   - `run_sync_filtered` now delegates repo execution to worker helper
   - kept orchestration decisions in `sync_engine.rs`
+- [x] Extract missing-repo detection + status emission flow into dedicated helper
+  - added `crates/mirror-core/src/sync_engine_missing_events.rs`
+  - `run_sync_filtered` now delegates missing-remote event mapping/emission
+  - preserved missing-policy behavior and emitted action semantics
+- [x] Add focused tests for outcome application helpers
+  - success path records repo + `last_sync` and emits `up_to_date` action
+  - failure path increments failed counter and emits `failed` action
+- [x] Extract repo work-item path/rename preparation into dedicated helper
+  - added `crates/mirror-core/src/sync_engine_work_items.rs`
+  - moved rename-path/missing-path logging flow out of `run_sync_filtered`
+  - kept path mapping and rename behavior unchanged
 - [ ] Preserve behavior and compatibility
   - no sync safety rule changes
   - no hidden data-loss paths

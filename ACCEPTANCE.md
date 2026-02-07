@@ -45,3 +45,8 @@
 38) Set an invalid PAT and confirm `token set` rejects it and the token is not stored.
 39) Run the daemon and confirm daily PAT validity checks are audited; expired tokens print a warning.
 40) Run the CLI before any daemon token check and confirm it performs a one-time PAT validity check; subsequent CLI runs should skip if the daemon has checked.
+41) Run `sync --target-id <id> --provider <other> --scope <other>` and confirm target-id wins with an explicit warning.
+42) Run `health --target-id <id> --provider <other> --scope <other>` and confirm target-id wins with an explicit warning.
+43) In TUI, navigate Main -> Targets -> Add Target, press `Esc`, and confirm it returns to Targets (not Main).
+44) In TUI, navigate Main -> Tokens -> Set/Validate, press `Esc`, and confirm it returns to Tokens.
+45) In long-content TUI screens (Dashboard, Sync Status, Install Status, Audit Log, Token List), verify `PgUp/PgDn/Home/End` scrolls content when overflowing.

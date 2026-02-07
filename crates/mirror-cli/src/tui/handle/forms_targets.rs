@@ -14,7 +14,7 @@ impl TuiApp {
                         warn!("Root path empty in config root view");
                         self.validation_message = Some("Root path cannot be empty.".to_string());
                         self.message = "Root path cannot be empty.".to_string();
-                        self.view = View::Message;
+                        self.navigate_to(View::Message);
                         return Ok(false);
                     }
                     self.config.root = Some(path.into());
@@ -29,7 +29,7 @@ impl TuiApp {
                         None,
                     )?;
                     self.message = format!("Root saved. Audit ID: {audit_id}");
-                    self.view = View::Message;
+                    self.navigate_to(View::Message);
                 }
             }
             _ => {
@@ -93,7 +93,7 @@ impl TuiApp {
             KeyCode::Esc => self.view = View::Main,
             KeyCode::Char('a') => {
                 self.validation_message = None;
-                self.view = View::TargetAdd;
+                self.navigate_to(View::TargetAdd);
                 self.input_fields = vec![
                     InputField::new("Scope (space-separated)"),
                     InputField::new("Host (optional)"),
@@ -104,7 +104,7 @@ impl TuiApp {
             }
             KeyCode::Char('d') => {
                 self.validation_message = None;
-                self.view = View::TargetRemove;
+                self.navigate_to(View::TargetRemove);
                 self.input_fields = vec![InputField::new("Target id")];
                 self.input_index = 0;
             }
@@ -148,7 +148,7 @@ impl TuiApp {
                     warn!(target_id = %id, "Target already exists");
                     self.validation_message = Some("Target already exists.".to_string());
                     self.message = "Target already exists.".to_string();
-                    self.view = View::Message;
+                    self.navigate_to(View::Message);
                     let audit_id = self.audit.record_with_context(
                         "tui.target.add",
                         AuditStatus::Skipped,
@@ -163,7 +163,7 @@ impl TuiApp {
                         Some("target already exists"),
                     )?;
                     self.message = format!("Target already exists. Audit ID: {audit_id}");
-                    self.view = View::Message;
+                    self.navigate_to(View::Message);
                     return Ok(false);
                 }
                 let scope_label = scope.segments().join("/");
@@ -191,7 +191,7 @@ impl TuiApp {
                     None,
                 )?;
                 self.message = format!("Target added. Audit ID: {audit_id}");
-                self.view = View::Message;
+                self.navigate_to(View::Message);
             }
             _ => self.handle_text_input(key),
         }
@@ -207,7 +207,7 @@ impl TuiApp {
                     warn!("Target remove attempted without id");
                     self.validation_message = Some("Target id is required.".to_string());
                     self.message = "Target id required.".to_string();
-                    self.view = View::Message;
+                    self.navigate_to(View::Message);
                     return Ok(false);
                 }
                 let before = self.config.targets.len();
@@ -237,7 +237,7 @@ impl TuiApp {
                     )?;
                     self.message = format!("Target removed. Audit ID: {audit_id}");
                 }
-                self.view = View::Message;
+                self.navigate_to(View::Message);
             }
             _ => self.handle_text_input(key),
         }

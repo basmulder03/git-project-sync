@@ -5,7 +5,7 @@ impl TuiApp {
         info!(return_view = ?return_view, "Starting update check");
         self.update_return_view = return_view;
         self.update_progress = Some(UpdateProgressState::new());
-        self.view = View::UpdateProgress;
+        self.navigate_to(View::UpdateProgress);
         let (tx, rx) = mpsc::channel::<UpdateEvent>();
         self.update_rx = Some(rx);
         thread::spawn(move || {
@@ -23,7 +23,7 @@ impl TuiApp {
         self.update_progress = Some(UpdateProgressState {
             messages: vec!["Starting update...".to_string()],
         });
-        self.view = View::UpdateProgress;
+        self.navigate_to(View::UpdateProgress);
         let (tx, rx) = mpsc::channel::<UpdateEvent>();
         self.update_rx = Some(rx);
         thread::spawn(move || {
@@ -43,7 +43,7 @@ impl TuiApp {
         if self.sync_running {
             warn!("Sync already running");
             self.message = "Sync already running.".to_string();
-            self.view = View::Message;
+            self.navigate_to(View::Message);
             return Ok(());
         }
         let root = match self.config.root.clone() {
@@ -51,14 +51,14 @@ impl TuiApp {
             None => {
                 warn!("Sync requested without configured root");
                 self.message = "Config missing root; run config init.".to_string();
-                self.view = View::Message;
+                self.navigate_to(View::Message);
                 return Ok(());
             }
         };
         if self.config.targets.is_empty() {
             warn!("Sync requested without configured targets");
             self.message = "No targets configured.".to_string();
-            self.view = View::Message;
+            self.navigate_to(View::Message);
             return Ok(());
         }
 
@@ -68,7 +68,7 @@ impl TuiApp {
             None => {
                 warn!(path = %lock_path.display(), "Sync lock already held");
                 self.message = "Sync already running (lock held).".to_string();
-                self.view = View::Message;
+                self.navigate_to(View::Message);
                 return Ok(());
             }
         };
@@ -79,7 +79,7 @@ impl TuiApp {
         let (tx, rx) = mpsc::channel::<Result<SyncSummary, String>>();
         self.sync_rx = Some(rx);
         self.sync_running = true;
-        self.view = View::SyncStatus;
+        self.navigate_to(View::SyncStatus);
         info!(
             targets = targets.len(),
             root = %root.display(),
@@ -89,7 +89,13 @@ impl TuiApp {
 
         thread::spawn(move || {
             let _lock = lock;
-            let result = run_tui_sync(&targets, &root, &cache_path, &audit, force_refresh_all);
+            let result = tui_block_on(run_tui_sync(
+                &targets,
+                &root,
+                &cache_path,
+                &audit,
+                force_refresh_all,
+            ));
             if let Err(err) = &result {
                 let error_text = format!("{err:#}");
                 let _ = audit.record(

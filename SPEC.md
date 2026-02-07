@@ -19,6 +19,9 @@
   - Ask user: remove / archive / skip
   - Archive moves repo to archive root preserving provider/scope/repo layout.
 - If only a branch remote disappears: do nothing special.
+- Runtime model:
+  - CLI process entry owns Tokio runtime.
+  - TUI sync boundaries use a dedicated runtime helper.
 
 ## Caching & scheduling
 
@@ -35,6 +38,7 @@
 - Adapter pattern:
   - Core engine only depends on provider trait.
   - Providers implement listing repos + returning normalized RemoteRepo info.
+  - Provider credentials are resolved per target at sync execution time (not stored on repo inventory records).
 - Must support: Azure DevOps, GitHub, GitLab (others later).
 
 ## CLI
@@ -43,6 +47,9 @@
 - token set per provider/host
 - target add/list/remove
 - sync all / sync target / sync repo
+- selector precedence:
+  - `--target-id` takes precedence over `--provider/--scope`
+  - if `--target-id` is set with provider/scope selectors, provider/scope are ignored with warning
 - non-interactive mode and missing-remote policy flags (archive/remove/skip)
 - service install/uninstall (systemd user service, launchd agent, Windows service)
 - health check per target (validate auth + scope)
@@ -56,3 +63,9 @@
 - Installer copies the binary to the OS default per-user install location and re-runs service registration from that path.
 - Auto-update: daemon checks for updates on startup and daily; CLI checks only if daemon has not run yet. Network failures are logged and non-fatal. Updates prompt for elevation when required.
 - PAT validation: tokens are validated on set; daemon performs daily validity checks and logs/prints when tokens are invalid or expired. CLI checks only if the daemon has not yet run.
+
+## TUI consistency contract
+
+- `Esc` returns to previous screen consistently.
+- Overflow content is scrollable with `PgUp/PgDn/Home/End`.
+- Footer help text reflects screen-local actions plus global scroll/back behavior.

@@ -48,16 +48,16 @@ impl TuiApp {
             install_rx: None,
             install_progress: None,
             install_status: None,
-            install_scroll: 0,
             update_rx: None,
             update_progress: None,
             update_prompt: None,
             update_return_view: View::Main,
             restart_requested: false,
             message_return_view: View::Main,
-            audit_scroll: 0,
             audit_search: String::new(),
             audit_search_active: false,
+            view_stack: Vec::new(),
+            scroll_offsets: HashMap::new(),
         };
         if app.view == View::Install {
             app.enter_install_view()?;
@@ -103,8 +103,8 @@ impl TuiApp {
     pub(super) fn enter_install_view(&mut self) -> anyhow::Result<()> {
         self.ensure_install_guard()?;
         info!("Entered install view");
-        self.view = View::Install;
-        self.install_scroll = 0;
+        self.navigate_to(View::Install);
+        self.set_scroll_offset(View::Install, 0);
         self.prepare_install_form();
         self.drain_input_events()?;
         Ok(())

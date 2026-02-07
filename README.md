@@ -40,6 +40,32 @@ gh workflow run Release -f bump=patch
 1. Run `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all`.
 2. Dispatch the **Release** workflow with the desired bump type.
 
+## v2 Breaking Changes
+
+### Internal API/architecture changes
+
+- Provider inventory records are credential-free:
+  - `RemoteRepo.auth` was removed from the inventory model.
+  - Credentials are resolved per target during execution via provider `auth_for_target`.
+- Provider trait boundary is async-first:
+  - Core/provider interaction is future-based at the adapter boundary.
+  - Provider adapters use async `reqwest::Client` for HTTP and retry handling.
+- Sync engine internals were split into focused modules:
+  - orchestration, worker execution, missing-remote flow, outcome reducers, work-item preparation.
+  - this is an intentional internal refactor; behavior is preserved.
+- Runtime ownership is explicit:
+  - CLI process entry owns the Tokio runtime.
+  - synchronous TUI boundaries use a dedicated TUI runtime helper.
+
+### CLI/TUI behavior changes
+
+- Selector precedence is now explicit and consistent for `sync` and `health`:
+  - `--target-id` takes precedence over `--provider/--scope`.
+  - using both now emits a warning and applies `--target-id`.
+- TUI navigation/overflow behavior was unified:
+  - `Esc` returns to previous screen consistently.
+  - overflow content uses `PgUp/PgDn/Home/End` scrolling across screens.
+
 ## Quick Start
 
 Initialize config with a mirror root:
@@ -151,6 +177,8 @@ In the TUI:
 - Dashboard view: press `s` for Sync Status
 - Dashboard view: press `f` for Force Refresh All
 - Setup view: press `s` for Setup Status
+- General navigation: `Esc` goes back to previous screen
+- Overflow scrolling: `PgUp/PgDn/Home/End`
 
 ## Scope Shapes
 
@@ -252,6 +280,20 @@ Notes:
 - Only one installer can run at a time (guarded by a lock file under the OS app data directory).
 
 ## Troubleshooting
+
+## Release Readiness (v2)
+
+Before cutting a release:
+
+1. Run quality gates:
+   - `cargo fmt --check`
+   - `cargo clippy --all-targets --all-features -- -D warnings`
+   - `cargo test --all`
+2. Run manual smoke checks:
+   - sync (normal + `--force-refresh-all`)
+   - daemon (`--run-once`)
+   - token set/validate/doctor flows
+   - TUI navigation and status screens
 
 - If a working tree is dirty, sync will skip it and log the reason
 - If the default branch diverges, sync will skip it and log the reason

@@ -2,15 +2,22 @@ use super::*;
 
 impl TuiApp {
     pub(in crate::tui) fn draw_token_menu(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
     ) {
         let items = ["List", "Set/Update", "Validate", "Back"];
-        let list_items: Vec<ListItem> = items
+        let body_height = area.height.saturating_sub(2) as usize;
+        let max_scroll = items.len().saturating_sub(body_height);
+        let mut scroll = self.scroll_offset(View::TokenMenu).min(max_scroll);
+        scroll = adjust_scroll(self.token_menu_index, scroll, body_height, items.len());
+        self.set_scroll_offset(View::TokenMenu, scroll);
+        let end = (scroll + body_height).min(items.len());
+        let list_items: Vec<ListItem> = items[scroll..end]
             .iter()
             .enumerate()
-            .map(|(idx, item)| {
+            .map(|(offset, item)| {
+                let idx = scroll + offset;
                 let mut line = Line::from(Span::raw(*item));
                 if idx == self.token_menu_index {
                     line = line.style(Style::default().add_modifier(Modifier::BOLD));
@@ -18,29 +25,24 @@ impl TuiApp {
                 ListItem::new(line)
             })
             .collect();
-        let list = List::new(list_items).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Token Management"),
-        );
+        let list =
+            List::new(list_items).block(Block::default().borders(Borders::ALL).title("Tokens"));
         frame.render_widget(list, area);
     }
 
     pub(in crate::tui) fn draw_token_list(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
     ) {
         let entries = self.token_entries();
-        let mut items: Vec<ListItem> = Vec::new();
-        items.push(ListItem::new(Line::from(Span::raw(
+        let mut lines: Vec<Line> = Vec::new();
+        lines.push(Line::from(Span::raw(
             "Context: Tokens per configured target",
-        ))));
-        items.push(ListItem::new(Line::from(Span::raw(""))));
+        )));
+        lines.push(Line::from(Span::raw("")));
         if entries.is_empty() {
-            items.push(ListItem::new(Line::from(Span::raw(
-                "No targets configured yet.",
-            ))));
+            lines.push(Line::from(Span::raw("No targets configured yet.")));
         } else {
             for entry in entries {
                 let status = if entry.present { "stored" } else { "missing" };
@@ -49,7 +51,7 @@ impl TuiApp {
                     .as_ref()
                     .map(|v| format!(" | {}", v.display()))
                     .unwrap_or_else(|| " | not verified".to_string());
-                items.push(ListItem::new(Line::from(Span::raw(format!(
+                lines.push(Line::from(Span::raw(format!(
                     "{} | {} | {} | {} | {}{}",
                     entry.account,
                     entry.provider.as_prefix(),
@@ -57,16 +59,21 @@ impl TuiApp {
                     entry.host,
                     status,
                     validation
-                )))));
+                ))));
             }
         }
-        let list =
-            List::new(items).block(Block::default().borders(Borders::ALL).title("Token List"));
-        frame.render_widget(list, area);
+        let max_scroll = max_scroll_for_lines(lines.len(), area.height);
+        let scroll = self.scroll_offset(View::TokenList).min(max_scroll);
+        self.set_scroll_offset(View::TokenList, scroll);
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0))
+            .block(Block::default().borders(Borders::ALL).title("Tokens"));
+        frame.render_widget(widget, area);
     }
 
     pub(in crate::tui) fn draw_token_set(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
     ) {
@@ -100,16 +107,18 @@ impl TuiApp {
             };
             lines.push(Line::from(Span::raw(label)));
         }
-        let widget = Paragraph::new(lines).wrap(Wrap { trim: false }).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Set/Update Token"),
-        );
+        let max_scroll = max_scroll_for_lines(lines.len(), area.height);
+        let scroll = self.scroll_offset(View::TokenSet).min(max_scroll);
+        self.set_scroll_offset(View::TokenSet, scroll);
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0))
+            .block(Block::default().borders(Borders::ALL).title("Token Set"));
         frame.render_widget(widget, area);
     }
 
     pub(in crate::tui) fn draw_token_validate(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
     ) {
@@ -142,16 +151,22 @@ impl TuiApp {
             };
             lines.push(Line::from(Span::raw(label)));
         }
-        let widget = Paragraph::new(lines).wrap(Wrap { trim: false }).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Validate Token"),
-        );
+        let max_scroll = max_scroll_for_lines(lines.len(), area.height);
+        let scroll = self.scroll_offset(View::TokenValidate).min(max_scroll);
+        self.set_scroll_offset(View::TokenValidate, scroll);
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Token Validate"),
+            );
         frame.render_widget(widget, area);
     }
 
     pub(in crate::tui) fn draw_service(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
     ) {
@@ -169,16 +184,18 @@ impl TuiApp {
             Line::from(Span::raw("Press i to install")),
             Line::from(Span::raw("Press u to uninstall")),
         ];
-        let widget = Paragraph::new(lines).wrap(Wrap { trim: false }).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Service Installer"),
-        );
+        let max_scroll = max_scroll_for_lines(lines.len(), area.height);
+        let scroll = self.scroll_offset(View::Service).min(max_scroll);
+        self.set_scroll_offset(View::Service, scroll);
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0))
+            .block(Block::default().borders(Borders::ALL).title("Service"));
         frame.render_widget(widget, area);
     }
 
     pub(in crate::tui) fn draw_config_root(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
     ) {
@@ -208,8 +225,12 @@ impl TuiApp {
                 .map(|f| f.display_value())
                 .unwrap_or_default(),
         )));
+        let max_scroll = max_scroll_for_lines(lines.len(), area.height);
+        let scroll = self.scroll_offset(View::ConfigRoot).min(max_scroll);
+        self.set_scroll_offset(View::ConfigRoot, scroll);
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0))
             .block(Block::default().borders(Borders::ALL).title("Config Root"));
         frame.render_widget(widget, area);
     }

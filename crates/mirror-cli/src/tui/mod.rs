@@ -33,6 +33,7 @@ use ratatui::{
 };
 use semver::Version;
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::io::{self, Stdout};
 use std::sync::mpsc;
 use std::thread;
@@ -55,6 +56,27 @@ const REPO_STATUS_TTL_SECS: u64 = 600;
 const LOG_PANEL_HEIGHT: u16 = 7;
 const LOG_PANEL_BORDER_HEIGHT: u16 = 2;
 const LOG_HEADER_LINES: usize = 1;
+
+fn tui_block_on<F: Future>(future: F) -> F::Output {
+    thread_local! {
+        static RUNTIME: std::cell::RefCell<Option<tokio::runtime::Runtime>> = const { std::cell::RefCell::new(None) };
+    }
+
+    RUNTIME.with(|cell| {
+        let mut runtime = cell.borrow_mut();
+        if runtime.is_none() {
+            let created = tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .build()
+                .expect("create tui runtime");
+            *runtime = Some(created);
+        }
+        runtime
+            .as_mut()
+            .expect("tui runtime initialized")
+            .block_on(future)
+    })
+}
 
 pub fn run_tui(
     audit: &AuditLogger,
@@ -135,7 +157,7 @@ fn run_app(
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum View {
     Main,
     Dashboard,
@@ -285,14 +307,14 @@ struct TuiApp {
     install_rx: Option<mpsc::Receiver<InstallEvent>>,
     install_progress: Option<InstallProgressState>,
     install_status: Option<crate::install::InstallStatus>,
-    install_scroll: usize,
     update_rx: Option<mpsc::Receiver<UpdateEvent>>,
     update_progress: Option<UpdateProgressState>,
     update_prompt: Option<update::UpdateCheck>,
     update_return_view: View,
     restart_requested: bool,
     message_return_view: View,
-    audit_scroll: usize,
     audit_search: String,
     audit_search_active: bool,
+    view_stack: Vec<View>,
+    scroll_offsets: HashMap<View, usize>,
 }

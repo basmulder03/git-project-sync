@@ -2,7 +2,7 @@ use super::*;
 
 impl TuiApp {
     pub(in crate::tui) fn draw_main(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
     ) {
@@ -21,10 +21,17 @@ impl TuiApp {
             "Update".to_string(),
             "Quit".to_string(),
         ];
-        let list_items: Vec<ListItem> = items
+        let body_height = area.height.saturating_sub(2) as usize;
+        let max_scroll = items.len().saturating_sub(body_height);
+        let mut scroll = self.scroll_offset(View::Main).min(max_scroll);
+        scroll = adjust_scroll(self.menu_index, scroll, body_height, items.len());
+        self.set_scroll_offset(View::Main, scroll);
+        let end = (scroll + body_height).min(items.len());
+        let list_items: Vec<ListItem> = items[scroll..end]
             .iter()
             .enumerate()
-            .map(|(idx, item)| {
+            .map(|(offset, item)| {
+                let idx = scroll + offset;
                 let mut line = Line::from(Span::raw(item.as_str()));
                 if idx == self.menu_index {
                     line = line.style(Style::default().add_modifier(Modifier::BOLD));
@@ -38,7 +45,7 @@ impl TuiApp {
     }
 
     pub(in crate::tui) fn draw_dashboard(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
     ) {
@@ -75,14 +82,18 @@ impl TuiApp {
             lines.push(Line::from(Span::raw("")));
             lines.push(Line::from(Span::raw("Press t to show per-target status")));
         }
+        let max_scroll = max_scroll_for_lines(lines.len(), area.height);
+        let scroll = self.scroll_offset(View::Dashboard).min(max_scroll);
+        self.set_scroll_offset(View::Dashboard, scroll);
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0))
             .block(Block::default().borders(Borders::ALL).title("Dashboard"));
         frame.render_widget(widget, area);
     }
 
     pub(in crate::tui) fn draw_install(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
     ) {
@@ -204,9 +215,9 @@ impl TuiApp {
             lines.push(Line::from(Span::raw("")));
             lines.push(Line::from(Span::raw(format!("Validation: {message}"))));
         }
-        let body_height = area.height.saturating_sub(2) as usize;
-        let max_scroll = lines.len().saturating_sub(body_height);
-        let scroll = self.install_scroll.min(max_scroll);
+        let max_scroll = max_scroll_for_lines(lines.len(), area.height);
+        let scroll = self.scroll_offset(View::Install).min(max_scroll);
+        self.set_scroll_offset(View::Install, scroll);
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .scroll((scroll as u16, 0))

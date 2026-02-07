@@ -1,6 +1,6 @@
 use super::*;
 
-pub(in crate::tui) fn run_tui_sync(
+pub(in crate::tui) async fn run_tui_sync(
     targets: &[TargetConfig],
     root: &std::path::Path,
     cache_path: &std::path::Path,
@@ -43,7 +43,9 @@ pub(in crate::tui) fn run_tui_sync(
             root,
             cache_path,
             options,
-        ) {
+        )
+        .await
+        {
             Ok(summary) => summary,
             Err(err) => {
                 let error_text = format!("{err:#}");

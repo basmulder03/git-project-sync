@@ -1,15 +1,18 @@
 use super::*;
-pub(super) fn handle_token(args: TokenArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+pub(super) async fn handle_token(args: TokenArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     match args.command {
-        TokenCommands::Set(args) => handle_set_token(args, audit),
+        TokenCommands::Set(args) => handle_set_token(args, audit).await,
         TokenCommands::Guide(args) => handle_guide_token(args, audit),
-        TokenCommands::Validate(args) => handle_validate_token(args, audit),
+        TokenCommands::Validate(args) => handle_validate_token(args, audit).await,
         TokenCommands::Doctor(args) => handle_doctor_token(args, audit),
     }
 }
 
-pub(super) fn handle_set_token(args: SetTokenArgs, audit: &AuditLogger) -> anyhow::Result<()> {
-    let result: anyhow::Result<()> = (|| {
+pub(super) async fn handle_set_token(
+    args: SetTokenArgs,
+    audit: &AuditLogger,
+) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = async {
         let provider: ProviderKind = args.provider.into();
         let spec = spec_for(provider.clone());
         let scope = spec.parse_scope(args.scope)?;
@@ -22,7 +25,7 @@ pub(super) fn handle_set_token(args: SetTokenArgs, audit: &AuditLogger) -> anyho
             scope: scope.clone(),
             host: Some(host.clone()),
         };
-        let validation = token_check::check_token_validity(&runtime_target);
+        let validation = token_check::check_token_validity_async(&runtime_target).await;
         if validation.status != token_check::TokenValidity::Ok {
             let _ = auth::delete_pat(&account);
             let mut message = validation.message(&runtime_target);
@@ -48,7 +51,8 @@ pub(super) fn handle_set_token(args: SetTokenArgs, audit: &AuditLogger) -> anyho
         )?;
         println!("Audit ID: {audit_id}");
         Ok(())
-    })();
+    }
+    .await;
 
     if let Err(err) = &result {
         let _ = audit.record(
@@ -104,11 +108,11 @@ pub(super) fn handle_guide_token(args: GuideTokenArgs, audit: &AuditLogger) -> a
     result
 }
 
-pub(super) fn handle_validate_token(
+pub(super) async fn handle_validate_token(
     args: ValidateTokenArgs,
     audit: &AuditLogger,
 ) -> anyhow::Result<()> {
-    let result: anyhow::Result<()> = (|| {
+    let result: anyhow::Result<()> = async {
         let provider: ProviderKind = args.provider.into();
         let spec = spec_for(provider.clone());
         let scope = spec.parse_scope(args.scope)?;
@@ -123,7 +127,7 @@ pub(super) fn handle_validate_token(
         };
         let registry = ProviderRegistry::new();
         let adapter = registry.provider(provider.clone())?;
-        let scopes = adapter.token_scopes(&runtime_target)?;
+        let scopes = adapter.token_scopes(&runtime_target).await?;
         let help = mirror_providers::spec::pat_help(provider.clone());
         match scopes {
             Some(scopes) => {
@@ -171,7 +175,8 @@ pub(super) fn handle_validate_token(
                 }
             }
             None => {
-                let token_check_result = token_check::check_token_validity(&runtime_target);
+                let token_check_result =
+                    token_check::check_token_validity_async(&runtime_target).await;
                 token_check::ensure_token_valid(&token_check_result, &runtime_target)?;
                 println!(
                     "{} (scope validation not supported)",
@@ -194,7 +199,8 @@ pub(super) fn handle_validate_token(
             }
         }
         Ok(())
-    })();
+    }
+    .await;
 
     if let Err(err) = &result {
         let _ = audit.record(

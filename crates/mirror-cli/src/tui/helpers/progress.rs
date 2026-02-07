@@ -56,7 +56,7 @@ pub(in crate::tui) fn progress_bar(step: usize, total: usize, width: usize) -> S
 }
 
 pub(in crate::tui) fn dashboard_footer_text() -> &'static str {
-    "t: toggle targets | s: sync status | r: sync now | f: force refresh all | u: check updates | Esc: back"
+    "t: toggle targets | s: sync status | r: sync now | f: force refresh all | u: check updates | Esc: back | PgUp/PgDn/Home/End: scroll"
 }
 
 pub(in crate::tui) fn read_audit_lines(

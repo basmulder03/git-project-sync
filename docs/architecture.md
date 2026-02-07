@@ -14,11 +14,18 @@ The core engine depends on the `RepoProvider` trait. Providers implement:
 
 - `list_repos` to enumerate remote repositories
 - `validate_auth` and `health_check` to verify credentials
-- `auth_for_target` to return git auth info
+- `auth_for_target` to return git auth info for a target at execution time
 - `token_scopes` to validate scopes (when supported)
 - `register_webhook` to configure webhooks (if supported)
+- Provider operations are exposed as futures at the boundary.
+- Provider adapters now use async `reqwest::Client` for HTTP calls and retry handling.
+- Core sync orchestration (`run_sync_filtered`) is async and CLI command dispatch awaits async sync/provider operations directly.
+- Runtime ownership is explicit at synchronous boundaries:
+  - process entry (`main`) owns a Tokio current-thread runtime for async CLI dispatch
+  - synchronous TUI event/job boundaries use a dedicated TUI runtime helper
 
 This isolates provider-specific APIs from the core sync logic.
+Repo inventory records are credential-free; auth is resolved per target during sync.
 
 ## Data flow: sync
 
@@ -63,6 +70,22 @@ Logs are rotated by file size and stored under OS data directory.
 - CLI is built with clap subcommands and maps directly to core functions.
 - TUI is built with ratatui/crossterm and provides forms for config, targets, tokens, audit, and dashboard.
 - TUI includes guided validation hints and inline feedback.
+- TUI interaction model is unified:
+  - stack-based view transitions for back navigation (`Esc` => previous screen)
+  - per-view scroll state with global overflow keys (`PgUp/PgDn/Home/End`)
+  - consistent footer conventions for back/scroll/action hints
+
+## v2 internal refactor highlights
+
+- `sync_engine` responsibilities are decomposed into focused modules:
+  - orchestration (`sync_engine_orchestrator`)
+  - workers (`sync_engine_workers`)
+  - outcome application (`sync_engine_apply`)
+  - missing-remote event/status handling (`sync_engine_missing_events`)
+  - work-item path preparation (`sync_engine_work_items`)
+- Cache internals are split into dedicated modules:
+  - migration/backoff/inventory/runtime/health
+- CLI selector resolution is centralized for `sync` and `health` with explicit precedence warnings.
 
 ## Dashboard
 

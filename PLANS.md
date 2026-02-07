@@ -1,179 +1,168 @@
-# PLANS.md
+# PLANS.md — V2 Release Plan
 
-## Milestone 55 — Core/Providers Modularization (in progress)
+## Objective
 
-- [x] Split `crates/mirror-providers/src/github.rs` into focused flat helper modules
-- [x] Split `crates/mirror-providers/src/azure_devops.rs` into focused flat helper modules
-- [x] Split `crates/mirror-providers/src/gitlab.rs` into focused flat helper modules
-- [x] Split `crates/mirror-core/src/sync_engine.rs` into focused flat helper modules
-- [x] Split `crates/mirror-core/src/service.rs` into focused flat helper modules
-- [x] Keep behavior and public APIs unchanged
-- [x] Move/retain tests with equivalent coverage
-- [x] Run fmt and tests for `mirror-providers`, `mirror-core`, and workspace
+Ship **v2** with a cleaner async architecture, reduced coupling, and stable behavior for safe mirroring.
 
-## Milestone 54 — CLI/TUI Modularization (in progress)
+## Scope for V2
 
-- [x] Split `crates/mirror-cli/src/main.rs` into focused `cli/*` modules
-- [x] Split `crates/mirror-cli/src/tui.rs` into focused `tui/*` modules
-- [x] Split `cli/mod.rs` into `cli/args.rs` + `cli/app.rs`
-- [x] Split `cli/shared.rs` into `cli/shared/*`
-- [x] Split `cli/misc_cmd.rs` into `cli/misc_cmd/*`
-- [x] Split `tui/draw.rs`, `tui/handle.rs`, `tui/jobs.rs`, and `tui/helpers.rs` into submodules
-- [x] Split `install.rs` into `install/*`
-- [x] Split `update.rs` into `update/*`
-- [x] Keep behavior identical (no CLI/TUI functional changes)
-- [x] Move/retain tests with equivalent coverage
-- [x] Run fmt, clippy, and tests and confirm no regressions
+- In scope:
+  - Provider/core async boundary cleanup
+  - Provider HTTP async migration
+  - Core sync orchestration async migration
+  - CLI async dispatch and handler migration
+  - TUI async parity where practical without UI regressions
+  - Documentation updates for architecture and breaking changes
+- Out of scope:
+  - New provider features
+  - Major TUI redesign
+  - Deep installer UX redesign
 
-## Milestone 53 — Token Doctor (completed)
+## V2 Progress Snapshot
 
-- [x] Add `token doctor` CLI command
-- [x] Report DBUS/session environment hints for keyring access
-- [x] Add keyring write/read/delete diagnostic roundtrip
-- [x] Add optional provider/scope account presence check
-- [x] Update docs and acceptance checklist
+### Completed foundations
 
-## Milestone 52 — Force Refresh All (completed)
+- [x] Remove `RemoteRepo.auth` from inventory model
+- [x] Resolve provider auth per target via `auth_for_target`
+- [x] Deduplicate daemon backoff logic in `mirror-core`
+- [x] Convert provider boundary to future-based async interface
+- [x] Migrate provider HTTP calls to async `reqwest::Client`
+- [x] Replace custom polling executor with Tokio runtime-backed provider `block_on`
+- [x] Make core sync orchestration async (`run_sync`, `run_sync_filtered`, inventory load)
+- [x] Convert CLI command dispatch and key command handlers to async (`sync`, `daemon`, `token`, `health`, `webhook`)
+- [x] Remove CLI command-path `block_on` for provider/sync operations
+- [x] Make TUI sync/token helpers async-first and move sync bridge to explicit TUI boundaries
+- [x] Remove unused synchronous token validity wrapper
+- [x] Keep fmt/clippy/tests green after each migration step
 
-- [x] Add `sync --force-refresh-all` CLI flag
-- [x] Force full target/repo selection in CLI when enabled (ignore target/scope/repo selectors)
-- [x] Force provider inventory refresh for forced runs
-- [x] Add TUI Dashboard hotkey `f` for forced full refresh run
-- [x] Include forced-run marker in CLI/TUI audit payloads
-- [x] Update README and acceptance checklist
+### Remaining bridges
 
-## Milestone 51 — GitHub CI + Release + Self-Update (in progress)
+- [x] Process entry bridge replaced with explicit Tokio runtime ownership in `crates/mirror-cli/src/main.rs`
+- [x] TUI boundary bridges moved from provider helper shim to explicit TUI runtime helper:
+  - `crates/mirror-cli/src/tui/handle/token.rs`
+  - `crates/mirror-cli/src/tui/jobs/start.rs`
 
-- [x] Add GitHub Actions CI workflow (fmt, clippy, test, build)
-- [x] Add GitHub Release workflow with OS binaries
-- [x] Manual release workflow with major/minor/patch bump selection
-- [x] Auto-update daemon/CLI (daemon startup + daily, CLI fallback) with auditing and elevation prompts
-- [x] Add CLI update command (check/apply)
-- [x] Add TUI update flow (main menu + install view)
-- [x] Update docs for self-update
+## Milestone V2.1 — Final Async Bridge Cleanup
 
-## Milestone 43 — Installer Default Location + Update (in progress)
+- [x] Remove process-entry provider bridge
+  - Implemented explicit runtime ownership in `main` using Tokio builder
+- [x] Reduce/remove TUI provider bridges
+  - Replaced provider shim calls with TUI runtime helper at explicit sync boundaries
+  - Preserved UI responsiveness and background-job behavior
+  - Preserved token/sync audit behavior
+- [x] Re-run full quality gates
+  - `cargo fmt`
+  - `cargo clippy --all-targets --all-features -- -D warnings`
+  - `cargo test --all`
 
-- [x] Install binary to OS default per-user location (app-data based)
-- [x] Reinstall service using installed binary path
-- [x] Add install manifest for detection/reporting
-- [x] Update CLI/TUI messaging for install location
-- [x] Update docs + acceptance notes for replace/update behavior
-- [x] Use Windows Task Scheduler instead of Windows Service (fix 1053)
-- [x] Distinguish install vs update flow in installer output
-- [x] Show install status (version/time) inline on install page
-- [x] Expand install status with task scheduler diagnostics
+## Milestone V2.2 — Core Maintainability Refactor
 
-## Milestone 44 — Sync Status UX (in progress)
+- [x] Split `crates/mirror-core/src/cache.rs` internals into focused modules
+  - `cache/migration.rs` for schema migration structs/functions
+  - `cache/backoff.rs` for retry-delay policy logic
+  - preserve external `cache` API shape
+- [x] Split cache free-function concerns into dedicated modules and re-export via facade
+  - `cache/inventory.rs` for prune/inventory maintenance
+  - `cache/runtime.rs` for target backoff/success runtime functions
+  - `cache/health.rs` for token/update check and status functions
+- [ ] Continue cache split into dedicated store-facing modules
+  - inventory store
+  - runtime/sync status store
+  - token/update health store
+- [x] Break down `crates/mirror-core/src/sync_engine.rs` into smaller modules
+  - orchestration
+  - worker execution
+  - cache/status reducers
+  - error mapping
+- [x] Extract duplicated sync outcome application from serial/parallel paths into shared helper module
+  - added `crates/mirror-core/src/sync_engine_apply.rs`
+  - centralized success/failure cache+status+audit updates
+  - preserved existing sync semantics and logging fields
+- [x] Extract sync worker execution (serial + threaded) into dedicated module
+  - added `crates/mirror-core/src/sync_engine_workers.rs`
+  - `run_sync_filtered` now delegates repo execution to worker helper
+  - kept orchestration decisions in `sync_engine.rs`
+- [x] Extract missing-repo detection + status emission flow into dedicated helper
+  - added `crates/mirror-core/src/sync_engine_missing_events.rs`
+  - `run_sync_filtered` now delegates missing-remote event mapping/emission
+  - preserved missing-policy behavior and emitted action semantics
+- [x] Add focused tests for outcome application helpers
+  - success path records repo + `last_sync` and emits `up_to_date` action
+  - failure path increments failed counter and emits `failed` action
+- [x] Extract repo work-item path/rename preparation into dedicated helper
+  - added `crates/mirror-core/src/sync_engine_work_items.rs`
+  - moved rename-path/missing-path logging flow out of `run_sync_filtered`
+  - kept path mapping and rename behavior unchanged
+- [x] Split `run_sync_filtered` into explicit orchestration phases
+  - added preflight/auth helper
+  - added inventory+missing phase helper
+  - added execution phase helper
+  - added finalize phase helper
+  - introduced internal `SyncRunState` and `normalized_jobs` helper test
+- [x] Move sync orchestration internals into dedicated module
+  - added `crates/mirror-core/src/sync_engine_orchestrator.rs`
+  - `crates/mirror-core/src/sync_engine.rs` now delegates execution and primarily defines public sync API/types
+  - kept sync behavior unchanged while reducing module coupling
+- [ ] Preserve behavior and compatibility
+  - no sync safety rule changes
+  - no hidden data-loss paths
 
-- [x] Add sync progress callbacks in core (per-repo current action)
-- [x] Persist sync status + last action in cache
-- [x] CLI sync `--status` progress bar with current action/repo
-- [x] TUI Sync Status view with live status from cache
+## Milestone V2.3 — CLI Surface Cleanup
 
-## Milestone 46 — Windows Task Scheduler UX (in progress)
+- [x] Normalize selector UX in CLI args
+  - target-id first
+  - provider/scope tuple rules consistent
+- [x] Remove duplicated argument validation paths
+- [x] Ensure help text matches actual precedence and behavior
+  - shared selector resolution now emits explicit precedence warning
+  - `sync` and `health` both use `select_targets_with_precedence`
+  - CLI help text updated for `sync`/`health` selector precedence and scope requirements
+- [x] Unify TUI screen behavior across layout/navigation/naming
+  - added stack-based navigation with consistent `Esc => previous screen`
+  - standardized footer help to include global scroll behavior
+  - harmonized screen titles in token/service surfaces
+- [x] Enable automatic overflow scrolling across TUI screens
+  - added per-view scroll state map and shared global scroll keys (`PgUp/PgDn/Home/End`)
+  - wired major paragraph/list screens to clamp + render with vertical scroll offsets
 
-- [x] Add `install --start` to run task after install
-- [x] Add `task` subcommand (status/run/remove)
-- [x] Expose task last run/result in install status
+## Milestone V2.4 — Docs and Release Readiness
 
-## Milestone 47 — Sync UX + Observability (in progress)
+- [x] Update docs to match final v2 architecture and runtime model
+  - `README.md`
+  - `SPEC.md`
+  - `docs/architecture.md`
+  - `ACCEPTANCE.md`
+- [x] Add explicit v2 breaking changes section
+  - internal model/trait changes
+  - migration behavior
+- [x] Final release checklist run
+  - fmt/clippy/tests
+  - manual smoke checks for sync/daemon/TUI token flows
+  - sandbox smoke subset executed on 2026-02-07 (isolated HOME/XDG):
+    - config/target/sync-status/daemon-run-once/token-doctor/install-status
+    - selector precedence warnings verified for `sync` and `health`
+  - remaining manual checks requiring interactive TUI and external provider network/token access must be run in real operator environment
 
-- [x] Add `sync --status-only` read-only command
-- [x] Add `--audit-repo` toggle for per-repo audit entries
-- [x] Show last error in Sync Status view
+## Non-Negotiable Behavior (Must Hold)
 
-## Milestone 48 — Performance + Reliability (in progress)
+- Never overwrite dirty working trees
+- Fast-forward only on clean repos
+- Skip diverged default branches
+- Prompt/policy behavior for deleted remotes unchanged
+- Staggered scheduling and daemon backoff preserved
 
-- [x] Add `--jobs` to sync and daemon
-- [x] Parallelize repo syncs safely per target
+## Risks and Mitigations
 
-## Milestone 42 — Installer Single-Instance Fix (in progress)
+- Risk: Async refactors regress sync behavior
+  - Mitigation: keep safety logic unchanged; test after each step
+- Risk: TUI responsiveness regression
+  - Mitigation: keep long operations on background channels/jobs
+- Risk: Migration drift between docs and code
+  - Mitigation: docs updates are mandatory in V2.4 gate
 
-- [x] Replace installer mutex with lockfile under data_local
-- [x] Gate TUI installer entry with lock guard + release on exit
-- [x] Remove redundant CLI lock acquisition before starting TUI install view
-- [x] Drain pending input events when entering install view (prevents auto-install)
-- [x] Ignore non-press key events in TUI to prevent double-handling
-- [x] Add Windows admin check with clear error before service install
-- [x] Add Unix/macOS permission preflight with sudo guidance when dirs aren't writable
-- [x] Use Windows Service APIs for install (avoid sc.exe quoting issues)
-- [x] Suppress external command output during TUI install (prevents UI corruption)
-- [x] Remove net-session admin check to avoid console output in TUI
-- [x] Add install progress output for non-interactive CLI
-- [x] Add live install progress UI for TUI
-- [x] Add install status view (TUI + CLI flag)
-- [x] Extend install status with service running state
-- [x] Add daemon sync audit records per target
-- [x] Add per-repo audit records during sync (CLI + daemon)
-- [x] Consider follow-up: update docs to mention installer lock behavior
+## Decisions and Defaults
 
-## Milestone 38 — Build Fix (in progress)
-
-- [x] Fix Windows build error in installer PATH registration
-- [x] Fix Windows service start call type annotation
-- [x] Re-run build to confirm
-
-## Milestone 49 — TUI Provider Mgmt + Repo Overview (in progress)
-
-- [x] Add provider-specific selection + hints in TUI target/token forms (GitHub/GitLab)
-- [x] Add repo status cache + local status computation (branch/ahead/behind/last touched)
-- [x] Add TUI repo overview tree view (folder structure with status columns)
-- [x] Add tests for repo status + tree rendering helpers
-- [x] Document assumptions and follow-ups
-
-## Milestone 50 — TUI Sync Trigger (in progress)
-
-- [x] Add dashboard hotkey to start sync (all targets)
-- [x] Run sync in background with lockfile + audit
-- [x] Surface completion/errors in TUI message view
-
-## Milestone 39 — High-Severity Fixes (in progress)
-
-- [x] Support GitHub user-scope targets (fallback from org endpoint)
-- [x] Handle repo rename path moves safely
-- [x] Harden repo name sanitization for Windows
-- [x] Allow archive moves across devices
-
-## Milestone 40 — Medium-Severity Fixes (in progress)
-
-- [x] Drain retryable HTTP responses before retry
-- [x] Add daemon backoff on repeated failures
-- [x] Improve lockfile held detection on Windows
-
-## Milestone 41 — Low-Severity Fixes (in progress)
-
-- [x] Use stable lock file location under data_local
-- [x] Avoid TUI target add audit relying on list tail
-
-## Milestone 35 — TUI Main-Flow Guided UX (completed)
-
-- [x] Add guided form hints + inline validation for Config Root, Targets, Tokens
-- [x] Normalize main menu labels and footer help text for consistency
-- [x] Apply minimal layout polish (headers, spacing, concise summaries)
-- [x] Add tests for guidance rendering and validation text
-
-## Milestone 36 — Dashboard (completed)
-
-- [x] Add TUI dashboard view with core stats and per-target toggle
-- [x] Update docs and acceptance checks for dashboard
-
-## Milestone 37 — Installer Flow + PATH Registration (completed)
-
-- [x] Add CLI install command with optional TUI flow
-- [x] Support delayed startup on service install (OS-native)
-- [x] Add opt-in PATH registration per OS
-- [x] Update docs and acceptance checks
-
-## Notes / Decisions
-
-- Focus: architecture tidy (per user request).
-- Breaking CLI/config changes: allowed (major ok).
-- Target OS: cross-platform parity.
-- Service install helpers: implemented via OS-native registration.
-- Token storage: keyring; fallback disabled unless explicitly configured.
-- Git implementation: git2; shelling out to git can be added later if needed.
-- Docs alignment: spec-first, concise edits only.
-- Roadmap focus: Azure DevOps depth first, then provider parity, then sync safety.
-- Installer lock: use data_local lockfile to enforce single installer across CLI/TUI.
-- Repo overview: cache-only repo source, local git status only, 10-minute TTL refresh with manual override.
+- Keep sync safety semantics unchanged for v2
+- Breaking internal APIs are allowed in v2
+- Prefer incremental refactors with green tests at each step
+- Keep runtime ownership explicit at synchronous UI/entry boundaries where async cannot be threaded through safely

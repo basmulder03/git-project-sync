@@ -45,7 +45,7 @@ impl TokenCheckResult {
     }
 }
 
-pub fn check_token_validity(target: &ProviderTarget) -> TokenCheckResult {
+pub async fn check_token_validity_async(target: &ProviderTarget) -> TokenCheckResult {
     let registry = ProviderRegistry::new();
     let adapter = match registry.provider(target.provider.clone()) {
         Ok(adapter) => adapter,
@@ -57,7 +57,7 @@ pub fn check_token_validity(target: &ProviderTarget) -> TokenCheckResult {
         }
     };
 
-    match adapter.health_check(target) {
+    match adapter.health_check(target).await {
         Ok(_) => TokenCheckResult::ok(),
         Err(err) => classify_error(target.provider.clone(), &err),
     }

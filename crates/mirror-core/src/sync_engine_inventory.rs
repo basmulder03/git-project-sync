@@ -5,7 +5,7 @@ use crate::provider::RepoProvider;
 use crate::sync_engine_status::current_timestamp_secs;
 use anyhow::Context;
 
-pub(crate) fn load_repos_with_cache(
+pub(crate) async fn load_repos_with_cache(
     provider: &dyn RepoProvider,
     target: &ProviderTarget,
     cache: &mut RepoCache,
@@ -21,7 +21,6 @@ pub(crate) fn load_repos_with_cache(
         && let Some(entry) = cache.repo_inventory.get(&target_key)
         && cache_is_valid(entry, now)
     {
-        let auth = provider.auth_for_target(target)?;
         let repos = entry
             .repos
             .iter()
@@ -34,13 +33,12 @@ pub(crate) fn load_repos_with_cache(
                 archived: repo.archived,
                 provider: repo.provider,
                 scope: repo.scope,
-                auth: auth.clone(),
             })
             .collect();
         return Ok((repos, true));
     }
 
-    let repos = provider.list_repos(target).context("list repos")?;
+    let repos = provider.list_repos(target).await.context("list repos")?;
     let inventory = RepoInventoryEntry {
         fetched_at: now,
         repos: repos

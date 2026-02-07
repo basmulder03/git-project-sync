@@ -1281,6 +1281,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "time",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1300,6 +1301,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "time",
+ "tokio",
  "tracing",
  "uuid",
 ]
@@ -1314,6 +1316,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "tokio",
  "tracing",
 ]
 

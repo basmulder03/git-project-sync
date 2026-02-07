@@ -1,5 +1,5 @@
 use super::*;
-pub fn run() -> anyhow::Result<()> {
+pub async fn run() -> anyhow::Result<()> {
     let log_buffer = logging::LogBuffer::new(200);
     let filter = EnvFilter::from_default_env();
     tracing_subscriber::registry()
@@ -95,19 +95,19 @@ pub fn run() -> anyhow::Result<()> {
             Err(_) => true,
         };
         if should_check {
-            let _ = run_token_validity_checks(&config_path, &cache_path, &audit, "cli", true);
+            let _ = run_token_validity_checks(&config_path, &cache_path, &audit, "cli", true).await;
         }
     }
 
     let result = match cli.command {
         Commands::Config(args) => handle_config(args, &audit),
         Commands::Target(args) => handle_target(args, &audit),
-        Commands::Token(args) => handle_token(args, &audit),
-        Commands::Sync(args) => handle_sync(args, &audit),
-        Commands::Daemon(args) => handle_daemon(args, &audit),
+        Commands::Token(args) => handle_token(args, &audit).await,
+        Commands::Sync(args) => handle_sync(args, &audit).await,
+        Commands::Daemon(args) => handle_daemon(args, &audit).await,
         Commands::Service(args) => handle_service(args, &audit),
-        Commands::Health(args) => handle_health(args, &audit),
-        Commands::Webhook(args) => handle_webhook(args, &audit),
+        Commands::Health(args) => handle_health(args, &audit).await,
+        Commands::Webhook(args) => handle_webhook(args, &audit).await,
         Commands::Cache(args) => handle_cache(args, &audit),
         Commands::Tui(args) => {
             let start_view = if args.install {

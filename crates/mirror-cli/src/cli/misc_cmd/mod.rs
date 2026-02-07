@@ -1,7 +1,7 @@
 use super::shared::{
     epoch_to_label, format_delayed_start, map_provider_error, maybe_escalate_and_reexec,
     prompt_delay_seconds, prompt_path_choice, prompt_update_confirm, render_progress_bar,
-    select_targets, service_label,
+    select_targets_with_precedence, service_label,
 };
 use super::*;
 

@@ -3,7 +3,7 @@ use super::*;
 impl TuiApp {
     pub(in crate::tui) fn enter_repo_overview(&mut self) -> anyhow::Result<()> {
         info!("Entered repo overview view");
-        self.view = View::RepoOverview;
+        self.navigate_to(View::RepoOverview);
         self.repo_overview_message = None;
         self.repo_overview_selected = 0;
         self.repo_overview_scroll = 0;

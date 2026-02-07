@@ -1,6 +1,95 @@
 use super::*;
 
 impl TuiApp {
+    pub(in crate::tui) fn navigate_to(&mut self, next: View) {
+        if self.view != next {
+            self.view_stack.push(self.view);
+            self.view = next;
+        }
+    }
+
+    pub(in crate::tui) fn go_back(&mut self) {
+        if matches!(self.view, View::Install) {
+            self.release_install_guard();
+        }
+        if matches!(self.view, View::UpdatePrompt) {
+            self.update_prompt = None;
+        }
+        if let Some(previous) = self.view_stack.pop() {
+            self.view = previous;
+        } else if self.view != View::Main {
+            self.view = View::Main;
+        }
+    }
+
+    pub(in crate::tui) fn scrollable(view: View) -> bool {
+        matches!(
+            view,
+            View::Main
+                | View::Dashboard
+                | View::Install
+                | View::UpdatePrompt
+                | View::UpdateProgress
+                | View::SyncStatus
+                | View::InstallStatus
+                | View::ConfigRoot
+                | View::Targets
+                | View::TargetAdd
+                | View::TargetRemove
+                | View::TokenMenu
+                | View::TokenList
+                | View::TokenSet
+                | View::TokenValidate
+                | View::Service
+                | View::AuditLog
+                | View::Message
+                | View::InstallProgress
+        )
+    }
+
+    pub(in crate::tui) fn scroll_offset(&self, view: View) -> usize {
+        self.scroll_offsets.get(&view).copied().unwrap_or(0)
+    }
+
+    pub(in crate::tui) fn set_scroll_offset(&mut self, view: View, offset: usize) {
+        self.scroll_offsets.insert(view, offset);
+    }
+
+    pub(in crate::tui) fn scroll_by(&mut self, view: View, delta: isize) {
+        let current = self.scroll_offset(view);
+        let next = if delta.is_negative() {
+            current.saturating_sub(delta.unsigned_abs())
+        } else {
+            current.saturating_add(delta as usize)
+        };
+        self.set_scroll_offset(view, next);
+    }
+
+    pub(in crate::tui) fn handle_global_scroll_keys(&mut self, key: KeyEvent) -> bool {
+        if !Self::scrollable(self.view) {
+            return false;
+        }
+        match key.code {
+            KeyCode::PageDown => {
+                self.scroll_by(self.view, 10);
+                true
+            }
+            KeyCode::PageUp => {
+                self.scroll_by(self.view, -10);
+                true
+            }
+            KeyCode::Home => {
+                self.set_scroll_offset(self.view, 0);
+                true
+            }
+            KeyCode::End => {
+                self.scroll_by(self.view, 10_000);
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub(in crate::tui) fn handle_text_input(&mut self, key: KeyEvent) {
         if self.input_fields.is_empty() {
             return;
@@ -83,7 +172,7 @@ impl TuiApp {
         entries
     }
 
-    pub(in crate::tui) fn validate_token(
+    pub(in crate::tui) async fn validate_token(
         &self,
         provider: ProviderKind,
         scope: mirror_core::model::ProviderScope,
@@ -96,7 +185,7 @@ impl TuiApp {
         };
         let registry = ProviderRegistry::new();
         let adapter = registry.provider(provider.clone())?;
-        let scopes = adapter.token_scopes(&runtime_target)?;
+        let scopes = adapter.token_scopes(&runtime_target).await?;
         let help = pat_help(provider.clone());
         let status = match scopes {
             Some(scopes) => {
@@ -115,7 +204,8 @@ impl TuiApp {
                 }
             }
             None => {
-                let token_check_result = crate::token_check::check_token_validity(&runtime_target);
+                let token_check_result =
+                    crate::token_check::check_token_validity_async(&runtime_target).await;
                 crate::token_check::ensure_token_valid(&token_check_result, &runtime_target)
                     .context(
                         "Auth-based token validation failed; verify your token is valid and not expired",
@@ -191,7 +281,7 @@ impl TuiApp {
         }
     }
 
-    pub(in crate::tui) fn sync_status_lines(&self) -> anyhow::Result<Vec<Line<'_>>> {
+    pub(in crate::tui) fn sync_status_lines(&self) -> anyhow::Result<Vec<String>> {
         let cache_path = default_cache_path()?;
         let cache = RepoCache::load(&cache_path).unwrap_or_default();
         let empty_summary = SyncSummarySnapshot::default();
@@ -218,15 +308,12 @@ impl TuiApp {
             let processed = status.map(|s| s.processed_repos).unwrap_or(0);
             let bar = progress_bar(processed.min(total), total, 20);
             let error = last_sync_error(&self.audit, &target.id).unwrap_or_default();
-            lines.push(Line::from(Span::raw(format!(
+            lines.push(format!(
                 "{} | {} | {} | {} | {}",
                 label, state, action, repo, updated
-            ))));
-            lines.push(Line::from(Span::raw(format!(
-                "progress: {}/{} {}",
-                processed, total, bar
-            ))));
-            lines.push(Line::from(Span::raw(format!(
+            ));
+            lines.push(format!("progress: {}/{} {}", processed, total, bar));
+            lines.push(format!(
                 "counts: cl={} ff={} up={} dirty={} div={} fail={} missA={} missR={} missS={}",
                 summary.cloned,
                 summary.fast_forwarded,
@@ -237,11 +324,11 @@ impl TuiApp {
                 summary.missing_archived,
                 summary.missing_removed,
                 summary.missing_skipped
-            ))));
+            ));
             if !error.is_empty() {
-                lines.push(Line::from(Span::raw(format!("last error: {error}"))));
+                lines.push(format!("last error: {error}"));
             }
-            lines.push(Line::from(Span::raw("")));
+            lines.push(String::new());
         }
         Ok(lines)
     }

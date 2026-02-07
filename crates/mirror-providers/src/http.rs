@@ -1,29 +1,28 @@
 use anyhow::{Context, bail};
 use reqwest::StatusCode;
-use reqwest::blocking::{RequestBuilder, Response};
 use reqwest::header::HeaderMap;
-use std::thread::sleep;
+use reqwest::{RequestBuilder, Response};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-pub fn send_with_retry<F>(mut build: F) -> anyhow::Result<Response>
+pub async fn send_with_retry<F>(mut build: F) -> anyhow::Result<Response>
 where
     F: FnMut() -> anyhow::Result<RequestBuilder>,
 {
     let max_attempts = 3;
     for attempt in 1..=max_attempts {
-        let response = build()?.send().context("send request")?;
+        let response = build()?.send().await.context("send request")?;
         let status = response.status();
         if status.is_success() {
             return Ok(response);
         }
         if is_retryable(status) && attempt < max_attempts {
             let delay = retry_delay_from_headers(response.headers());
-            let _ = response.bytes();
+            let _ = response.bytes().await;
             if let Some(delay) = delay {
-                sleep(delay);
+                tokio::time::sleep(delay).await;
                 continue;
             }
-            sleep(Duration::from_secs(1));
+            tokio::time::sleep(Duration::from_secs(1)).await;
             continue;
         }
         return Err(response.error_for_status().unwrap_err().into());
@@ -31,7 +30,7 @@ where
     bail!("request failed after retries");
 }
 
-pub fn send_with_retry_allow_statuses<F>(
+pub async fn send_with_retry_allow_statuses<F>(
     mut build: F,
     allowed: &[StatusCode],
 ) -> anyhow::Result<Response>
@@ -40,19 +39,19 @@ where
 {
     let max_attempts = 3;
     for attempt in 1..=max_attempts {
-        let response = build()?.send().context("send request")?;
+        let response = build()?.send().await.context("send request")?;
         let status = response.status();
         if status.is_success() || allowed.contains(&status) {
             return Ok(response);
         }
         if is_retryable(status) && attempt < max_attempts {
             let delay = retry_delay_from_headers(response.headers());
-            let _ = response.bytes();
+            let _ = response.bytes().await;
             if let Some(delay) = delay {
-                sleep(delay);
+                tokio::time::sleep(delay).await;
                 continue;
             }
-            sleep(Duration::from_secs(1));
+            tokio::time::sleep(Duration::from_secs(1)).await;
             continue;
         }
         return Err(response.error_for_status().unwrap_err().into());

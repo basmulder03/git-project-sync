@@ -49,20 +49,31 @@ pub(in crate::cli) fn handle_service(args: ServiceArgs, audit: &AuditLogger) -> 
     result
 }
 
-pub(in crate::cli) fn handle_health(args: HealthArgs, audit: &AuditLogger) -> anyhow::Result<()> {
-    let result: anyhow::Result<()> = (|| {
+pub(in crate::cli) async fn handle_health(
+    args: HealthArgs,
+    audit: &AuditLogger,
+) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = async {
         let config_path = args.config.unwrap_or(default_config_path()?);
         let (config, migrated) = load_or_migrate(&config_path)?;
         if migrated {
             config.save(&config_path)?;
         }
+        let target_id_ignores_selectors =
+            args.target_id.is_some() && (args.provider.is_some() || !args.scope.is_empty());
 
-        let targets = select_targets(
+        let selection = select_targets_with_precedence(
             &config,
             args.target_id.as_deref(),
             args.provider,
             &args.scope,
         )?;
+        if let Some(warning) = selection.warning.as_deref() {
+            println!("Warning: {warning}");
+        } else if target_id_ignores_selectors {
+            println!("Warning: --target-id takes precedence; ignoring --provider/--scope");
+        }
+        let targets = selection.targets;
         if targets.is_empty() {
             println!("No matching targets found.");
             let audit_id = audit.record(
@@ -88,6 +99,7 @@ pub(in crate::cli) fn handle_health(args: HealthArgs, audit: &AuditLogger) -> an
 
             let outcome = provider
                 .health_check(&runtime_target)
+                .await
                 .or_else(|err| map_provider_error(&runtime_target, err));
             match outcome {
                 Ok(()) => {
@@ -135,7 +147,8 @@ pub(in crate::cli) fn handle_health(args: HealthArgs, audit: &AuditLogger) -> an
             }
         }
         Ok(())
-    })();
+    }
+    .await;
 
     if let Err(err) = &result {
         let _ = audit.record(

@@ -62,6 +62,11 @@ pub(in crate::tui) fn slice_with_scroll(
     lines[start..end].to_vec()
 }
 
+pub(in crate::tui) fn max_scroll_for_lines(content_len: usize, area_height: u16) -> usize {
+    let body_height = area_height.saturating_sub(2) as usize;
+    content_len.saturating_sub(body_height)
+}
+
 pub(in crate::tui) fn clamp_index(index: usize, len: usize) -> usize {
     if len == 0 { 0 } else { index.min(len - 1) }
 }

@@ -54,16 +54,16 @@ fn menu_index_wraps_with_service_item() {
         install_rx: None,
         install_progress: None,
         install_status: None,
-        install_scroll: 0,
         update_rx: None,
         update_progress: None,
         update_prompt: None,
         update_return_view: View::Main,
         restart_requested: false,
         message_return_view: View::Main,
-        audit_scroll: 0,
         audit_search: String::new(),
         audit_search_active: false,
+        view_stack: Vec::new(),
+        scroll_offsets: HashMap::new(),
         repo_overview_selected: 0,
         repo_overview_scroll: 0,
         repo_overview_collapsed: HashSet::new(),
@@ -128,16 +128,16 @@ fn token_menu_enter_moves_to_set_view() {
         install_rx: None,
         install_progress: None,
         install_status: None,
-        install_scroll: 0,
         update_rx: None,
         update_progress: None,
         update_prompt: None,
         update_return_view: View::Main,
         restart_requested: false,
         message_return_view: View::Main,
-        audit_scroll: 0,
         audit_search: String::new(),
         audit_search_active: false,
+        view_stack: Vec::new(),
+        scroll_offsets: HashMap::new(),
         repo_overview_selected: 0,
         repo_overview_scroll: 0,
         repo_overview_collapsed: HashSet::new(),
@@ -205,16 +205,16 @@ fn form_hint_is_present_for_target_add() {
         install_rx: None,
         install_progress: None,
         install_status: None,
-        install_scroll: 0,
         update_rx: None,
         update_progress: None,
         update_prompt: None,
         update_return_view: View::Main,
         restart_requested: false,
         message_return_view: View::Main,
-        audit_scroll: 0,
         audit_search: String::new(),
         audit_search_active: false,
+        view_stack: Vec::new(),
+        scroll_offsets: HashMap::new(),
         repo_overview_selected: 0,
         repo_overview_scroll: 0,
         repo_overview_collapsed: HashSet::new(),
@@ -246,4 +246,112 @@ fn install_action_for_versions_reinstall_when_current() {
 #[test]
 fn dashboard_footer_includes_force_hotkey() {
     assert!(dashboard_footer_text().contains("f: force refresh all"));
+}
+
+#[test]
+fn esc_navigation_returns_to_previous_view() {
+    let tmp = TempDir::new().unwrap();
+    let mut app = TuiApp {
+        config_path: std::path::PathBuf::from("/tmp/config.json"),
+        config: AppConfigV2::default(),
+        view: View::Main,
+        menu_index: 0,
+        message: String::new(),
+        input_index: 0,
+        input_fields: Vec::new(),
+        provider_index: 0,
+        token_menu_index: 0,
+        token_validation: HashMap::new(),
+        audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
+        log_buffer: LogBuffer::new(50),
+        audit_filter: AuditFilter::All,
+        validation_message: None,
+        show_target_stats: false,
+        repo_status: HashMap::new(),
+        repo_status_last_refresh: None,
+        repo_status_refreshing: false,
+        repo_status_rx: None,
+        repo_overview_message: None,
+        sync_running: false,
+        sync_rx: None,
+        install_guard: None,
+        install_rx: None,
+        install_progress: None,
+        install_status: None,
+        update_rx: None,
+        update_progress: None,
+        update_prompt: None,
+        update_return_view: View::Main,
+        restart_requested: false,
+        message_return_view: View::Main,
+        audit_search: String::new(),
+        audit_search_active: false,
+        view_stack: Vec::new(),
+        scroll_offsets: HashMap::new(),
+        repo_overview_selected: 0,
+        repo_overview_scroll: 0,
+        repo_overview_collapsed: HashSet::new(),
+        repo_overview_compact: false,
+    };
+
+    app.navigate_to(View::Targets);
+    app.navigate_to(View::TargetAdd);
+    assert_eq!(app.view, View::TargetAdd);
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()))
+        .unwrap();
+    assert_eq!(app.view, View::Targets);
+}
+
+#[test]
+fn global_scroll_keys_update_view_scroll_offset() {
+    let tmp = TempDir::new().unwrap();
+    let mut app = TuiApp {
+        config_path: std::path::PathBuf::from("/tmp/config.json"),
+        config: AppConfigV2::default(),
+        view: View::Dashboard,
+        menu_index: 0,
+        message: String::new(),
+        input_index: 0,
+        input_fields: Vec::new(),
+        provider_index: 0,
+        token_menu_index: 0,
+        token_validation: HashMap::new(),
+        audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
+        log_buffer: LogBuffer::new(50),
+        audit_filter: AuditFilter::All,
+        validation_message: None,
+        show_target_stats: false,
+        repo_status: HashMap::new(),
+        repo_status_last_refresh: None,
+        repo_status_refreshing: false,
+        repo_status_rx: None,
+        repo_overview_message: None,
+        sync_running: false,
+        sync_rx: None,
+        install_guard: None,
+        install_rx: None,
+        install_progress: None,
+        install_status: None,
+        update_rx: None,
+        update_progress: None,
+        update_prompt: None,
+        update_return_view: View::Main,
+        restart_requested: false,
+        message_return_view: View::Main,
+        audit_search: String::new(),
+        audit_search_active: false,
+        view_stack: Vec::new(),
+        scroll_offsets: HashMap::new(),
+        repo_overview_selected: 0,
+        repo_overview_scroll: 0,
+        repo_overview_collapsed: HashSet::new(),
+        repo_overview_compact: false,
+    };
+
+    app.handle_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::empty()))
+        .unwrap();
+    assert!(app.scroll_offset(View::Dashboard) > 0);
+    app.handle_key(KeyEvent::new(KeyCode::Home, KeyModifiers::empty()))
+        .unwrap();
+    assert_eq!(app.scroll_offset(View::Dashboard), 0);
 }

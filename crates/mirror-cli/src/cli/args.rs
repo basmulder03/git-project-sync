@@ -156,11 +156,21 @@ pub(super) struct DoctorTokenArgs {
 
 #[derive(Parser)]
 pub(super) struct SyncArgs {
-    #[arg(long)]
+    #[arg(
+        long,
+        help = "Target id selector (takes precedence over --provider/--scope)"
+    )]
     pub(super) target_id: Option<String>,
-    #[arg(long, value_enum)]
+    #[arg(
+        long,
+        value_enum,
+        help = "Provider selector (used when --target-id is not set)"
+    )]
     pub(super) provider: Option<ProviderKindValue>,
-    #[arg(long)]
+    #[arg(
+        long,
+        help = "Provider scope selector segments; requires --provider unless --target-id is set"
+    )]
     pub(super) scope: Vec<String>,
     #[arg(long)]
     pub(super) repo: Option<String>,
@@ -279,11 +289,21 @@ pub(super) struct CacheOverviewArgs {
 
 #[derive(Parser)]
 pub(super) struct HealthArgs {
-    #[arg(long)]
+    #[arg(
+        long,
+        help = "Target id selector (takes precedence over --provider/--scope)"
+    )]
     pub(super) target_id: Option<String>,
-    #[arg(long, value_enum)]
+    #[arg(
+        long,
+        value_enum,
+        help = "Provider selector (used when --target-id is not set)"
+    )]
     pub(super) provider: Option<ProviderKindValue>,
-    #[arg(long)]
+    #[arg(
+        long,
+        help = "Provider scope selector segments; requires --provider unless --target-id is set"
+    )]
     pub(super) scope: Vec<String>,
     #[arg(long)]
     pub(super) config: Option<PathBuf>,

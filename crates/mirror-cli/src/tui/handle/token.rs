@@ -105,9 +105,9 @@ impl TuiApp {
                     scope: scope.clone(),
                     host: Some(host.clone()),
                 };
-                let validity = mirror_core::provider::block_on(
-                    crate::token_check::check_token_validity_async(&runtime_target),
-                );
+                let validity = tui_block_on(crate::token_check::check_token_validity_async(
+                    &runtime_target,
+                ));
                 if validity.status != crate::token_check::TokenValidity::Ok {
                     let _ = auth::delete_pat(&account);
                     let mut message = validity.message(&runtime_target);
@@ -121,7 +121,7 @@ impl TuiApp {
                     self.view = View::Message;
                     return Ok(false);
                 }
-                let validation = mirror_core::provider::block_on(self.validate_token(
+                let validation = tui_block_on(self.validate_token(
                     provider.clone(),
                     scope.clone(),
                     Some(host.clone()),
@@ -190,7 +190,7 @@ impl TuiApp {
                 let host = optional_text(&self.input_fields[1].value);
                 let host = host_or_default(host.as_deref(), spec.as_ref());
                 let account = spec.account_key(&host, &scope)?;
-                let validation = mirror_core::provider::block_on(self.validate_token(
+                let validation = tui_block_on(self.validate_token(
                     provider.clone(),
                     scope.clone(),
                     Some(host.clone()),

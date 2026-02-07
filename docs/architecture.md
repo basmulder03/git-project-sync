@@ -20,7 +20,9 @@ The core engine depends on the `RepoProvider` trait. Providers implement:
 - Provider operations are exposed as futures at the boundary.
 - Provider adapters now use async `reqwest::Client` for HTTP calls and retry handling.
 - Core sync orchestration (`run_sync_filtered`) is async and CLI command dispatch awaits async sync/provider operations directly.
-- Synchronous bridging remains only at process entry and synchronous TUI event/job boundaries.
+- Runtime ownership is explicit at synchronous boundaries:
+  - process entry (`main`) owns a Tokio current-thread runtime for async CLI dispatch
+  - synchronous TUI event/job boundaries use a dedicated TUI runtime helper
 
 This isolates provider-specific APIs from the core sync logic.
 Repo inventory records are credential-free; auth is resolved per target during sync.

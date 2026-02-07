@@ -89,7 +89,7 @@ impl TuiApp {
 
         thread::spawn(move || {
             let _lock = lock;
-            let result = mirror_core::provider::block_on(run_tui_sync(
+            let result = tui_block_on(run_tui_sync(
                 &targets,
                 &root,
                 &cache_path,

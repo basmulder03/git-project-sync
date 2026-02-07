@@ -37,19 +37,20 @@ Ship **v2** with a cleaner async architecture, reduced coupling, and stable beha
 
 ### Remaining bridges
 
-- [ ] Process entry bridge in `crates/mirror-cli/src/main.rs`
-- [ ] TUI boundary bridges in:
+- [x] Process entry bridge replaced with explicit Tokio runtime ownership in `crates/mirror-cli/src/main.rs`
+- [x] TUI boundary bridges moved from provider helper shim to explicit TUI runtime helper:
   - `crates/mirror-cli/src/tui/handle/token.rs`
   - `crates/mirror-cli/src/tui/jobs/start.rs`
 
 ## Milestone V2.1 — Final Async Bridge Cleanup
 
-- [ ] Remove process-entry `block_on` bridge
-  - Preferred: explicit runtime ownership in `main` without introducing macro-only runtime assumptions
-- [ ] Reduce or remove TUI boundary bridges
-  - Keep UI responsiveness and background-job behavior unchanged
-  - Ensure token validation and sync runs continue to emit same audit events
-- [ ] Re-run full quality gates
+- [x] Remove process-entry provider bridge
+  - Implemented explicit runtime ownership in `main` using Tokio builder
+- [x] Reduce/remove TUI provider bridges
+  - Replaced provider shim calls with TUI runtime helper at explicit sync boundaries
+  - Preserved UI responsiveness and background-job behavior
+  - Preserved token/sync audit behavior
+- [x] Re-run full quality gates
   - `cargo fmt`
   - `cargo clippy --all-targets --all-features -- -D warnings`
   - `cargo test --all`
@@ -114,4 +115,4 @@ Ship **v2** with a cleaner async architecture, reduced coupling, and stable beha
 - Keep sync safety semantics unchanged for v2
 - Breaking internal APIs are allowed in v2
 - Prefer incremental refactors with green tests at each step
-- Keep bridges only where required by synchronous UI/entry boundaries until fully removed
+- Keep runtime ownership explicit at synchronous UI/entry boundaries where async cannot be threaded through safely

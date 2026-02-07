@@ -33,6 +33,7 @@ use ratatui::{
 };
 use semver::Version;
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::io::{self, Stdout};
 use std::sync::mpsc;
 use std::thread;
@@ -55,6 +56,27 @@ const REPO_STATUS_TTL_SECS: u64 = 600;
 const LOG_PANEL_HEIGHT: u16 = 7;
 const LOG_PANEL_BORDER_HEIGHT: u16 = 2;
 const LOG_HEADER_LINES: usize = 1;
+
+fn tui_block_on<F: Future>(future: F) -> F::Output {
+    thread_local! {
+        static RUNTIME: std::cell::RefCell<Option<tokio::runtime::Runtime>> = const { std::cell::RefCell::new(None) };
+    }
+
+    RUNTIME.with(|cell| {
+        let mut runtime = cell.borrow_mut();
+        if runtime.is_none() {
+            let created = tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .build()
+                .expect("create tui runtime");
+            *runtime = Some(created);
+        }
+        runtime
+            .as_mut()
+            .expect("tui runtime initialized")
+            .block_on(future)
+    })
+}
 
 pub fn run_tui(
     audit: &AuditLogger,

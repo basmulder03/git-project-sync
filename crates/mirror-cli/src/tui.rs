@@ -452,10 +452,7 @@ impl TuiApp {
     fn footer_text(&self) -> String {
         match self.view {
             View::Main => "Up/Down: navigate | Enter: select | q: quit".to_string(),
-            View::Dashboard => {
-                "t: toggle targets | s: sync status | r: sync now | u: check updates | Esc: back"
-                    .to_string()
-            }
+            View::Dashboard => dashboard_footer_text().to_string(),
             View::Install => {
                 let status = crate::install::install_status().ok();
                 let action = install_action_from_status(status.as_ref());
@@ -1482,7 +1479,10 @@ impl TuiApp {
                 self.view = View::SyncStatus;
             }
             KeyCode::Char('r') => {
-                self.start_sync_run()?;
+                self.start_sync_run(false)?;
+            }
+            KeyCode::Char('f') => {
+                self.start_sync_run(true)?;
             }
             KeyCode::Char('u') => {
                 self.start_update_check(View::Dashboard)?;
@@ -2501,7 +2501,7 @@ impl TuiApp {
         Ok(())
     }
 
-    fn start_sync_run(&mut self) -> anyhow::Result<()> {
+    fn start_sync_run(&mut self, force_refresh_all: bool) -> anyhow::Result<()> {
         if self.sync_running {
             warn!("Sync already running");
             self.message = "Sync already running.".to_string();
@@ -2542,11 +2542,16 @@ impl TuiApp {
         self.sync_rx = Some(rx);
         self.sync_running = true;
         self.view = View::SyncStatus;
-        info!(targets = targets.len(), root = %root.display(), "Starting sync");
+        info!(
+            targets = targets.len(),
+            root = %root.display(),
+            force_refresh_all,
+            "Starting sync"
+        );
 
         thread::spawn(move || {
             let _lock = lock;
-            let result = run_tui_sync(&targets, &root, &cache_path, &audit);
+            let result = run_tui_sync(&targets, &root, &cache_path, &audit, force_refresh_all);
             if let Err(err) = &result {
                 let _ = audit.record(
                     "tui.sync.finish",
@@ -3104,6 +3109,10 @@ fn progress_bar(step: usize, total: usize, width: usize) -> String {
     format!("[{}{}]", "#".repeat(filled), "-".repeat(empty))
 }
 
+fn dashboard_footer_text() -> &'static str {
+    "t: toggle targets | s: sync status | r: sync now | f: force refresh all | u: check updates | Esc: back"
+}
+
 fn read_audit_lines(path: &std::path::Path, filter: AuditFilter) -> anyhow::Result<Vec<String>> {
     if !path.exists() {
         return Ok(vec!["No audit log found for today.".to_string()]);
@@ -3124,8 +3133,15 @@ fn run_tui_sync(
     root: &std::path::Path,
     cache_path: &std::path::Path,
     audit: &AuditLogger,
+    force_refresh_all: bool,
 ) -> anyhow::Result<SyncSummary> {
-    let audit_id = audit.record("tui.sync.start", AuditStatus::Ok, Some("tui"), None, None)?;
+    let audit_id = audit.record(
+        "tui.sync.start",
+        AuditStatus::Ok,
+        Some("tui"),
+        Some(serde_json::json!({ "force_refresh_all": force_refresh_all })),
+        None,
+    )?;
     let _ = audit_id;
     let registry = ProviderRegistry::new();
     let mut total = SyncSummary::default();
@@ -3146,7 +3162,7 @@ fn run_tui_sync(
             progress: None,
             jobs: 1,
             detect_missing: true,
-            refresh: false,
+            refresh: force_refresh_all,
             verify: false,
         };
         let summary = match run_sync_filtered(
@@ -3213,6 +3229,7 @@ fn run_tui_sync(
         "missing_archived": total.missing_archived,
         "missing_removed": total.missing_removed,
         "missing_skipped": total.missing_skipped,
+        "force_refresh_all": force_refresh_all,
     });
     let _ = audit.record(
         "tui.sync.finish",
@@ -3597,5 +3614,10 @@ mod tests {
         assert_eq!(action, InstallAction::Reinstall);
         let action = install_action_for_versions(true, Some("1.2.3"), "1.3.0", true);
         assert_eq!(action, InstallAction::Reinstall);
+    }
+
+    #[test]
+    fn dashboard_footer_includes_force_hotkey() {
+        assert!(dashboard_footer_text().contains("f: force refresh all"));
     }
 }

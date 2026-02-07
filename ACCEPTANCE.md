@@ -18,27 +18,29 @@
 11) Remove the remote default branch and re-run sync: verify it logs and skips without modifying the local branch.
 12) Remove a tracked upstream ref and re-run sync: verify it logs orphaned local branches.
 13) Run `sync` twice without `--refresh` and confirm it uses cached repo inventory; then run with `--refresh` to force a fresh provider listing.
-14) Verify archived/disabled repos are skipped by default; run `sync --include-archived` to include them.
-15) Trigger a failing target in daemon mode and confirm a backoff skip is logged on subsequent runs until the backoff window expires.
-16) Register a webhook (`webhook register --provider <provider> --scope <scope> --url <url>`) and verify a success/failure message plus a new audit entry.
-17) Run `sync --verify` and confirm mismatched branch refs are logged without modifying non-default branches.
-18) Run `cache prune` and confirm it removes cache entries for targets no longer in config.
-19) Run `token guide --provider <provider> --scope <scope>` and verify URL + scopes are printed.
-20) Run `token validate --provider <provider> --scope <scope>` and verify missing scopes are reported or validation is skipped when unsupported.
-21) Open the TUI: verify Config and Token screens show guidance text and validation feedback when submitting empty/invalid values.
-22) Run `install` and confirm the daemon service/task is installed; verify delayed start when `--delayed-start` is provided.
-23) Run `install --tui` and confirm the installer screen runs the same flow.
-24) Run `install --path add` and confirm PATH registration message is shown.
-25) Run `mirror-cli` with no args: if not installed, installer opens; if installed, help is shown.
-26) Re-run `install` with a newer binary and confirm it replaces the existing install in the OS default location and restarts the service using that path.
-27) Run `install --status` and confirm it prints install path, service/task state, and PATH status.
-28) Run `sync --status` and confirm live progress output and final summary.
-29) In the TUI dashboard, press `s` to open Sync Status and confirm current action/repo/counts are shown.
-30) Run `sync` and confirm per-repo audit entries are created (e.g., `sync.repo` or `daemon.sync.repo`).
-31) Start the daemon and confirm an update check is logged on startup, then daily.
-32) Run the CLI before any daemon check and confirm it performs a one-time update check; subsequent CLI runs should skip if daemon has checked.
-33) Simulate no network and confirm update checks are audited as skipped and do not fail the daemon.
-34) Trigger an update with insufficient permissions and confirm the CLI prompts to re-run with elevated permissions.
-35) Set an invalid PAT and confirm `token set` rejects it and the token is not stored.
-36) Run the daemon and confirm daily PAT validity checks are audited; expired tokens print a warning.
-37) Run the CLI before any daemon token check and confirm it performs a one-time PAT validity check; subsequent CLI runs should skip if the daemon has checked.
+14) Run `sync --force-refresh-all` and confirm it bypasses repo inventory cache and syncs all configured targets/repos even when selector flags are provided.
+15) In TUI Dashboard, press `f` and confirm a forced full refresh run starts (fresh provider listing across all targets).
+16) Verify archived/disabled repos are skipped by default; run `sync --include-archived` to include them.
+17) Trigger a failing target in daemon mode and confirm a backoff skip is logged on subsequent runs until the backoff window expires.
+18) Register a webhook (`webhook register --provider <provider> --scope <scope> --url <url>`) and verify a success/failure message plus a new audit entry.
+19) Run `sync --verify` and confirm mismatched branch refs are logged without modifying non-default branches.
+20) Run `cache prune` and confirm it removes cache entries for targets no longer in config.
+21) Run `token guide --provider <provider> --scope <scope>` and verify URL + scopes are printed.
+22) Run `token validate --provider <provider> --scope <scope>` and verify missing scopes are reported or validation is skipped when unsupported.
+23) Open the TUI: verify Config and Token screens show guidance text and validation feedback when submitting empty/invalid values.
+24) Run `install` and confirm the daemon service/task is installed; verify delayed start when `--delayed-start` is provided.
+25) Run `install --tui` and confirm the installer screen runs the same flow.
+26) Run `install --path add` and confirm PATH registration message is shown.
+27) Run `mirror-cli` with no args: if not installed, installer opens; if installed, help is shown.
+28) Re-run `install` with a newer binary and confirm it replaces the existing install in the OS default location and restarts the service using that path.
+29) Run `install --status` and confirm it prints install path, service/task state, and PATH status.
+30) Run `sync --status` and confirm live progress output and final summary.
+31) In the TUI dashboard, press `s` to open Sync Status and confirm current action/repo/counts are shown.
+32) Run `sync` and confirm per-repo audit entries are created (e.g., `sync.repo` or `daemon.sync.repo`).
+33) Start the daemon and confirm an update check is logged on startup, then daily.
+34) Run the CLI before any daemon check and confirm it performs a one-time update check; subsequent CLI runs should skip if daemon has checked.
+35) Simulate no network and confirm update checks are audited as skipped and do not fail the daemon.
+36) Trigger an update with insufficient permissions and confirm the CLI prompts to re-run with elevated permissions.
+37) Set an invalid PAT and confirm `token set` rejects it and the token is not stored.
+38) Run the daemon and confirm daily PAT validity checks are audited; expired tokens print a warning.
+39) Run the CLI before any daemon token check and confirm it performs a one-time PAT validity check; subsequent CLI runs should skip if the daemon has checked.

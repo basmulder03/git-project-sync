@@ -81,6 +81,12 @@ Run a sync:
 mirror-cli sync
 ```
 
+Force-refresh all configured targets and repos (ignores target/scope/repo filters):
+
+```bash
+mirror-cli sync --force-refresh-all
+```
+
 Live status for sync:
 
 ```bash
@@ -137,6 +143,7 @@ mirror-cli tui --dashboard
 
 In the TUI:
 - Dashboard view: press `s` for Sync Status
+- Dashboard view: press `f` for Force Refresh All
 - Setup view: press `s` for Setup Status
 
 ## Scope Shapes

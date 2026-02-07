@@ -1,5 +1,14 @@
 # PLANS.md
 
+## Milestone 52 — Force Refresh All (completed)
+
+- [x] Add `sync --force-refresh-all` CLI flag
+- [x] Force full target/repo selection in CLI when enabled (ignore target/scope/repo selectors)
+- [x] Force provider inventory refresh for forced runs
+- [x] Add TUI Dashboard hotkey `f` for forced full refresh run
+- [x] Include forced-run marker in CLI/TUI audit payloads
+- [x] Update README and acceptance checklist
+
 ## Milestone 51 — GitHub CI + Release + Self-Update (in progress)
 
 - [x] Add GitHub Actions CI workflow (fmt, clippy, test, build)

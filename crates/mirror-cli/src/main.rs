@@ -192,6 +192,11 @@ struct SyncArgs {
     repo: Option<String>,
     #[arg(long)]
     refresh: bool,
+    #[arg(
+        long,
+        help = "Force a full refresh across all configured targets/repos; ignores --target-id/--provider/--scope/--repo"
+    )]
+    force_refresh_all: bool,
     #[arg(long)]
     include_archived: bool,
     #[arg(long)]
@@ -1000,6 +1005,16 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
         if args.non_interactive && args.missing_remote == MissingRemotePolicyValue::Prompt {
             anyhow::bail!("non-interactive mode requires --missing-remote policy");
         }
+        let force_refresh_all = args.force_refresh_all;
+        let force_ignores_selectors = args.target_id.is_some()
+            || args.provider.is_some()
+            || !args.scope.is_empty()
+            || args.repo.is_some();
+        if force_refresh_all && force_ignores_selectors {
+            println!(
+                "Warning: --force-refresh-all ignores --target-id/--provider/--scope/--repo and syncs all configured targets/repos."
+            );
+        }
 
         let config_path = args.config.unwrap_or(default_config_path()?);
         let cache_path = args.cache.unwrap_or(default_cache_path()?);
@@ -1008,12 +1023,16 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
             config.save(&config_path)?;
         }
         if args.status_only {
-            let targets = select_targets(
-                &config,
-                args.target_id.as_deref(),
-                args.provider,
-                &args.scope,
-            )?;
+            let targets = if force_refresh_all {
+                config.targets.clone()
+            } else {
+                select_targets(
+                    &config,
+                    args.target_id.as_deref(),
+                    args.provider,
+                    &args.scope,
+                )?
+            };
             if targets.is_empty() {
                 println!("No matching targets found.");
                 let audit_id = audit.record(
@@ -1037,12 +1056,16 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
             .as_ref()
             .context("config missing root; run config init")?;
 
-        let targets = select_targets(
-            &config,
-            args.target_id.as_deref(),
-            args.provider,
-            &args.scope,
-        )?;
+        let targets = if force_refresh_all {
+            config.targets.clone()
+        } else {
+            select_targets(
+                &config,
+                args.target_id.as_deref(),
+                args.provider,
+                &args.scope,
+            )?
+        };
         if targets.is_empty() {
             println!("No matching targets found.");
             let audit_id = audit.record(
@@ -1095,7 +1118,7 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
             } else {
                 None
             };
-            let summary = if let Some(repo_name) = args.repo.as_ref() {
+            let summary = if !force_refresh_all && let Some(repo_name) = args.repo.as_ref() {
                 let repo_name = repo_name.clone();
                 let filter = move |remote: &mirror_core::model::RemoteRepo| {
                     let matches = remote.name == repo_name || remote.id == repo_name;
@@ -1109,7 +1132,7 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                     progress,
                     jobs: args.jobs,
                     detect_missing: false,
-                    refresh: args.refresh,
+                    refresh: args.refresh || force_refresh_all,
                     verify: args.verify,
                 };
                 run_sync_filtered(
@@ -1130,7 +1153,7 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
                     progress,
                     jobs: args.jobs,
                     detect_missing: true,
-                    refresh: args.refresh,
+                    refresh: args.refresh || force_refresh_all,
                     verify: args.verify,
                 };
                 run_sync_filtered(
@@ -1199,6 +1222,7 @@ fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
             "missing_archived": total.missing_archived,
             "missing_removed": total.missing_removed,
             "missing_skipped": total.missing_skipped,
+            "force_refresh_all": force_refresh_all,
         });
         let audit_id = audit.record(
             "sync.run",
@@ -2787,6 +2811,15 @@ mod tests {
     fn check_updates_flag_parses() {
         let cli = Cli::try_parse_from(["mirror-cli", "--check-updates", "sync"]).unwrap();
         assert!(cli.check_updates);
+    }
+
+    #[test]
+    fn sync_force_refresh_all_parses() {
+        let cli = Cli::try_parse_from(["mirror-cli", "sync", "--force-refresh-all"]).unwrap();
+        match cli.command {
+            Commands::Sync(args) => assert!(args.force_refresh_all),
+            _ => panic!("expected sync command"),
+        }
     }
 
     #[test]

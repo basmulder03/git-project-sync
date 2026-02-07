@@ -137,7 +137,11 @@ Ship **v2** with a cleaner async architecture, reduced coupling, and stable beha
   - migration behavior
 - [x] Final release checklist run
   - fmt/clippy/tests
-  - manual smoke checks for sync/daemon/TUI token flows (documented in acceptance; execution pending)
+  - manual smoke checks for sync/daemon/TUI token flows
+  - sandbox smoke subset executed on 2026-02-07 (isolated HOME/XDG):
+    - config/target/sync-status/daemon-run-once/token-doctor/install-status
+    - selector precedence warnings verified for `sync` and `health`
+  - remaining manual checks requiring interactive TUI and external provider network/token access must be run in real operator environment
 
 ## Non-Negotiable Behavior (Must Hold)
 

@@ -59,6 +59,8 @@ pub(in crate::cli) async fn handle_health(
         if migrated {
             config.save(&config_path)?;
         }
+        let target_id_ignores_selectors =
+            args.target_id.is_some() && (args.provider.is_some() || !args.scope.is_empty());
 
         let selection = select_targets_with_precedence(
             &config,
@@ -68,6 +70,8 @@ pub(in crate::cli) async fn handle_health(
         )?;
         if let Some(warning) = selection.warning.as_deref() {
             println!("Warning: {warning}");
+        } else if target_id_ignores_selectors {
+            println!("Warning: --target-id takes precedence; ignoring --provider/--scope");
         }
         let targets = selection.targets;
         if targets.is_empty() {

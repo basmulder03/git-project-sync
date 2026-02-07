@@ -13,6 +13,8 @@ pub(super) async fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::
             || args.provider.is_some()
             || !args.scope.is_empty()
             || args.repo.is_some();
+        let target_id_ignores_selectors = args.target_id.is_some()
+            && (args.provider.is_some() || !args.scope.is_empty());
 
         let config_path = args.config.unwrap_or(default_config_path()?);
         let cache_path = args.cache.unwrap_or(default_cache_path()?);
@@ -43,6 +45,8 @@ pub(super) async fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::
         };
         if let Some(warning) = selection.warning.as_deref() {
             println!("Warning: {warning}");
+        } else if !force_refresh_all && target_id_ignores_selectors {
+            println!("Warning: --target-id takes precedence; ignoring --provider/--scope");
         }
 
         if args.status_only {

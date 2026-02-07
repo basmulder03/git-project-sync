@@ -70,6 +70,22 @@ Logs are rotated by file size and stored under OS data directory.
 - CLI is built with clap subcommands and maps directly to core functions.
 - TUI is built with ratatui/crossterm and provides forms for config, targets, tokens, audit, and dashboard.
 - TUI includes guided validation hints and inline feedback.
+- TUI interaction model is unified:
+  - stack-based view transitions for back navigation (`Esc` => previous screen)
+  - per-view scroll state with global overflow keys (`PgUp/PgDn/Home/End`)
+  - consistent footer conventions for back/scroll/action hints
+
+## v2 internal refactor highlights
+
+- `sync_engine` responsibilities are decomposed into focused modules:
+  - orchestration (`sync_engine_orchestrator`)
+  - workers (`sync_engine_workers`)
+  - outcome application (`sync_engine_apply`)
+  - missing-remote event/status handling (`sync_engine_missing_events`)
+  - work-item path preparation (`sync_engine_work_items`)
+- Cache internals are split into dedicated modules:
+  - migration/backoff/inventory/runtime/health
+- CLI selector resolution is centralized for `sync` and `health` with explicit precedence warnings.
 
 ## Dashboard
 

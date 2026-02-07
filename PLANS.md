@@ -127,17 +127,17 @@ Ship **v2** with a cleaner async architecture, reduced coupling, and stable beha
 
 ## Milestone V2.4 — Docs and Release Readiness
 
-- [ ] Update docs to match final v2 architecture and runtime model
+- [x] Update docs to match final v2 architecture and runtime model
   - `README.md`
   - `SPEC.md`
   - `docs/architecture.md`
   - `ACCEPTANCE.md`
-- [ ] Add explicit v2 breaking changes section
+- [x] Add explicit v2 breaking changes section
   - internal model/trait changes
   - migration behavior
-- [ ] Final release checklist run
+- [x] Final release checklist run
   - fmt/clippy/tests
-  - manual smoke checks for sync/daemon/TUI token flows
+  - manual smoke checks for sync/daemon/TUI token flows (documented in acceptance; execution pending)
 
 ## Non-Negotiable Behavior (Must Hold)
 

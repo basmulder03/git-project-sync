@@ -60,12 +60,16 @@ pub(in crate::cli) async fn handle_health(
             config.save(&config_path)?;
         }
 
-        let targets = select_targets(
+        let selection = select_targets_with_precedence(
             &config,
             args.target_id.as_deref(),
             args.provider,
             &args.scope,
         )?;
+        if let Some(warning) = selection.warning.as_deref() {
+            println!("Warning: {warning}");
+        }
+        let targets = selection.targets;
         if targets.is_empty() {
             println!("No matching targets found.");
             let audit_id = audit.record(

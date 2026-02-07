@@ -1,6 +1,6 @@
 use super::shared::{
     accumulate_summary, audit_repo_progress, map_azdo_error, print_summary, print_sync_status,
-    prompt_action, render_sync_progress, select_targets,
+    prompt_action, render_sync_progress, select_targets_with_precedence,
 };
 use super::*;
 pub(super) async fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
@@ -13,11 +13,6 @@ pub(super) async fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::
             || args.provider.is_some()
             || !args.scope.is_empty()
             || args.repo.is_some();
-        if force_refresh_all && force_ignores_selectors {
-            println!(
-                "Warning: --force-refresh-all ignores --target-id/--provider/--scope/--repo and syncs all configured targets/repos."
-            );
-        }
 
         let config_path = args.config.unwrap_or(default_config_path()?);
         let cache_path = args.cache.unwrap_or(default_cache_path()?);
@@ -25,17 +20,33 @@ pub(super) async fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::
         if migrated {
             config.save(&config_path)?;
         }
-        if args.status_only {
-            let targets = if force_refresh_all {
-                config.targets.clone()
+        let selection = if force_refresh_all {
+            let warning = if force_ignores_selectors {
+                Some(
+                    "--force-refresh-all ignores --target-id/--provider/--scope/--repo and syncs all configured targets/repos."
+                        .to_string(),
+                )
             } else {
-                select_targets(
-                    &config,
-                    args.target_id.as_deref(),
-                    args.provider,
-                    &args.scope,
-                )?
+                None
             };
+            super::shared::TargetSelection {
+                targets: config.targets.clone(),
+                warning,
+            }
+        } else {
+            select_targets_with_precedence(
+                &config,
+                args.target_id.as_deref(),
+                args.provider,
+                &args.scope,
+            )?
+        };
+        if let Some(warning) = selection.warning.as_deref() {
+            println!("Warning: {warning}");
+        }
+
+        if args.status_only {
+            let targets = selection.targets.clone();
             if targets.is_empty() {
                 println!("No matching targets found.");
                 let audit_id = audit.record(
@@ -59,16 +70,7 @@ pub(super) async fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::
             .as_ref()
             .context("config missing root; run config init")?;
 
-        let targets = if force_refresh_all {
-            config.targets.clone()
-        } else {
-            select_targets(
-                &config,
-                args.target_id.as_deref(),
-                args.provider,
-                &args.scope,
-            )?
-        };
+        let targets = selection.targets;
         if targets.is_empty() {
             println!("No matching targets found.");
             let audit_id = audit.record(

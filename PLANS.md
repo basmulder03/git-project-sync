@@ -109,11 +109,14 @@ Ship **v2** with a cleaner async architecture, reduced coupling, and stable beha
 
 ## Milestone V2.3 — CLI Surface Cleanup
 
-- [ ] Normalize selector UX in CLI args
+- [x] Normalize selector UX in CLI args
   - target-id first
   - provider/scope tuple rules consistent
-- [ ] Remove duplicated argument validation paths
-- [ ] Ensure help text matches actual precedence and behavior
+- [x] Remove duplicated argument validation paths
+- [x] Ensure help text matches actual precedence and behavior
+  - shared selector resolution now emits explicit precedence warning
+  - `sync` and `health` both use `select_targets_with_precedence`
+  - CLI help text updated for `sync`/`health` selector precedence and scope requirements
 
 ## Milestone V2.4 — Docs and Release Readiness
 

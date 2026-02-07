@@ -1,4 +1,10 @@
 use super::*;
+
+#[derive(Debug)]
+pub(in crate::cli) struct TargetSelection {
+    pub(in crate::cli) targets: Vec<TargetConfig>,
+    pub(in crate::cli) warning: Option<String>,
+}
 pub(in crate::cli) async fn run_sync_job(
     config_path: &Path,
     cache_path: &Path,
@@ -152,17 +158,22 @@ pub(in crate::cli) async fn run_sync_job(
     Ok(())
 }
 
-pub(in crate::cli) fn select_targets(
+pub(in crate::cli) fn select_targets_with_precedence(
     config: &AppConfigV2,
     target_id: Option<&str>,
     provider: Option<ProviderKindValue>,
     scope: &[String],
-) -> anyhow::Result<Vec<TargetConfig>> {
+) -> anyhow::Result<TargetSelection> {
     let mut targets = config.targets.clone();
 
     if let Some(target_id) = target_id {
         targets.retain(|target| target.id == target_id);
-        return Ok(targets);
+        let warning = if provider.is_some() || !scope.is_empty() {
+            Some("--target-id takes precedence; ignoring --provider/--scope".to_string())
+        } else {
+            None
+        };
+        return Ok(TargetSelection { targets, warning });
     }
 
     let provider_kind = provider.map(ProviderKind::from);
@@ -180,7 +191,10 @@ pub(in crate::cli) fn select_targets(
         targets.retain(|target| target.scope == scope);
     }
 
-    Ok(targets)
+    Ok(TargetSelection {
+        targets,
+        warning: None,
+    })
 }
 
 pub(in crate::cli) fn prompt_action(entry: &RepoCacheEntry) -> anyhow::Result<DeletedRepoAction> {
@@ -228,4 +242,58 @@ pub(in crate::cli) fn accumulate_summary(total: &mut SyncSummary, summary: SyncS
     total.missing_archived += summary.missing_archived;
     total.missing_removed += summary.missing_removed;
     total.missing_skipped += summary.missing_skipped;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config() -> AppConfigV2 {
+        let gh_scope = ProviderScope::new(vec!["octo-org".into()]).unwrap();
+        let gl_scope = ProviderScope::new(vec!["group".into()]).unwrap();
+        AppConfigV2 {
+            version: 2,
+            root: None,
+            targets: vec![
+                TargetConfig {
+                    id: "t1".into(),
+                    provider: ProviderKind::GitHub,
+                    scope: gh_scope,
+                    host: None,
+                    labels: vec![],
+                },
+                TargetConfig {
+                    id: "t2".into(),
+                    provider: ProviderKind::GitLab,
+                    scope: gl_scope,
+                    host: None,
+                    labels: vec![],
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn target_id_takes_precedence_over_provider_scope() {
+        let cfg = test_config();
+        let selected = select_targets_with_precedence(
+            &cfg,
+            Some("t1"),
+            Some(ProviderKindValue::GitLab),
+            &["group".into()],
+        )
+        .unwrap();
+        assert_eq!(selected.targets.len(), 1);
+        assert_eq!(selected.targets[0].id, "t1");
+        assert!(selected.warning.is_some());
+    }
+
+    #[test]
+    fn scope_without_provider_errors() {
+        let cfg = test_config();
+        let err = select_targets_with_precedence(&cfg, None, None, &["octo-org".into()])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("--scope requires --provider"));
+    }
 }

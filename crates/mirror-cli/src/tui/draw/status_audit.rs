@@ -2,7 +2,7 @@ use super::*;
 
 impl TuiApp {
     pub(in crate::tui) fn draw_install_progress(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
     ) {
@@ -18,30 +18,39 @@ impl TuiApp {
             ))));
             lines.push(Line::from(Span::raw("")));
             for line in &progress.messages {
-                lines.push(Line::from(Span::raw(line)));
+                lines.push(Line::from(Span::raw(line.clone())));
             }
         } else {
             lines.push(Line::from(Span::raw("Starting installer...")));
         }
+        let max_scroll = max_scroll_for_lines(lines.len(), area.height);
+        let scroll = self.scroll_offset(View::InstallProgress).min(max_scroll);
+        self.set_scroll_offset(View::InstallProgress, scroll);
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0))
             .block(Block::default().borders(Borders::ALL).title("Setup"));
         frame.render_widget(widget, area);
     }
 
     pub(in crate::tui) fn draw_update_prompt(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
     ) {
+        let lines = self.message.lines().count().max(1);
+        let max_scroll = max_scroll_for_lines(lines, area.height);
+        let scroll = self.scroll_offset(View::UpdatePrompt).min(max_scroll);
+        self.set_scroll_offset(View::UpdatePrompt, scroll);
         let widget = Paragraph::new(self.message.clone())
             .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0))
             .block(Block::default().borders(Borders::ALL).title("Update"));
         frame.render_widget(widget, area);
     }
 
     pub(in crate::tui) fn draw_update_progress(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
     ) {
@@ -51,19 +60,23 @@ impl TuiApp {
         ];
         if let Some(progress) = &self.update_progress {
             for line in &progress.messages {
-                lines.push(Line::from(Span::raw(line)));
+                lines.push(Line::from(Span::raw(line.clone())));
             }
         } else {
             lines.push(Line::from(Span::raw("Starting update...")));
         }
+        let max_scroll = max_scroll_for_lines(lines.len(), area.height);
+        let scroll = self.scroll_offset(View::UpdateProgress).min(max_scroll);
+        self.set_scroll_offset(View::UpdateProgress, scroll);
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0))
             .block(Block::default().borders(Borders::ALL).title("Update"));
         frame.render_widget(widget, area);
     }
 
     pub(in crate::tui) fn draw_install_status(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
     ) {
@@ -157,9 +170,9 @@ impl TuiApp {
         } else {
             lines.push(Line::from(Span::raw("Status unavailable.")));
         }
-        let body_height = area.height.saturating_sub(2) as usize;
-        let max_scroll = lines.len().saturating_sub(body_height);
-        let scroll = self.install_scroll.min(max_scroll);
+        let max_scroll = max_scroll_for_lines(lines.len(), area.height);
+        let scroll = self.scroll_offset(View::InstallStatus).min(max_scroll);
+        self.set_scroll_offset(View::InstallStatus, scroll);
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .scroll((scroll as u16, 0))
@@ -168,7 +181,7 @@ impl TuiApp {
     }
 
     pub(in crate::tui) fn draw_sync_status(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
     ) {
@@ -177,11 +190,13 @@ impl TuiApp {
             Line::from(Span::raw("")),
         ];
         match self.sync_status_lines() {
-            Ok(mut status_lines) => {
+            Ok(status_lines) => {
                 if status_lines.is_empty() {
                     lines.push(Line::from(Span::raw("No targets configured.")));
                 } else {
-                    lines.append(&mut status_lines);
+                    for line in status_lines {
+                        lines.push(Line::from(Span::raw(line)));
+                    }
                 }
             }
             Err(err) => {
@@ -190,8 +205,12 @@ impl TuiApp {
                 ))));
             }
         }
+        let max_scroll = max_scroll_for_lines(lines.len(), area.height);
+        let scroll = self.scroll_offset(View::SyncStatus).min(max_scroll);
+        self.set_scroll_offset(View::SyncStatus, scroll);
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0))
             .block(Block::default().borders(Borders::ALL).title("Sync Status"));
         frame.render_widget(widget, area);
     }
@@ -251,9 +270,9 @@ impl TuiApp {
 
         let body_height = layout[1].height as usize;
         let max_scroll = lines.len().saturating_sub(body_height);
-        let scroll = self.audit_scroll.min(max_scroll);
-        self.audit_scroll = scroll;
-        let visible_lines = slice_with_scroll(&lines, self.audit_scroll, body_height);
+        let scroll = self.scroll_offset(View::AuditLog).min(max_scroll);
+        self.set_scroll_offset(View::AuditLog, scroll);
+        let visible_lines = slice_with_scroll(&lines, scroll, body_height);
         let list_items: Vec<ListItem> = visible_lines
             .into_iter()
             .map(|line| ListItem::new(Line::from(Span::raw(line))))

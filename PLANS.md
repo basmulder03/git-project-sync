@@ -117,6 +117,13 @@ Ship **v2** with a cleaner async architecture, reduced coupling, and stable beha
   - shared selector resolution now emits explicit precedence warning
   - `sync` and `health` both use `select_targets_with_precedence`
   - CLI help text updated for `sync`/`health` selector precedence and scope requirements
+- [x] Unify TUI screen behavior across layout/navigation/naming
+  - added stack-based navigation with consistent `Esc => previous screen`
+  - standardized footer help to include global scroll behavior
+  - harmonized screen titles in token/service surfaces
+- [x] Enable automatic overflow scrolling across TUI screens
+  - added per-view scroll state map and shared global scroll keys (`PgUp/PgDn/Home/End`)
+  - wired major paragraph/list screens to clamp + render with vertical scroll offsets
 
 ## Milestone V2.4 — Docs and Release Readiness
 

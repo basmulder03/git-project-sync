@@ -3,9 +3,7 @@ use super::*;
 impl TuiApp {
     pub(in crate::tui) fn handle_message(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
         if key.code == KeyCode::Enter {
-            let return_view = self.message_return_view;
-            self.message_return_view = View::Main;
-            self.view = return_view;
+            self.go_back();
         }
         Ok(false)
     }
@@ -16,11 +14,11 @@ impl TuiApp {
                 KeyCode::Esc => {
                     self.audit_search.clear();
                     self.audit_search_active = false;
-                    self.audit_scroll = 0;
+                    self.set_scroll_offset(View::AuditLog, 0);
                 }
                 KeyCode::Enter => {
                     self.audit_search_active = false;
-                    self.audit_scroll = 0;
+                    self.set_scroll_offset(View::AuditLog, 0);
                 }
                 KeyCode::Backspace => {
                     self.audit_search.pop();
@@ -39,29 +37,29 @@ impl TuiApp {
             KeyCode::Esc => self.view = View::Main,
             KeyCode::Char('f') => {
                 self.audit_filter = AuditFilter::Failures;
-                self.audit_scroll = 0;
+                self.set_scroll_offset(View::AuditLog, 0);
             }
             KeyCode::Char('a') => {
                 self.audit_filter = AuditFilter::All;
-                self.audit_scroll = 0;
+                self.set_scroll_offset(View::AuditLog, 0);
             }
             KeyCode::Char('/') => {
                 self.audit_search_active = true;
             }
             KeyCode::Down => {
-                self.audit_scroll = self.audit_scroll.saturating_add(1);
+                self.scroll_by(View::AuditLog, 1);
             }
             KeyCode::Up => {
-                self.audit_scroll = self.audit_scroll.saturating_sub(1);
+                self.scroll_by(View::AuditLog, -1);
             }
             KeyCode::PageDown => {
-                self.audit_scroll = self.audit_scroll.saturating_add(10);
+                self.scroll_by(View::AuditLog, 10);
             }
             KeyCode::PageUp => {
-                self.audit_scroll = self.audit_scroll.saturating_sub(10);
+                self.scroll_by(View::AuditLog, -10);
             }
             KeyCode::Home => {
-                self.audit_scroll = 0;
+                self.set_scroll_offset(View::AuditLog, 0);
             }
             _ => {}
         }
@@ -98,7 +96,7 @@ impl TuiApp {
                         self.message = format!("Install failed: {err}");
                     }
                 }
-                self.view = View::Message;
+                self.navigate_to(View::Message);
             }
             KeyCode::Char('u') => {
                 info!("Service uninstall requested");
@@ -128,7 +126,7 @@ impl TuiApp {
                         self.message = format!("Uninstall failed: {err}");
                     }
                 }
-                self.view = View::Message;
+                self.navigate_to(View::Message);
             }
             _ => {}
         }
@@ -150,7 +148,7 @@ impl TuiApp {
                 } else {
                     self.message = "No update available.".to_string();
                     self.message_return_view = self.update_return_view;
-                    self.view = View::Message;
+                    self.navigate_to(View::Message);
                 }
             }
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
@@ -172,14 +170,11 @@ impl TuiApp {
     pub(in crate::tui) fn handle_install_status(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
         match key.code {
             KeyCode::Enter | KeyCode::Esc => {
-                self.install_scroll = 0;
-                self.view = View::Install;
+                self.set_scroll_offset(View::Install, 0);
+                self.navigate_to(View::Install);
             }
-            KeyCode::Down => self.install_scroll = self.install_scroll.saturating_add(1),
-            KeyCode::Up => self.install_scroll = self.install_scroll.saturating_sub(1),
-            KeyCode::PageDown => self.install_scroll = self.install_scroll.saturating_add(10),
-            KeyCode::PageUp => self.install_scroll = self.install_scroll.saturating_sub(10),
-            KeyCode::Home => self.install_scroll = 0,
+            KeyCode::Down => self.scroll_by(View::InstallStatus, 1),
+            KeyCode::Up => self.scroll_by(View::InstallStatus, -1),
             _ => {}
         }
         Ok(false)

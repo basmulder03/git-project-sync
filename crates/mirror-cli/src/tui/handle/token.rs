@@ -13,10 +13,10 @@ impl TuiApp {
                 }
             }
             KeyCode::Enter => match self.token_menu_index {
-                0 => self.view = View::TokenList,
+                0 => self.navigate_to(View::TokenList),
                 1 => {
                     self.validation_message = None;
-                    self.view = View::TokenSet;
+                    self.navigate_to(View::TokenSet);
                     self.input_fields = vec![
                         InputField::new("Scope (space-separated)"),
                         InputField::new("Host (optional)"),
@@ -27,7 +27,7 @@ impl TuiApp {
                 }
                 2 => {
                     self.validation_message = None;
-                    self.view = View::TokenValidate;
+                    self.navigate_to(View::TokenValidate);
                     self.input_fields = vec![
                         InputField::new("Scope (space-separated)"),
                         InputField::new("Host (optional)"),
@@ -85,7 +85,7 @@ impl TuiApp {
                     warn!(account = %account, "Token missing in token set");
                     self.validation_message = Some("Token cannot be empty.".to_string());
                     self.message = "Token cannot be empty.".to_string();
-                    self.view = View::Message;
+                    self.navigate_to(View::Message);
                     return Ok(false);
                 }
                 auth::set_pat(&account, &token)?;
@@ -97,7 +97,7 @@ impl TuiApp {
                     warn!(account = %account, error = %message, "Token read-back failed");
                     self.validation_message = Some(message.clone());
                     self.message = message;
-                    self.view = View::Message;
+                    self.navigate_to(View::Message);
                     return Ok(false);
                 }
                 let runtime_target = mirror_core::model::ProviderTarget {
@@ -118,7 +118,7 @@ impl TuiApp {
                     warn!(account = %account, status = ?validity.status, "Token validity check failed");
                     self.validation_message = Some(message.clone());
                     self.message = message;
-                    self.view = View::Message;
+                    self.navigate_to(View::Message);
                     return Ok(false);
                 }
                 let validation = tui_block_on(self.validate_token(
@@ -152,7 +152,7 @@ impl TuiApp {
                 self.message = format!(
                     "Token stored for {account}. {validation_message}. Audit ID: {audit_id}"
                 );
-                self.view = View::Message;
+                self.navigate_to(View::Message);
             }
             _ => self.handle_text_input(key),
         }
@@ -247,7 +247,7 @@ impl TuiApp {
                         self.message = format!("Validation failed: {err}");
                     }
                 }
-                self.view = View::Message;
+                self.navigate_to(View::Message);
             }
             _ => self.handle_text_input(key),
         }

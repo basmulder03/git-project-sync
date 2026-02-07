@@ -157,7 +157,7 @@ fn run_app(
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum View {
     Main,
     Dashboard,
@@ -307,14 +307,14 @@ struct TuiApp {
     install_rx: Option<mpsc::Receiver<InstallEvent>>,
     install_progress: Option<InstallProgressState>,
     install_status: Option<crate::install::InstallStatus>,
-    install_scroll: usize,
     update_rx: Option<mpsc::Receiver<UpdateEvent>>,
     update_progress: Option<UpdateProgressState>,
     update_prompt: Option<update::UpdateCheck>,
     update_return_view: View,
     restart_requested: bool,
     message_return_view: View,
-    audit_scroll: usize,
     audit_search: String,
     audit_search_active: bool,
+    view_stack: Vec<View>,
+    scroll_offsets: HashMap<View, usize>,
 }

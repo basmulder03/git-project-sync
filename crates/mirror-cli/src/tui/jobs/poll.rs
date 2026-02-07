@@ -43,7 +43,7 @@ impl TuiApp {
                             self.message = format!("Install failed: {err}");
                         }
                     }
-                    self.view = View::Message;
+                    self.navigate_to(View::Message);
                     done = true;
                 }
             }
@@ -125,7 +125,7 @@ impl TuiApp {
                     self.message = format!("Sync failed:\n{error_text}");
                 }
             }
-            self.view = View::Message;
+            self.navigate_to(View::Message);
             done = true;
         }
         if !done {
@@ -159,27 +159,27 @@ impl TuiApp {
                             if !check.is_newer {
                                 self.message = format!("Up to date ({})", check.current);
                                 self.message_return_view = self.update_return_view;
-                                self.view = View::Message;
+                                self.navigate_to(View::Message);
                             } else if check.asset.is_none() {
                                 self.message =
                                     "Update available but no asset found for this platform."
                                         .to_string();
                                 self.message_return_view = self.update_return_view;
-                                self.view = View::Message;
+                                self.navigate_to(View::Message);
                             } else {
                                 self.message = format!(
                                     "Update available: {} -> {}\nApply update? (y/n)",
                                     check.current, check.latest
                                 );
                                 self.update_prompt = Some(check);
-                                self.view = View::UpdatePrompt;
+                                self.navigate_to(View::UpdatePrompt);
                             }
                         }
                         Err(err) => {
                             warn!(error = %err, "Update check failed");
                             self.message = format!("Update check failed: {err}");
                             self.message_return_view = self.update_return_view;
-                            self.view = View::Message;
+                            self.navigate_to(View::Message);
                         }
                     }
                     done = true;
@@ -198,7 +198,7 @@ impl TuiApp {
                         }
                     }
                     self.message_return_view = self.update_return_view;
-                    self.view = View::Message;
+                    self.navigate_to(View::Message);
                     done = true;
                 }
             }

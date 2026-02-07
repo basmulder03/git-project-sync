@@ -77,43 +77,45 @@ impl TuiApp {
     }
 
     pub(in crate::tui) fn draw_targets(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
     ) {
-        let mut items: Vec<ListItem> = Vec::new();
-        items.push(ListItem::new(Line::from(Span::raw(
+        let mut lines: Vec<Line> = Vec::new();
+        lines.push(Line::from(Span::raw(
             "Context: Targets map to provider + scope",
-        ))));
-        items.push(ListItem::new(Line::from(Span::raw(
-            "Tip: Press a to add or d to remove",
-        ))));
-        items.push(ListItem::new(Line::from(Span::raw(""))));
+        )));
+        lines.push(Line::from(Span::raw("Tip: Press a to add or d to remove")));
+        lines.push(Line::from(Span::raw("")));
         if self.config.targets.is_empty() {
-            items.push(ListItem::new(Line::from(Span::raw(
-                "No targets configured.",
-            ))));
+            lines.push(Line::from(Span::raw("No targets configured.")));
         } else {
             for target in &self.config.targets {
                 let host = target
                     .host
                     .clone()
                     .unwrap_or_else(|| "(default)".to_string());
-                items.push(ListItem::new(Line::from(Span::raw(format!(
+                lines.push(Line::from(Span::raw(format!(
                     "{} | {} | {} | {}",
                     target.id,
                     target.provider.as_prefix(),
                     target.scope.segments().join("/"),
                     host
-                )))));
+                ))));
             }
         }
-        let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Targets"));
-        frame.render_widget(list, area);
+        let max_scroll = max_scroll_for_lines(lines.len(), area.height);
+        let scroll = self.scroll_offset(View::Targets).min(max_scroll);
+        self.set_scroll_offset(View::Targets, scroll);
+        let widget = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0))
+            .block(Block::default().borders(Borders::ALL).title("Targets"));
+        frame.render_widget(widget, area);
     }
 
     pub(in crate::tui) fn draw_form(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
         title: &str,
@@ -151,19 +153,28 @@ impl TuiApp {
             };
             lines.push(Line::from(Span::raw(label)));
         }
+        let max_scroll = max_scroll_for_lines(lines.len(), area.height);
+        let scroll = self.scroll_offset(self.view).min(max_scroll);
+        self.set_scroll_offset(self.view, scroll);
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0))
             .block(Block::default().borders(Borders::ALL).title(title));
         frame.render_widget(widget, area);
     }
 
     pub(in crate::tui) fn draw_message(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
     ) {
+        let lines = self.message.lines().count().max(1);
+        let max_scroll = max_scroll_for_lines(lines, area.height);
+        let scroll = self.scroll_offset(View::Message).min(max_scroll);
+        self.set_scroll_offset(View::Message, scroll);
         let widget = Paragraph::new(self.message.clone())
             .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0))
             .block(Block::default().borders(Borders::ALL).title("Message"));
         frame.render_widget(widget, area);
     }

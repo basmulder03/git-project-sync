@@ -5,6 +5,18 @@ impl TuiApp {
         if key.kind != KeyEventKind::Press {
             return Ok(false);
         }
+        if key.code == KeyCode::Esc {
+            if self.view == View::AuditLog && self.audit_search_active {
+                return self.handle_audit_log(key);
+            }
+            if self.view != View::Main {
+                self.go_back();
+                return Ok(false);
+            }
+        }
+        if self.handle_global_scroll_keys(key) {
+            return Ok(false);
+        }
         match self.view {
             View::Main => self.handle_main(key),
             View::Dashboard => self.handle_dashboard(key),

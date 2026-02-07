@@ -17,45 +17,45 @@ impl TuiApp {
                 match self.menu_index {
                     0 => {
                         info!("Switching to dashboard view");
-                        self.view = View::Dashboard;
+                        self.navigate_to(View::Dashboard);
                     }
                     1 => {
                         if let Err(err) = self.enter_install_view() {
                             error!(error = %err, "Setup unavailable");
                             self.message = format!("Setup unavailable: {err}");
-                            self.view = View::Message;
+                            self.navigate_to(View::Message);
                         }
                     }
                     2 => {
                         info!("Switching to config root view");
-                        self.view = View::ConfigRoot;
+                        self.navigate_to(View::ConfigRoot);
                         self.input_fields = vec![InputField::new("Root path")];
                         self.input_index = 0;
                     }
                     3 => {
                         info!("Switching to targets view");
-                        self.view = View::Targets;
+                        self.navigate_to(View::Targets);
                     }
                     4 => {
                         info!("Switching to token menu view");
-                        self.view = View::TokenMenu;
+                        self.navigate_to(View::TokenMenu);
                         self.token_menu_index = 0;
                     }
                     5 => {
                         info!("Switching to service view");
-                        self.view = View::Service;
+                        self.navigate_to(View::Service);
                     }
                     6 => {
                         info!("Switching to audit log view");
-                        self.view = View::AuditLog;
-                        self.audit_scroll = 0;
+                        self.navigate_to(View::AuditLog);
+                        self.set_scroll_offset(View::AuditLog, 0);
                         self.audit_search_active = false;
                     }
                     7 => {
                         if let Err(err) = self.enter_repo_overview() {
                             error!(error = %err, "Repo overview unavailable");
                             self.message = format!("Repo overview unavailable: {err}");
-                            self.view = View::Message;
+                            self.navigate_to(View::Message);
                         }
                     }
                     8 => {
@@ -77,16 +77,13 @@ impl TuiApp {
                 self.view = View::Main;
             }
             KeyCode::Tab => self.input_index = (self.input_index + 1) % self.input_fields.len(),
-            KeyCode::Down => self.install_scroll = self.install_scroll.saturating_add(1),
-            KeyCode::Up => self.install_scroll = self.install_scroll.saturating_sub(1),
-            KeyCode::PageDown => self.install_scroll = self.install_scroll.saturating_add(10),
-            KeyCode::PageUp => self.install_scroll = self.install_scroll.saturating_sub(10),
-            KeyCode::Home => self.install_scroll = 0,
+            KeyCode::Down => self.scroll_by(View::Install, 1),
+            KeyCode::Up => self.scroll_by(View::Install, -1),
             KeyCode::Enter => {
                 if let Err(err) = self.ensure_install_guard() {
                     error!(error = %err, "Setup lock unavailable");
                     self.message = format!("Setup unavailable: {err}");
-                    self.view = View::Message;
+                    self.navigate_to(View::Message);
                     return Ok(false);
                 }
                 let delay_raw = self.input_fields[0].value.trim();
@@ -133,12 +130,12 @@ impl TuiApp {
                 });
                 self.install_rx = Some(rx);
                 self.install_progress = None;
-                self.view = View::InstallProgress;
+                self.navigate_to(View::InstallProgress);
             }
             KeyCode::Char('s') => {
                 self.install_status = crate::install::install_status().ok();
-                self.install_scroll = 0;
-                self.view = View::InstallStatus;
+                self.set_scroll_offset(View::InstallStatus, 0);
+                self.navigate_to(View::InstallStatus);
             }
             KeyCode::Char('u') => {
                 self.start_update_check(View::Install)?;
@@ -159,7 +156,7 @@ impl TuiApp {
                 );
             }
             KeyCode::Char('s') => {
-                self.view = View::SyncStatus;
+                self.navigate_to(View::SyncStatus);
             }
             KeyCode::Char('r') => {
                 self.start_sync_run(false)?;

@@ -1,4 +1,5 @@
 use crate::lockfile::LockFile;
+use std::future::Future;
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
@@ -11,6 +12,23 @@ where
     match LockFile::try_acquire(lock_path)? {
         Some(_lock) => {
             job()?;
+            Ok(true)
+        }
+        None => {
+            warn!(path = %lock_path.display(), "lock already held; skipping run");
+            Ok(false)
+        }
+    }
+}
+
+pub async fn run_once_with_lock_async<F, Fut>(lock_path: &Path, mut job: F) -> anyhow::Result<bool>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = anyhow::Result<()>>,
+{
+    match LockFile::try_acquire(lock_path)? {
+        Some(_lock) => {
+            job().await?;
             Ok(true)
         }
         None => {

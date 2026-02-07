@@ -49,8 +49,11 @@ pub(in crate::cli) fn handle_service(args: ServiceArgs, audit: &AuditLogger) -> 
     result
 }
 
-pub(in crate::cli) fn handle_health(args: HealthArgs, audit: &AuditLogger) -> anyhow::Result<()> {
-    let result: anyhow::Result<()> = (|| {
+pub(in crate::cli) async fn handle_health(
+    args: HealthArgs,
+    audit: &AuditLogger,
+) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = async {
         let config_path = args.config.unwrap_or(default_config_path()?);
         let (config, migrated) = load_or_migrate(&config_path)?;
         if migrated {
@@ -86,7 +89,9 @@ pub(in crate::cli) fn handle_health(args: HealthArgs, audit: &AuditLogger) -> an
                 host: target.host.clone(),
             };
 
-            let outcome = mirror_core::provider::block_on(provider.health_check(&runtime_target))
+            let outcome = provider
+                .health_check(&runtime_target)
+                .await
                 .or_else(|err| map_provider_error(&runtime_target, err));
             match outcome {
                 Ok(()) => {
@@ -134,7 +139,8 @@ pub(in crate::cli) fn handle_health(args: HealthArgs, audit: &AuditLogger) -> an
             }
         }
         Ok(())
-    })();
+    }
+    .await;
 
     if let Err(err) = &result {
         let _ = audit.record(

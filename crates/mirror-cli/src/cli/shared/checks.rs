@@ -23,7 +23,7 @@ pub(in crate::cli) fn should_run_cli_token_check(command: &Commands) -> bool {
     !matches!(command, Commands::Update(_) | Commands::Install(_))
 }
 
-pub(in crate::cli) fn run_token_validity_checks(
+pub(in crate::cli) async fn run_token_validity_checks(
     config_path: &Path,
     cache_path: &Path,
     audit: &AuditLogger,
@@ -71,7 +71,7 @@ pub(in crate::cli) fn run_token_validity_checks(
             scope: target.scope.clone(),
             host: Some(host),
         };
-        let validation = token_check::check_token_validity(&runtime_target);
+        let validation = token_check::check_token_validity_async(&runtime_target).await;
         let status_label = match validation.status {
             token_check::TokenValidity::Ok => "ok",
             token_check::TokenValidity::Invalid => "invalid",

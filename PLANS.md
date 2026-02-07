@@ -15,6 +15,8 @@
 - [x] Replace custom future polling with Tokio runtime-backed provider `block_on`
 - [x] Make core sync orchestration async (`run_sync`, `run_sync_filtered`, inventory load)
 - [x] Move async/sync bridge for sync operations to CLI/TUI boundaries
+- [x] Convert CLI command dispatch and key handlers to async (`sync`, `daemon`, `token`, `health`, `webhook`)
+- [x] Remove CLI command-path `block_on` usage for provider/sync operations
 
 ## Milestone 55 — Core/Providers Modularization (in progress)
 
@@ -189,6 +191,7 @@
 - Provider boundary now returns boxed futures; full non-blocking HTTP runtime migration remains a follow-up.
 - Provider adapters now execute async HTTP requests; remaining `block_on` bridges in sync CLI/core flows are scheduled for incremental removal.
 - Core sync engine no longer blocks on provider futures internally; bridges remain only at non-async call boundaries.
+- CLI command paths now await provider/sync futures directly; remaining bridges are limited to process entry and synchronous TUI helper paths.
 - Focus: architecture tidy (per user request).
 - Breaking CLI/config changes: allowed (major ok).
 - Target OS: cross-platform parity.

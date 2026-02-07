@@ -1,15 +1,18 @@
 use super::*;
-pub(in crate::cli) fn handle_webhook(args: WebhookArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+pub(in crate::cli) async fn handle_webhook(
+    args: WebhookArgs,
+    audit: &AuditLogger,
+) -> anyhow::Result<()> {
     match args.command {
-        WebhookCommands::Register(args) => handle_webhook_register(args, audit),
+        WebhookCommands::Register(args) => handle_webhook_register(args, audit).await,
     }
 }
 
-pub(in crate::cli) fn handle_webhook_register(
+pub(in crate::cli) async fn handle_webhook_register(
     args: WebhookRegisterArgs,
     audit: &AuditLogger,
 ) -> anyhow::Result<()> {
-    let result: anyhow::Result<()> = (|| {
+    let result: anyhow::Result<()> = async {
         let provider: ProviderKind = args.provider.into();
         let spec = spec_for(provider.clone());
         let scope = spec.parse_scope(args.scope)?;
@@ -25,12 +28,10 @@ pub(in crate::cli) fn handle_webhook_register(
 
         let registry = ProviderRegistry::new();
         let adapter = registry.provider(provider.clone())?;
-        mirror_core::provider::block_on(adapter.register_webhook(
-            &runtime_target,
-            &args.url,
-            args.secret.as_deref(),
-        ))
-        .or_else(|err| map_provider_error(&runtime_target, err))?;
+        adapter
+            .register_webhook(&runtime_target, &args.url, args.secret.as_deref())
+            .await
+            .or_else(|err| map_provider_error(&runtime_target, err))?;
 
         println!(
             "Webhook registered for {} {}",
@@ -52,7 +53,8 @@ pub(in crate::cli) fn handle_webhook_register(
         )?;
         println!("Audit ID: {audit_id}");
         Ok(())
-    })();
+    }
+    .await;
 
     if let Err(err) = &result {
         let _ = audit.record(

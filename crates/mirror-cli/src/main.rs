@@ -7,5 +7,5 @@ mod tui;
 mod update;
 
 fn main() -> anyhow::Result<()> {
-    cli::run()
+    mirror_core::provider::block_on(cli::run())
 }

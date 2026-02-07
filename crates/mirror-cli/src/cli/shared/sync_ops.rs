@@ -1,5 +1,5 @@
 use super::*;
-pub(in crate::cli) fn run_sync_job(
+pub(in crate::cli) async fn run_sync_job(
     config_path: &Path,
     cache_path: &Path,
     policy: MissingRemotePolicy,
@@ -84,13 +84,14 @@ pub(in crate::cli) fn run_sync_job(
             refresh: false,
             verify: false,
         };
-        let result = mirror_core::provider::block_on(run_sync_filtered(
+        let result = run_sync_filtered(
             provider.as_ref(),
             &runtime_target,
             root,
             cache_path,
             options,
-        ))
+        )
+        .await
         .or_else(|err| map_azdo_error(&runtime_target, err));
         match result {
             Ok(summary) => {

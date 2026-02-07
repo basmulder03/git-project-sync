@@ -60,6 +60,6 @@ use sync_cmd::handle_sync;
 use target_cmd::handle_target;
 use token_cmd::handle_token;
 
-pub fn run() -> anyhow::Result<()> {
-    app::run()
+pub async fn run() -> anyhow::Result<()> {
+    app::run().await
 }

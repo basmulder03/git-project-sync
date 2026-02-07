@@ -1,7 +1,7 @@
 use super::shared::{run_sync_job, run_token_validity_checks};
 use super::*;
-pub(super) fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Result<()> {
-    let result: anyhow::Result<()> = (|| {
+pub(super) async fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = async {
         let interval = std::time::Duration::from_secs(args.interval_seconds);
         let lock_path = match args.lock {
             Some(path) => path,
@@ -27,10 +27,10 @@ pub(super) fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Re
             update::restart_current_process().context("restart after update apply")?;
             return Ok(());
         }
-        let _ = run_token_validity_checks(&config_path, &cache_path, audit, "daemon", true);
+        let _ = run_token_validity_checks(&config_path, &cache_path, audit, "daemon", true).await;
         let audit_id = audit.record("daemon.start", AuditStatus::Ok, Some("daemon"), None, None)?;
         println!("Audit ID: {audit_id}");
-        let job = || {
+        let job = || async {
             run_sync_job(
                 &config_path,
                 &cache_path,
@@ -39,9 +39,10 @@ pub(super) fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Re
                 args.audit_repo,
                 args.jobs,
             )
+            .await
         };
         if args.run_once {
-            let ran = mirror_core::daemon::run_once_with_lock(&lock_path, job)?;
+            let ran = mirror_core::daemon::run_once_with_lock_async(&lock_path, job).await?;
             if ran {
                 let update_applied = update::check_and_maybe_apply(update::AutoUpdateOptions {
                     cache_path: &cache_path,
@@ -58,7 +59,8 @@ pub(super) fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Re
                     return Ok(());
                 }
                 let _ =
-                    run_token_validity_checks(&config_path, &cache_path, audit, "daemon", false);
+                    run_token_validity_checks(&config_path, &cache_path, audit, "daemon", false)
+                        .await;
             }
             let audit_id = audit.record(
                 "daemon.run_once",
@@ -72,7 +74,7 @@ pub(super) fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Re
         }
         let mut failure_count: u32 = 0;
         loop {
-            let ran = match mirror_core::daemon::run_once_with_lock(&lock_path, &job) {
+            let ran = match mirror_core::daemon::run_once_with_lock_async(&lock_path, &job).await {
                 Ok(ran_flag) => {
                     if ran_flag {
                         info!("run completed");
@@ -102,14 +104,16 @@ pub(super) fn handle_daemon(args: DaemonArgs, audit: &AuditLogger) -> anyhow::Re
                     return Ok(());
                 }
                 let _ =
-                    run_token_validity_checks(&config_path, &cache_path, audit, "daemon", false);
+                    run_token_validity_checks(&config_path, &cache_path, audit, "daemon", false)
+                        .await;
             }
             std::thread::sleep(mirror_core::daemon::daemon_backoff_delay(
                 interval,
                 failure_count,
             ));
         }
-    })();
+    }
+    .await;
 
     if let Err(err) = &result {
         let _ = audit.record(

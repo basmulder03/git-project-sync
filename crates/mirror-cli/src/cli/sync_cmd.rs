@@ -3,8 +3,8 @@ use super::shared::{
     prompt_action, render_sync_progress, select_targets,
 };
 use super::*;
-pub(super) fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
-    let result: anyhow::Result<()> = (|| {
+pub(super) async fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
+    let result: anyhow::Result<()> = async {
         if args.non_interactive && args.missing_remote == MissingRemotePolicyValue::Prompt {
             anyhow::bail!("non-interactive mode requires --missing-remote policy");
         }
@@ -138,13 +138,14 @@ pub(super) fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result
                     refresh: args.refresh || force_refresh_all,
                     verify: args.verify,
                 };
-                mirror_core::provider::block_on(run_sync_filtered(
+                run_sync_filtered(
                     provider.as_ref(),
                     &runtime_target,
                     root,
                     &cache_path,
                     options,
-                ))
+                )
+                .await
                 .or_else(|err| map_azdo_error(&runtime_target, err))?
             } else {
                 let filter =
@@ -159,13 +160,14 @@ pub(super) fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result
                     refresh: args.refresh || force_refresh_all,
                     verify: args.verify,
                 };
-                mirror_core::provider::block_on(run_sync_filtered(
+                run_sync_filtered(
                     provider.as_ref(),
                     &runtime_target,
                     root,
                     &cache_path,
                     options,
-                ))
+                )
+                .await
                 .or_else(|err| map_azdo_error(&runtime_target, err))?
             };
 
@@ -237,7 +239,8 @@ pub(super) fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result
         println!("Audit ID: {audit_id}");
 
         Ok(())
-    })();
+    }
+    .await;
 
     if let Err(err) = &result {
         let _ = audit.record(

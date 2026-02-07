@@ -1,5 +1,19 @@
 # PLANS.md
 
+## Milestone 54 — CLI/TUI Modularization (in progress)
+
+- [x] Split `crates/mirror-cli/src/main.rs` into focused `cli/*` modules
+- [x] Split `crates/mirror-cli/src/tui.rs` into focused `tui/*` modules
+- [x] Split `cli/mod.rs` into `cli/args.rs` + `cli/app.rs`
+- [x] Split `cli/shared.rs` into `cli/shared/*`
+- [x] Split `cli/misc_cmd.rs` into `cli/misc_cmd/*`
+- [x] Split `tui/draw.rs`, `tui/handle.rs`, `tui/jobs.rs`, and `tui/helpers.rs` into submodules
+- [x] Split `install.rs` into `install/*`
+- [x] Split `update.rs` into `update/*`
+- [x] Keep behavior identical (no CLI/TUI functional changes)
+- [x] Move/retain tests with equivalent coverage
+- [x] Run fmt, clippy, and tests and confirm no regressions
+
 ## Milestone 53 — Token Doctor (completed)
 
 - [x] Add `token doctor` CLI command

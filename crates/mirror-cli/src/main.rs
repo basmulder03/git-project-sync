@@ -1,4 +1,5 @@
 mod cli;
+mod i18n;
 mod install;
 mod logging;
 mod repo_overview;

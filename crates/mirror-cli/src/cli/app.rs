@@ -1,4 +1,6 @@
 use super::*;
+use crate::i18n::{key, resolve_locale, set_active_locale, tf};
+
 pub async fn run() -> anyhow::Result<()> {
     let log_buffer = logging::LogBuffer::new(200);
     let filter = EnvFilter::from_default_env();
@@ -10,6 +12,16 @@ pub async fn run() -> anyhow::Result<()> {
 
     let audit = AuditLogger::new()?;
     let _ = audit.record("app.start", AuditStatus::Ok, None, None, None)?;
+    let config_path = default_config_path()?;
+    let config_lang = load_or_migrate(&config_path)
+        .ok()
+        .and_then(|(config, _)| config.language);
+    let startup_locale = resolve_locale(
+        None,
+        std::env::var("MIRROR_LANG").ok().as_deref(),
+        config_lang.as_deref(),
+    );
+    set_active_locale(startup_locale);
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() == 1 {
@@ -24,6 +36,19 @@ pub async fn run() -> anyhow::Result<()> {
     }
 
     let cli = Cli::parse();
+    let config_path = config_path_for_command(&cli.command)
+        .cloned()
+        .unwrap_or(default_config_path()?);
+    let config_lang = load_or_migrate(&config_path)
+        .ok()
+        .and_then(|(config, _)| config.language);
+    let locale = resolve_locale(
+        cli.lang.as_deref(),
+        std::env::var("MIRROR_LANG").ok().as_deref(),
+        config_lang.as_deref(),
+    );
+    set_active_locale(locale);
+
     let is_interactive = stdin_is_tty() && stdout_is_tty();
     info!(command = command_label(&cli.command), "Running command");
 
@@ -39,7 +64,10 @@ pub async fn run() -> anyhow::Result<()> {
             None,
             Some(&err.to_string()),
         );
-        eprintln!("Update check failed: {err}");
+        eprintln!(
+            "{}",
+            tf(key::UPDATE_CHECK_FAILED, &[("error", err.to_string())])
+        );
     }
 
     if should_run_cli_update_check(&cli.command, cli.check_updates) {
@@ -136,6 +164,20 @@ pub async fn run() -> anyhow::Result<()> {
 
     result
 }
+
+fn config_path_for_command(command: &Commands) -> Option<&PathBuf> {
+    match command {
+        Commands::Sync(args) => args.config.as_ref(),
+        Commands::Daemon(args) => args.config.as_ref(),
+        Commands::Health(args) => args.config.as_ref(),
+        Commands::Cache(args) => match &args.command {
+            CacheCommands::Prune(args) => args.config.as_ref(),
+            CacheCommands::Overview(args) => args.config.as_ref(),
+        },
+        _ => None,
+    }
+}
+
 fn command_label(command: &Commands) -> &'static str {
     match command {
         Commands::Config(_) => "config",

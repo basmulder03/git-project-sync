@@ -1,4 +1,5 @@
 use super::*;
+use crate::i18n::{key, tf, tr};
 
 impl TuiApp {
     pub(in crate::tui) fn handle_token_menu(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
@@ -18,9 +19,9 @@ impl TuiApp {
                     self.validation_message = None;
                     self.navigate_to(View::TokenSet);
                     self.input_fields = vec![
-                        InputField::new("Scope (space-separated)"),
-                        InputField::new("Host (optional)"),
-                        InputField::with_mask("Token"),
+                        InputField::new(tr(key::LABEL_SCOPE_SPACED)),
+                        InputField::new(tr(key::LABEL_HOST_OPTIONAL)),
+                        InputField::with_mask(tr(key::LABEL_TOKEN)),
                     ];
                     self.input_index = 0;
                     self.provider_index = 0;
@@ -29,8 +30,8 @@ impl TuiApp {
                     self.validation_message = None;
                     self.navigate_to(View::TokenValidate);
                     self.input_fields = vec![
-                        InputField::new("Scope (space-separated)"),
-                        InputField::new("Host (optional)"),
+                        InputField::new(tr(key::LABEL_SCOPE_SPACED)),
+                        InputField::new(tr(key::LABEL_HOST_OPTIONAL)),
                     ];
                     self.input_index = 0;
                     self.provider_index = 0;
@@ -83,8 +84,8 @@ impl TuiApp {
                 let token = self.input_fields[2].value.trim().to_string();
                 if token.is_empty() {
                     warn!(account = %account, "Token missing in token set");
-                    self.validation_message = Some("Token cannot be empty.".to_string());
-                    self.message = "Token cannot be empty.".to_string();
+                    self.validation_message = Some(tr(key::TOKEN_EMPTY).to_string());
+                    self.message = tr(key::TOKEN_EMPTY).to_string();
                     self.navigate_to(View::Message);
                     return Ok(false);
                 }
@@ -149,8 +150,13 @@ impl TuiApp {
                     None,
                 )?;
                 info!(account = %account, provider = %provider.as_prefix(), "Token stored");
-                self.message = format!(
-                    "Token stored for {account}. {validation_message}. Audit ID: {audit_id}"
+                self.message = tf(
+                    "Token stored for {account}. {validation}. Audit ID: {audit_id}",
+                    &[
+                        ("account", account),
+                        ("validation", validation_message),
+                        ("audit_id", audit_id),
+                    ],
                 );
                 self.navigate_to(View::Message);
             }
@@ -226,7 +232,10 @@ impl TuiApp {
                             audit_detail,
                         )?;
                         info!(account = %account, status = ?record.status, "Token validation completed");
-                        self.message = format!("{status}. Audit ID: {audit_id}");
+                        self.message = tf(
+                            "{status}. Audit ID: {audit_id}",
+                            &[("status", status), ("audit_id", audit_id)],
+                        );
                     }
                     Err(err) => {
                         error!(error = %err, "Token validation failed");
@@ -244,7 +253,7 @@ impl TuiApp {
                             None,
                             Some(&err.to_string()),
                         );
-                        self.message = format!("Validation failed: {err}");
+                        self.message = tf(key::VALIDATION_FAILED, &[("error", err.to_string())]);
                     }
                 }
                 self.navigate_to(View::Message);

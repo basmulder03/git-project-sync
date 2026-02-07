@@ -161,6 +161,7 @@ fn run_app(
 enum View {
     Main,
     Dashboard,
+    Language,
     Install,
     UpdatePrompt,
     UpdateProgress,
@@ -227,23 +228,23 @@ impl InstallState {
 
 #[derive(Clone, Debug)]
 struct InputField {
-    label: &'static str,
+    label: String,
     value: String,
     mask: bool,
 }
 
 impl InputField {
-    fn new(label: &'static str) -> Self {
+    fn new<S: Into<String>>(label: S) -> Self {
         Self {
-            label,
+            label: label.into(),
             value: String::new(),
             mask: false,
         }
     }
 
-    fn with_mask(label: &'static str) -> Self {
+    fn with_mask<S: Into<String>>(label: S) -> Self {
         Self {
-            label,
+            label: label.into(),
             value: String::new(),
             mask: true,
         }
@@ -285,6 +286,7 @@ struct TuiApp {
     input_index: usize,
     input_fields: Vec<InputField>,
     provider_index: usize,
+    language_index: usize,
     token_menu_index: usize,
     token_validation: HashMap<String, TokenValidation>,
     audit: AuditLogger,

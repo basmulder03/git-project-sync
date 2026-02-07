@@ -8,6 +8,12 @@ pub(super) struct Cli {
         help = "Check for updates before running the command"
     )]
     pub(super) check_updates: bool,
+    #[arg(
+        long,
+        global = true,
+        help = "Display language (BCP47): en-001, en-US, en-GB, nl, af"
+    )]
+    pub(super) lang: Option<String>,
     #[command(subcommand)]
     pub(super) command: Commands,
 }
@@ -52,6 +58,28 @@ pub(super) struct ConfigArgs {
 pub(super) enum ConfigCommands {
     #[command(about = "Initialize config with a mirror root path")]
     Init(InitArgs),
+    #[command(about = "Manage preferred language")]
+    Language(ConfigLanguageArgs),
+}
+
+#[derive(Parser)]
+pub(super) struct ConfigLanguageArgs {
+    #[command(subcommand)]
+    pub(super) command: ConfigLanguageCommands,
+}
+
+#[derive(clap::Subcommand)]
+pub(super) enum ConfigLanguageCommands {
+    #[command(about = "Set preferred language")]
+    Set(ConfigLanguageSetArgs),
+    #[command(about = "Show configured and effective language")]
+    Show,
+}
+
+#[derive(Parser)]
+pub(super) struct ConfigLanguageSetArgs {
+    #[arg(long, help = "Language code: en-001, en-US, en-GB, nl, af")]
+    pub(super) lang: String,
 }
 
 #[derive(Parser)]

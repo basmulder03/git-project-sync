@@ -17,6 +17,8 @@ pub struct AppConfigV2 {
     pub version: u32,
     pub root: Option<PathBuf>,
     pub targets: Vec<TargetConfig>,
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 impl Default for AppConfigV2 {
@@ -25,6 +27,7 @@ impl Default for AppConfigV2 {
             version: 2,
             root: None,
             targets: Vec::new(),
+            language: None,
         }
     }
 }
@@ -120,6 +123,7 @@ fn migrate_v1(v1: AppConfigV1) -> AppConfigV2 {
         version: 2,
         root: v1.root,
         targets,
+        language: None,
     }
 }
 
@@ -175,5 +179,22 @@ mod tests {
         assert!(migrated);
         assert_eq!(config.version, 2);
         assert_eq!(config.targets.len(), 1);
+    }
+
+    #[test]
+    fn config_roundtrip_preserves_language() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("config.json");
+        let config = AppConfigV2 {
+            version: 2,
+            root: Some(PathBuf::from("/tmp")),
+            targets: Vec::new(),
+            language: Some("nl".to_string()),
+        };
+        config.save(&path).unwrap();
+
+        let (loaded, migrated) = load_or_migrate(&path).unwrap();
+        assert!(!migrated);
+        assert_eq!(loaded.language.as_deref(), Some("nl"));
     }
 }

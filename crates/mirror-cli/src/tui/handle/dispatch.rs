@@ -20,6 +20,7 @@ impl TuiApp {
         match self.view {
             View::Main => self.handle_main(key),
             View::Dashboard => self.handle_dashboard(key),
+            View::Language => self.handle_language(key),
             View::Install => self.handle_install(key),
             View::UpdatePrompt => self.handle_update_prompt(key),
             View::UpdateProgress => self.handle_update_progress(key),

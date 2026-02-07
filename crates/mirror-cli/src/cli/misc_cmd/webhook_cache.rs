@@ -1,4 +1,5 @@
 use super::*;
+use crate::i18n::{key, tf};
 pub(in crate::cli) async fn handle_webhook(
     args: WebhookArgs,
     audit: &AuditLogger,
@@ -51,7 +52,7 @@ pub(in crate::cli) async fn handle_webhook_register(
             None,
             None,
         )?;
-        println!("Audit ID: {audit_id}");
+        println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
         Ok(())
     }
     .await;
@@ -96,7 +97,7 @@ pub(in crate::cli) fn handle_cache_prune(
             None,
             None,
         )?;
-        println!("Audit ID: {audit_id}");
+        println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
         Ok(())
     })();
 
@@ -158,7 +159,7 @@ pub(in crate::cli) fn handle_cache_overview(
             None,
             None,
         )?;
-        println!("Audit ID: {audit_id}");
+        println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
         Ok(())
     })();
 

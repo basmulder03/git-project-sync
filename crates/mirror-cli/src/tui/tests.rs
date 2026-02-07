@@ -25,17 +25,18 @@ fn format_delayed_start_reports_none() {
 }
 
 #[test]
-fn menu_index_wraps_with_service_item() {
+fn menu_index_wraps_in_main_menu() {
     let tmp = TempDir::new().unwrap();
     let mut app = TuiApp {
         config_path: std::path::PathBuf::from("/tmp/config.json"),
         config: AppConfigV2::default(),
         view: View::Main,
-        menu_index: 9,
+        menu_index: 10,
         message: String::new(),
         input_index: 0,
         input_fields: Vec::new(),
         provider_index: 0,
+        language_index: 0,
         token_menu_index: 0,
         token_validation: HashMap::new(),
         audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
@@ -110,6 +111,7 @@ fn token_menu_enter_moves_to_set_view() {
         input_index: 0,
         input_fields: Vec::new(),
         provider_index: 0,
+        language_index: 0,
         token_menu_index: 1,
         token_validation: HashMap::new(),
         audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
@@ -187,6 +189,7 @@ fn form_hint_is_present_for_target_add() {
         input_index: 0,
         input_fields: Vec::new(),
         provider_index: 0,
+        language_index: 0,
         token_menu_index: 0,
         token_validation: HashMap::new(),
         audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
@@ -260,6 +263,7 @@ fn esc_navigation_returns_to_previous_view() {
         input_index: 0,
         input_fields: Vec::new(),
         provider_index: 0,
+        language_index: 0,
         token_menu_index: 0,
         token_validation: HashMap::new(),
         audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),
@@ -314,6 +318,7 @@ fn global_scroll_keys_update_view_scroll_offset() {
         input_index: 0,
         input_fields: Vec::new(),
         provider_index: 0,
+        language_index: 0,
         token_menu_index: 0,
         token_validation: HashMap::new(),
         audit: AuditLogger::new_with_dir(tmp.path().to_path_buf(), 1024).unwrap(),

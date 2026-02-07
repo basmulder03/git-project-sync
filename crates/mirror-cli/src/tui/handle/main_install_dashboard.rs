@@ -1,13 +1,14 @@
 use super::*;
+use crate::i18n::{key, set_active_locale, supported_locales, tf, tr};
 
 impl TuiApp {
     pub(in crate::tui) fn handle_main(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
         match key.code {
             KeyCode::Char('q') => return Ok(true),
-            KeyCode::Down => self.menu_index = (self.menu_index + 1) % 10,
+            KeyCode::Down => self.menu_index = (self.menu_index + 1) % 11,
             KeyCode::Up => {
                 if self.menu_index == 0 {
-                    self.menu_index = 9;
+                    self.menu_index = 10;
                 } else {
                     self.menu_index -= 1;
                 }
@@ -22,14 +23,15 @@ impl TuiApp {
                     1 => {
                         if let Err(err) = self.enter_install_view() {
                             error!(error = %err, "Setup unavailable");
-                            self.message = format!("Setup unavailable: {err}");
+                            self.message =
+                                tf(key::SETUP_UNAVAILABLE, &[("error", err.to_string())]);
                             self.navigate_to(View::Message);
                         }
                     }
                     2 => {
                         info!("Switching to config root view");
                         self.navigate_to(View::ConfigRoot);
-                        self.input_fields = vec![InputField::new("Root path")];
+                        self.input_fields = vec![InputField::new(tr(key::CONFIG_ROOT_LABEL))];
                         self.input_index = 0;
                     }
                     3 => {
@@ -54,13 +56,26 @@ impl TuiApp {
                     7 => {
                         if let Err(err) = self.enter_repo_overview() {
                             error!(error = %err, "Repo overview unavailable");
-                            self.message = format!("Repo overview unavailable: {err}");
+                            self.message = tf(
+                                "Repo overview unavailable: {error}",
+                                &[("error", err.to_string())],
+                            );
                             self.navigate_to(View::Message);
                         }
                     }
                     8 => {
                         info!("Starting update check from main menu");
                         self.start_update_check(View::Main)?;
+                    }
+                    9 => {
+                        self.language_index = supported_locales()
+                            .iter()
+                            .position(|locale| {
+                                locale.as_bcp47()
+                                    == self.config.language.as_deref().unwrap_or("en-001")
+                            })
+                            .unwrap_or(0);
+                        self.navigate_to(View::Language);
                     }
                     _ => return Ok(true),
                 }
@@ -82,7 +97,7 @@ impl TuiApp {
             KeyCode::Enter => {
                 if let Err(err) = self.ensure_install_guard() {
                     error!(error = %err, "Setup lock unavailable");
-                    self.message = format!("Setup unavailable: {err}");
+                    self.message = tf(key::SETUP_UNAVAILABLE, &[("error", err.to_string())]);
                     self.navigate_to(View::Message);
                     return Ok(false);
                 }
@@ -95,7 +110,7 @@ impl TuiApp {
                         Err(_) => {
                             warn!(value = delay_raw, "Invalid delayed start input");
                             self.validation_message =
-                                Some("Delayed start must be a number.".to_string());
+                                Some(tr(key::DELAY_MUST_BE_NUMBER).to_string());
                             return Ok(false);
                         }
                     }
@@ -166,6 +181,42 @@ impl TuiApp {
             }
             KeyCode::Char('u') => {
                 self.start_update_check(View::Dashboard)?;
+            }
+            _ => {}
+        }
+        Ok(false)
+    }
+
+    pub(in crate::tui) fn handle_language(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
+        match key.code {
+            KeyCode::Esc => self.view = View::Main,
+            KeyCode::Down => {
+                self.language_index = (self.language_index + 1) % supported_locales().len();
+            }
+            KeyCode::Up => {
+                if self.language_index == 0 {
+                    self.language_index = supported_locales().len().saturating_sub(1);
+                } else {
+                    self.language_index -= 1;
+                }
+            }
+            KeyCode::Enter => {
+                let locale = supported_locales()[self.language_index];
+                self.config.language = Some(locale.as_bcp47().to_string());
+                self.config.save(&self.config_path)?;
+                set_active_locale(locale);
+                let audit_id = self.audit.record(
+                    "tui.language.set",
+                    AuditStatus::Ok,
+                    Some("tui"),
+                    None,
+                    None,
+                )?;
+                self.message = tf(
+                    "Language saved. Audit ID: {audit_id}",
+                    &[("audit_id", audit_id)],
+                );
+                self.navigate_to(View::Message);
             }
             _ => {}
         }

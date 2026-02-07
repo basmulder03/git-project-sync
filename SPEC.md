@@ -58,6 +58,11 @@
 - `sync --verify` to compare local refs with upstreams without modifying non-default branches
 - `cache prune` to remove cached entries for deleted targets
 - `token guide` and `token validate` to help create and validate PATs
+- localization:
+  - all user-visible CLI/TUI text is translatable
+  - supported locales: `en-001`, `en-US`, `en-GB`, `nl`, `af`
+  - language precedence: `--lang` > `MIRROR_LANG` > config `language` > `en-001`
+  - `config language set/show` manages persisted language preference
 - `tui --dashboard` to open the status dashboard directly
 - `install` to run guided installation (service + optional PATH)
 - Installer copies the binary to the OS default per-user install location and re-runs service registration from that path.

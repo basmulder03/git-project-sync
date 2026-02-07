@@ -94,6 +94,21 @@ fn token_doctor_parses() {
 }
 
 #[test]
+fn config_language_set_parses() {
+    let cli =
+        Cli::try_parse_from(["mirror-cli", "config", "language", "set", "--lang", "nl"]).unwrap();
+    match cli.command {
+        Commands::Config(ConfigArgs {
+            command:
+                ConfigCommands::Language(ConfigLanguageArgs {
+                    command: ConfigLanguageCommands::Set(args),
+                }),
+        }) => assert_eq!(args.lang, "nl"),
+        _ => panic!("expected config language set command"),
+    }
+}
+
+#[test]
 fn admin_prompt_label_matches_os() {
     let label = admin_privileges_prompt_label();
     if cfg!(target_os = "windows") {

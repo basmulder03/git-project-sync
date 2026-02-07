@@ -3,6 +3,7 @@ use super::shared::{
     prompt_action, render_sync_progress, select_targets_with_precedence,
 };
 use super::*;
+use crate::i18n::{key, tf};
 pub(super) async fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::Result<()> {
     let result: anyhow::Result<()> = async {
         if args.non_interactive && args.missing_remote == MissingRemotePolicyValue::Prompt {
@@ -44,15 +45,21 @@ pub(super) async fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::
             )?
         };
         if let Some(warning) = selection.warning.as_deref() {
-            println!("Warning: {warning}");
+            println!(
+                "{}",
+                tf(key::WARNING_GENERIC, &[("warning", warning.to_string())])
+            );
         } else if !force_refresh_all && target_id_ignores_selectors {
-            println!("Warning: --target-id takes precedence; ignoring --provider/--scope");
+            println!(
+                "{}",
+                tf(key::WARNING_TARGET_ID_PRECEDENCE, &[])
+            );
         }
 
         if args.status_only {
             let targets = selection.targets.clone();
             if targets.is_empty() {
-                println!("No matching targets found.");
+                println!("{}", tf(key::NO_MATCHING_TARGETS, &[]));
                 let audit_id = audit.record(
                     "sync.status",
                     AuditStatus::Skipped,
@@ -60,13 +67,13 @@ pub(super) async fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::
                     None,
                     Some("no matching targets"),
                 )?;
-                println!("Audit ID: {audit_id}");
+                println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
                 return Ok(());
             }
             print_sync_status(&cache_path, &targets)?;
             let audit_id =
                 audit.record("sync.status", AuditStatus::Ok, Some("sync"), None, None)?;
-            println!("Audit ID: {audit_id}");
+            println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
             return Ok(());
         }
         let root = config
@@ -76,7 +83,7 @@ pub(super) async fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::
 
         let targets = selection.targets;
         if targets.is_empty() {
-            println!("No matching targets found.");
+            println!("{}", tf(key::NO_MATCHING_TARGETS, &[]));
             let audit_id = audit.record(
                 "sync.run",
                 AuditStatus::Skipped,
@@ -84,7 +91,7 @@ pub(super) async fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::
                 None,
                 Some("no matching targets"),
             )?;
-            println!("Audit ID: {audit_id}");
+            println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
             return Ok(());
         }
 
@@ -203,7 +210,7 @@ pub(super) async fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::
                 Some(details),
                 None,
             )?;
-            println!("Audit ID: {audit_id}");
+            println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
             accumulate_summary(&mut total, summary);
         }
 
@@ -242,7 +249,7 @@ pub(super) async fn handle_sync(args: SyncArgs, audit: &AuditLogger) -> anyhow::
             Some(totals),
             None,
         )?;
-        println!("Audit ID: {audit_id}");
+        println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
 
         Ok(())
     }

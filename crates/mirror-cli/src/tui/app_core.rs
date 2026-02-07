@@ -1,5 +1,6 @@
 use super::helpers::*;
 use super::*;
+use crate::i18n::{key, tr};
 
 impl TuiApp {
     pub(super) fn load(
@@ -26,6 +27,7 @@ impl TuiApp {
             input_index: 0,
             input_fields: Vec::new(),
             provider_index: 0,
+            language_index: 0,
             token_menu_index: 0,
             token_validation: HashMap::new(),
             audit,
@@ -67,7 +69,7 @@ impl TuiApp {
 
     pub(super) fn prepare_install_form(&mut self) {
         let status = crate::install::install_status().ok();
-        let mut delayed_start = InputField::new("Delayed start seconds (optional)");
+        let mut delayed_start = InputField::new(tr(key::LABEL_DELAY_SECONDS));
         if let Some(value) = status
             .as_ref()
             .and_then(|state| state.delayed_start)
@@ -75,7 +77,7 @@ impl TuiApp {
         {
             delayed_start.value = value.to_string();
         }
-        let mut path = InputField::new("Add CLI to PATH? (y/n)");
+        let mut path = InputField::new(tr(key::LABEL_ADD_PATH));
         if status
             .as_ref()
             .map(|state| state.path_in_env)

@@ -152,11 +152,8 @@ pub fn run_sync_filtered(
     cache_path: &Path,
     options: RunSyncOptions<'_, '_, '_>,
 ) -> anyhow::Result<SyncSummary> {
-    provider
-        .validate_auth(target)
-        .context("validate provider auth")?;
-    let target_auth = provider
-        .auth_for_target(target)
+    crate::provider::block_on(provider.validate_auth(target)).context("validate provider auth")?;
+    let target_auth = crate::provider::block_on(provider.auth_for_target(target))
         .context("resolve provider auth for target")?;
     let mut cache = RepoCache::load(cache_path).context("load cache")?;
     let mut summary = SyncSummary::default();

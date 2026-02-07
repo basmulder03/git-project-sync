@@ -17,6 +17,7 @@ The core engine depends on the `RepoProvider` trait. Providers implement:
 - `auth_for_target` to return git auth info for a target at execution time
 - `token_scopes` to validate scopes (when supported)
 - `register_webhook` to configure webhooks (if supported)
+- Provider operations are exposed as futures at the boundary; current core/CLI flows bridge them via `mirror_core::provider::block_on`.
 
 This isolates provider-specific APIs from the core sync logic.
 Repo inventory records are credential-free; auth is resolved per target during sync.

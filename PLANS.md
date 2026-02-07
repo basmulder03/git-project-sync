@@ -9,6 +9,8 @@
 - [x] Deduplicate daemon backoff logic by using `mirror-core` implementation
 - [x] Run fmt, clippy, and workspace tests
 - [x] Update docs for v2 breaking changes and migration notes
+- [x] Convert provider boundary to async-style futures without adding new dependencies
+- [x] Bridge core/CLI call sites via shared `mirror_core::provider::block_on`
 
 ## Milestone 55 — Core/Providers Modularization (in progress)
 
@@ -180,6 +182,7 @@
 - v2 implementation starts with core/provider boundary cleanup and logic deduplication.
 - Keep sync safety invariants unchanged while introducing model-level breaking changes.
 - Async runtime/provider migration is deferred to a follow-up milestone after boundary cleanup lands.
+- Provider boundary now returns boxed futures; full non-blocking HTTP runtime migration remains a follow-up.
 - Focus: architecture tidy (per user request).
 - Breaking CLI/config changes: allowed (major ok).
 - Target OS: cross-platform parity.

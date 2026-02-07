@@ -38,7 +38,7 @@ pub(crate) fn load_repos_with_cache(
         return Ok((repos, true));
     }
 
-    let repos = provider.list_repos(target).context("list repos")?;
+    let repos = crate::provider::block_on(provider.list_repos(target)).context("list repos")?;
     let inventory = RepoInventoryEntry {
         fetched_at: now,
         repos: repos

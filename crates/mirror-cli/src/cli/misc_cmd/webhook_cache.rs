@@ -25,9 +25,12 @@ pub(in crate::cli) fn handle_webhook_register(
 
         let registry = ProviderRegistry::new();
         let adapter = registry.provider(provider.clone())?;
-        adapter
-            .register_webhook(&runtime_target, &args.url, args.secret.as_deref())
-            .or_else(|err| map_provider_error(&runtime_target, err))?;
+        mirror_core::provider::block_on(adapter.register_webhook(
+            &runtime_target,
+            &args.url,
+            args.secret.as_deref(),
+        ))
+        .or_else(|err| map_provider_error(&runtime_target, err))?;
 
         println!(
             "Webhook registered for {} {}",

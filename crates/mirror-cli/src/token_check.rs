@@ -57,7 +57,7 @@ pub fn check_token_validity(target: &ProviderTarget) -> TokenCheckResult {
         }
     };
 
-    match adapter.health_check(target) {
+    match mirror_core::provider::block_on(adapter.health_check(target)) {
         Ok(_) => TokenCheckResult::ok(),
         Err(err) => classify_error(target.provider.clone(), &err),
     }

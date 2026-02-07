@@ -123,7 +123,7 @@ pub(super) fn handle_validate_token(
         };
         let registry = ProviderRegistry::new();
         let adapter = registry.provider(provider.clone())?;
-        let scopes = adapter.token_scopes(&runtime_target)?;
+        let scopes = mirror_core::provider::block_on(adapter.token_scopes(&runtime_target))?;
         let help = mirror_providers::spec::pat_help(provider.clone());
         match scopes {
             Some(scopes) => {

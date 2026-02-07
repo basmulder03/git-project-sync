@@ -96,7 +96,7 @@ impl TuiApp {
         };
         let registry = ProviderRegistry::new();
         let adapter = registry.provider(provider.clone())?;
-        let scopes = adapter.token_scopes(&runtime_target)?;
+        let scopes = mirror_core::provider::block_on(adapter.token_scopes(&runtime_target))?;
         let help = pat_help(provider.clone());
         let status = match scopes {
             Some(scopes) => {

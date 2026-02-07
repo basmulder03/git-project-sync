@@ -86,8 +86,7 @@ pub(in crate::cli) fn handle_health(args: HealthArgs, audit: &AuditLogger) -> an
                 host: target.host.clone(),
             };
 
-            let outcome = provider
-                .health_check(&runtime_target)
+            let outcome = mirror_core::provider::block_on(provider.health_check(&runtime_target))
                 .or_else(|err| map_provider_error(&runtime_target, err));
             match outcome {
                 Ok(()) => {

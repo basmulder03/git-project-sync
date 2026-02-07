@@ -93,6 +93,12 @@ Ship **v2** with a cleaner async architecture, reduced coupling, and stable beha
   - added `crates/mirror-core/src/sync_engine_work_items.rs`
   - moved rename-path/missing-path logging flow out of `run_sync_filtered`
   - kept path mapping and rename behavior unchanged
+- [x] Split `run_sync_filtered` into explicit orchestration phases
+  - added preflight/auth helper
+  - added inventory+missing phase helper
+  - added execution phase helper
+  - added finalize phase helper
+  - introduced internal `SyncRunState` and `normalized_jobs` helper test
 - [ ] Preserve behavior and compatibility
   - no sync safety rule changes
   - no hidden data-loss paths

@@ -2,7 +2,7 @@ use crate::cache::RepoCache;
 use crate::config::target_id;
 use crate::deleted::{DeletedRepoAction, MissingRemotePolicy};
 use crate::git_sync::SyncOutcome;
-use crate::model::{ProviderTarget, RemoteRepo};
+use crate::model::{ProviderTarget, RemoteRepo, RepoAuth};
 use crate::provider::RepoProvider;
 use crate::sync_engine_inventory::load_repos_with_cache;
 use crate::sync_engine_missing_events::{MissingStatusSink, detect_and_emit_missing_repos};
@@ -146,39 +146,15 @@ pub async fn run_sync_filtered(
     cache_path: &Path,
     options: RunSyncOptions<'_, '_, '_>,
 ) -> anyhow::Result<SyncSummary> {
-    provider
-        .validate_auth(target)
-        .await
-        .context("validate provider auth")?;
-    let target_auth = provider
-        .auth_for_target(target)
-        .await
-        .context("resolve provider auth for target")?;
-    let mut cache = RepoCache::load(cache_path).context("load cache")?;
-    let mut summary = SyncSummary::default();
-    let target_key = target_id(
-        target.provider.clone(),
-        target.host.as_deref(),
-        &target.scope,
-    );
-    let mut status_state = StatusEmitterState {
-        target_key,
-        last_status_flush: Instant::now(),
-        status_dirty: false,
-        total_repos: 0,
-        processed_repos: 0,
-    };
+    let target_auth = preflight_auth(provider, target).await?;
+    let mut state = load_run_state(cache_path, target)?;
 
-    emit_sync_status(
-        &mut cache,
+    emit_lifecycle_status(
+        &mut state,
         cache_path,
         options.progress,
-        &mut status_state,
         SyncAction::Starting,
-        None,
-        None,
         true,
-        summary,
     )?;
 
     info!(
@@ -187,11 +163,83 @@ pub async fn run_sync_filtered(
         "starting sync for target"
     );
 
+    let repos =
+        prepare_repos_phase(provider, target, root, cache_path, options, &mut state).await?;
+
+    execute_repos_phase(root, cache_path, options, target_auth, repos, &mut state)?;
+
+    finalize_sync_phase(cache_path, options.progress, &mut state)
+}
+
+async fn preflight_auth(
+    provider: &dyn RepoProvider,
+    target: &ProviderTarget,
+) -> anyhow::Result<Option<RepoAuth>> {
+    provider
+        .validate_auth(target)
+        .await
+        .context("validate provider auth")?;
+    provider
+        .auth_for_target(target)
+        .await
+        .context("resolve provider auth for target")
+}
+
+fn load_run_state(cache_path: &Path, target: &ProviderTarget) -> anyhow::Result<SyncRunState> {
+    let cache = RepoCache::load(cache_path).context("load cache")?;
+    let summary = SyncSummary::default();
+    let target_key = target_id(
+        target.provider.clone(),
+        target.host.as_deref(),
+        &target.scope,
+    );
+    let status_state = StatusEmitterState {
+        target_key,
+        last_status_flush: Instant::now(),
+        status_dirty: false,
+        total_repos: 0,
+        processed_repos: 0,
+    };
+    Ok(SyncRunState {
+        cache,
+        summary,
+        status_state,
+    })
+}
+
+fn emit_lifecycle_status(
+    state: &mut SyncRunState,
+    cache_path: &Path,
+    progress: Option<&SyncProgressReporter<'_>>,
+    action: SyncAction,
+    in_progress: bool,
+) -> anyhow::Result<()> {
+    emit_sync_status(
+        &mut state.cache,
+        cache_path,
+        progress,
+        &mut state.status_state,
+        action,
+        None,
+        None,
+        in_progress,
+        state.summary,
+    )
+}
+
+async fn prepare_repos_phase(
+    provider: &dyn RepoProvider,
+    target: &ProviderTarget,
+    root: &Path,
+    cache_path: &Path,
+    options: RunSyncOptions<'_, '_, '_>,
+    state: &mut SyncRunState,
+) -> anyhow::Result<Vec<RemoteRepo>> {
     let (mut repos, used_cache) =
-        load_repos_with_cache(provider, target, &mut cache, options.refresh).await?;
+        load_repos_with_cache(provider, target, &mut state.cache, options.refresh).await?;
     if options.detect_missing && !used_cache {
         detect_and_emit_missing_repos(
-            &mut cache,
+            &mut state.cache,
             root,
             &repos,
             options.missing_policy,
@@ -199,59 +247,71 @@ pub async fn run_sync_filtered(
             MissingStatusSink {
                 cache_path,
                 progress: options.progress,
-                state: &mut status_state,
-                summary: &mut summary,
+                state: &mut state.status_state,
+                summary: &mut state.summary,
             },
         )?;
     }
     if let Some(filter) = options.repo_filter {
         repos.retain(|repo| filter(repo));
     }
-    status_state.total_repos = repos.len();
-    emit_sync_status(
-        &mut cache,
+    state.status_state.total_repos = repos.len();
+    emit_lifecycle_status(
+        state,
         cache_path,
         options.progress,
-        &mut status_state,
         SyncAction::Syncing,
-        None,
-        None,
         true,
-        summary,
     )?;
+    Ok(repos)
+}
 
-    let work_items = build_work_items(&cache, root, repos);
-
-    let jobs = options.jobs.max(1).min(work_items.len().max(1));
+fn execute_repos_phase(
+    root: &Path,
+    cache_path: &Path,
+    options: RunSyncOptions<'_, '_, '_>,
+    target_auth: Option<RepoAuth>,
+    repos: Vec<RemoteRepo>,
+    state: &mut SyncRunState,
+) -> anyhow::Result<()> {
+    let work_items = build_work_items(&state.cache, root, repos);
+    let jobs = normalized_jobs(options.jobs, work_items.len());
     run_work_items(
-        &mut cache,
+        &mut state.cache,
         cache_path,
         options.progress,
-        &mut status_state,
-        &mut summary,
+        &mut state.status_state,
+        &mut state.summary,
         work_items,
         jobs,
         target_auth,
         options.verify,
-    )?;
+    )
+}
 
-    emit_sync_status(
-        &mut cache,
-        cache_path,
-        options.progress,
-        &mut status_state,
-        SyncAction::Done,
-        None,
-        None,
-        false,
-        summary,
-    )?;
-    cache.save(cache_path).context("save cache")?;
-    Ok(summary)
+fn finalize_sync_phase(
+    cache_path: &Path,
+    progress: Option<&SyncProgressReporter<'_>>,
+    state: &mut SyncRunState,
+) -> anyhow::Result<SyncSummary> {
+    emit_lifecycle_status(state, cache_path, progress, SyncAction::Done, false)?;
+    state.cache.save(cache_path).context("save cache")?;
+    Ok(state.summary)
+}
+
+fn normalized_jobs(requested_jobs: usize, work_item_count: usize) -> usize {
+    requested_jobs.max(1).min(work_item_count.max(1))
+}
+
+struct SyncRunState {
+    cache: RepoCache,
+    summary: SyncSummary,
+    status_state: StatusEmitterState,
 }
 
 #[cfg(test)]
 mod tests {
+    use super::normalized_jobs;
     use crate::cache::RepoInventoryEntry;
     use tempfile::TempDir;
 
@@ -289,5 +349,13 @@ mod tests {
         let first = crate::sync_engine_status::current_timestamp_secs();
         let second = crate::sync_engine_status::current_timestamp_secs();
         assert!(second >= first);
+    }
+
+    #[test]
+    fn normalized_jobs_is_bounded_by_work_items() {
+        assert_eq!(normalized_jobs(0, 0), 1);
+        assert_eq!(normalized_jobs(1, 0), 1);
+        assert_eq!(normalized_jobs(8, 3), 3);
+        assert_eq!(normalized_jobs(2, 5), 2);
     }
 }

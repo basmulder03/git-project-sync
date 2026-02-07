@@ -69,7 +69,7 @@ Ship **v2** with a cleaner async architecture, reduced coupling, and stable beha
   - inventory store
   - runtime/sync status store
   - token/update health store
-- [ ] Break down `crates/mirror-core/src/sync_engine.rs` into smaller modules
+- [x] Break down `crates/mirror-core/src/sync_engine.rs` into smaller modules
   - orchestration
   - worker execution
   - cache/status reducers
@@ -99,6 +99,10 @@ Ship **v2** with a cleaner async architecture, reduced coupling, and stable beha
   - added execution phase helper
   - added finalize phase helper
   - introduced internal `SyncRunState` and `normalized_jobs` helper test
+- [x] Move sync orchestration internals into dedicated module
+  - added `crates/mirror-core/src/sync_engine_orchestrator.rs`
+  - `crates/mirror-core/src/sync_engine.rs` now delegates execution and primarily defines public sync API/types
+  - kept sync behavior unchanged while reducing module coupling
 - [ ] Preserve behavior and compatibility
   - no sync safety rule changes
   - no hidden data-loss paths

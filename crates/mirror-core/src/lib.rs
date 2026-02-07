@@ -22,6 +22,7 @@ mod sync_engine_fs;
 mod sync_engine_inventory;
 mod sync_engine_missing;
 mod sync_engine_missing_events;
+mod sync_engine_orchestrator;
 mod sync_engine_status;
 mod sync_engine_types;
 mod sync_engine_work_items;

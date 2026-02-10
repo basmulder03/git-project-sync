@@ -31,9 +31,10 @@ curl -fsSL https://raw.githubusercontent.com/basmulder03/git-project-sync/main/s
 iwr -useb https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.ps1 | iex
 ```
 
-To add to PATH on Windows, use:
+To add to PATH on Windows, download and run with parameter:
 ```powershell
-iwr -useb https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.ps1 | iex -AddToPath
+iwr -Uri https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.ps1 -OutFile install.ps1
+.\install.ps1 -AddToPath
 ```
 
 ### Download Pre-built Binaries

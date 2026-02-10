@@ -32,13 +32,14 @@ iwr -useb https://raw.githubusercontent.com/basmulder03/git-project-sync/main/sc
 
 **Install with PATH Update:**
 ```powershell
-iwr -useb https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.ps1 | iex -AddToPath
+iwr -Uri https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.ps1 -OutFile install.ps1
+.\install.ps1 -AddToPath
 ```
 
 **Custom Install Directory:**
 ```powershell
-$env:InstallDir = "C:\Tools\mirror-cli"
-iwr -useb https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.ps1 | iex
+iwr -Uri https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.ps1 -OutFile install.ps1
+.\install.ps1 -InstallDir "C:\Tools\mirror-cli"
 ```
 
 **What it does:**

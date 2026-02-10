@@ -38,10 +38,11 @@ Open PowerShell and run:
 iwr -useb https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.ps1 | iex
 ```
 
-To automatically add to PATH:
+To automatically add to PATH, download and run with parameter:
 
 ```powershell
-iwr -useb https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.ps1 | iex -AddToPath
+iwr -Uri https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.ps1 -OutFile install.ps1
+.\install.ps1 -AddToPath
 ```
 
 The default installation directory is `%LOCALAPPDATA%\Programs\mirror-cli`.

@@ -6,7 +6,66 @@ This handbook is the operator-focused guide to installing, configuring, and runn
 
 Git Project Sync mirrors repositories from multiple Git providers into a local root folder. It keeps local repos up to date safely, without overwriting dirty working trees and without force-resets. Providers are implemented through adapters so the core engine stays provider-agnostic.
 
-## Quick Install
+## Installation
+
+### Quick Install (Recommended)
+
+The fastest way to install Git Project Sync is using our installation scripts:
+
+#### Linux/macOS
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.sh | bash
+```
+
+This will:
+- Detect your OS and architecture
+- Download the latest release binary
+- Install to `~/.local/bin/mirror-cli`
+- Provide instructions for adding to PATH if needed
+
+You can customize the installation directory:
+
+```bash
+INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.sh | bash
+```
+
+#### Windows
+
+Open PowerShell and run:
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.ps1 | iex
+```
+
+To automatically add to PATH:
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.ps1 | iex -AddToPath
+```
+
+The default installation directory is `%LOCALAPPDATA%\Programs\mirror-cli`.
+
+### Download Pre-built Binaries
+
+Download pre-built binaries from [GitHub Releases](https://github.com/basmulder03/git-project-sync/releases):
+
+- `mirror-cli-linux-x86_64` - Linux x86_64
+- `mirror-cli-macos-x86_64` - macOS x86_64  
+- `mirror-cli-windows-x86_64.exe` - Windows x86_64
+
+After downloading:
+
+**Linux/macOS:**
+```bash
+chmod +x mirror-cli-*
+sudo mv mirror-cli-* /usr/local/bin/mirror-cli
+```
+
+**Windows:**
+Move the `.exe` file to a directory in your PATH.
+
+### Build from Source
 
 Build the CLI:
 
@@ -19,6 +78,97 @@ Run the binary:
 ```bash
 ./target/release/mirror-cli --help
 ```
+
+Install to system:
+
+```bash
+# Linux/macOS
+sudo cp target/release/mirror-cli /usr/local/bin/
+
+# Or to user directory
+cp target/release/mirror-cli ~/.local/bin/
+```
+
+## Updating
+
+### Automatic Update via Scripts
+
+**Linux/macOS:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/update.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+iwr -useb https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/update.ps1 | iex
+```
+
+These scripts will:
+- Check your current version
+- Download the latest release if newer
+- Update the binary in place
+- Preserve your installation location
+
+### Built-in Update Command
+
+Git Project Sync includes a built-in update mechanism:
+
+```bash
+# Check for available updates
+mirror-cli update --check-only
+
+# Check and apply updates during sync
+mirror-cli sync --check-updates
+
+# Apply updates immediately
+mirror-cli update --apply
+```
+
+Override the update source repository:
+
+```bash
+GIT_PROJECT_SYNC_UPDATE_REPO=owner/repo mirror-cli update --check-only
+```
+
+## Verifying Installation
+
+After installation, verify that `mirror-cli` is working:
+
+```bash
+# Check if command is available
+mirror-cli --version
+
+# View help
+mirror-cli --help
+```
+
+If the command is not found, you may need to add the installation directory to your PATH:
+
+**Linux/macOS:**
+Add to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then reload:
+```bash
+source ~/.bashrc  # or ~/.zshrc
+```
+
+**Windows:**
+1. Open System Properties → Environment Variables
+2. Edit the user `Path` variable
+3. Add the installation directory (e.g., `%LOCALAPPDATA%\Programs\mirror-cli`)
+4. Restart your terminal
+
+### PATH behavior
+
+PATH updates are **opt-in** during installation. The installation scripts will notify you if the binary is not in your PATH and provide instructions.
+
+For the built-in `mirror-cli install` command:
+- Windows: adds the install folder to the user PATH environment variable
+- macOS/Linux: creates a symlink to a PATH location, for example `ln -s <install-dir>/mirror-cli /usr/local/bin/mirror-cli`
 
 ## Releases
 
@@ -33,13 +183,6 @@ gh workflow run Release -f bump=patch
 **Release Checklist**
 1. Run `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all`.
 2. Dispatch the **Release** workflow with the desired bump type.
-
-### PATH behavior
-
-PATH updates are **opt-in** during `mirror-cli install`. If you skip it, you can add it later:
-
-- Windows: add the install folder to the user PATH environment variable.
-- macOS/Linux: add a symlink to a PATH location, for example `ln -s <install-dir>/mirror-cli /usr/local/bin/mirror-cli`.
 
 ## Configuration
 

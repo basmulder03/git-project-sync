@@ -19,6 +19,34 @@ Mirror repositories from multiple Git providers into a local root folder with sa
 
 ## Install
 
+### Quick Install (Recommended)
+
+**Linux/macOS:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+iwr -useb https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.ps1 | iex
+```
+
+To add to PATH on Windows, download and run with parameter:
+```powershell
+iwr -Uri https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/install.ps1 -OutFile install.ps1
+.\install.ps1 -AddToPath
+```
+
+### Download Pre-built Binaries
+
+Download the latest release from [GitHub Releases](https://github.com/basmulder03/git-project-sync/releases):
+
+- `mirror-cli-linux-x86_64` - Linux x86_64
+- `mirror-cli-macos-x86_64` - macOS x86_64
+- `mirror-cli-windows-x86_64.exe` - Windows x86_64
+
+### Build from Source
+
 Build with Cargo:
 
 ```bash
@@ -29,6 +57,30 @@ Binary path:
 
 ```bash
 target/release/mirror-cli
+```
+
+## Update
+
+### Quick Update
+
+**Linux/macOS:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/update.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+iwr -useb https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/update.ps1 | iex
+```
+
+### Using Built-in Update Command
+
+```bash
+# Check for updates
+mirror-cli update --check-only
+
+# Apply updates
+mirror-cli update --apply
 ```
 
 ## Quick Start

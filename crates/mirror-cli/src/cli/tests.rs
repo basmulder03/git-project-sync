@@ -1,6 +1,6 @@
 use super::shared::{
-    admin_privileges_prompt_label, azdo_message_for_status, github_status_message,
-    gitlab_status_message,
+    admin_privileges_prompt_label, azdo_message_for_status, build_windows_elevate_command,
+    github_status_message, gitlab_status_message,
 };
 use super::*;
 
@@ -118,4 +118,19 @@ fn admin_prompt_label_matches_os() {
     } else {
         assert!(label.contains("sudo"));
     }
+}
+
+#[test]
+fn build_windows_elevate_command_quotes_args() {
+    let exe = std::path::Path::new(r"C:\Program Files\mirror-cli\mirror-cli.exe");
+    let args = vec![
+        "install".to_string(),
+        "--path".to_string(),
+        "add".to_string(),
+        "--note=it's fine".to_string(),
+    ];
+    let command = build_windows_elevate_command(exe, &args);
+    assert!(command.contains("Start-Process -Verb RunAs"));
+    assert!(command.contains("-FilePath 'C:\\Program Files\\mirror-cli\\mirror-cli.exe'"));
+    assert!(command.contains("-ArgumentList @('install', '--path', 'add', '--note=it''s fine')"));
 }

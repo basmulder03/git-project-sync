@@ -19,6 +19,24 @@ Ship **v2** with a cleaner async architecture, reduced coupling, and stable beha
 - [ ] Add tests for locale parsing and config roundtrip
 - [ ] Update docs (`README.md`, `SPEC.md`, `ACCEPTANCE.md`)
 
+## Session Plan — Windows install/elevation fixes (2026-02-12)
+
+- [x] Align Windows install default path with scripts/docs (`%LOCALAPPDATA%\Programs\mirror-cli`)
+- [x] Add migration path from legacy `%LOCALAPPDATA%\Programs\git-project-sync`
+  - migrate install target to new path
+  - cleanup legacy binary/empty legacy directory when possible
+- [x] Preserve install detection/status for pre-migration installs without manifest
+- [x] Improve Windows elevation re-exec argument escaping for UAC relaunch
+- [x] Make `schtasks` permission failures surface as `PermissionDenied` for elevate-and-retry flow
+- [x] Add/update focused tests for migration path + elevation command formatting
+- [x] Run quality gates (`cargo fmt`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test --all`)
+
+### Session Decisions / Assumptions (Windows fixes)
+
+- Keep `%LOCALAPPDATA%\Programs\mirror-cli` as canonical Windows install directory.
+- Treat `%LOCALAPPDATA%\Programs\git-project-sync` as legacy and migrate forward automatically on install/update.
+- Legacy cleanup is best-effort if the old binary is in use (Windows file lock/sharing violation), and should not abort a successful migration.
+
 ### Session Decisions / Assumptions
 
 - Use BCP47 language tags (`en-001`, `en-US`, `en-GB`, `nl`, `af`).

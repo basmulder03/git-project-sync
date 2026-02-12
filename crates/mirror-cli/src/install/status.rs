@@ -2,7 +2,15 @@ use super::{InstallStatus, metadata, path_env};
 
 pub fn install_status() -> anyhow::Result<InstallStatus> {
     let manifest = metadata::read_manifest()?;
-    let installed_path = manifest.as_ref().map(|m| m.installed_path.clone());
+    let inferred_path = if manifest.is_none() {
+        metadata::infer_existing_install_path().ok().flatten()
+    } else {
+        None
+    };
+    let installed_path = manifest
+        .as_ref()
+        .map(|m| m.installed_path.clone())
+        .or(inferred_path);
     let manifest_present = manifest.is_some();
     let installed_version = manifest.as_ref().map(|m| m.installed_version.clone());
     let installed_at = manifest.as_ref().map(|m| m.installed_at);

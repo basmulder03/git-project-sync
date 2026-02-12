@@ -5,7 +5,14 @@ pub(in crate::cli) fn handle_service(args: ServiceArgs, audit: &AuditLogger) -> 
         let exe = std::env::current_exe().context("resolve current executable")?;
         match args.action {
             ServiceAction::Install => {
-                mirror_core::service::install_service(&exe)?;
+                mirror_core::service::install_service(&exe).map_err(|err| {
+                    if update::is_permission_error(&err)
+                        && maybe_escalate_and_reexec("install service").unwrap_or(false)
+                    {
+                        return anyhow::anyhow!("service escalated");
+                    }
+                    err
+                })?;
                 println!("Service installed for {}", exe.display());
                 let audit_id = audit.record(
                     "service.install",
@@ -17,7 +24,14 @@ pub(in crate::cli) fn handle_service(args: ServiceArgs, audit: &AuditLogger) -> 
                 println!("{}", tf(key::AUDIT_ID, &[("audit_id", audit_id)]));
             }
             ServiceAction::Uninstall => {
-                mirror_core::service::uninstall_service()?;
+                mirror_core::service::uninstall_service().map_err(|err| {
+                    if update::is_permission_error(&err)
+                        && maybe_escalate_and_reexec("uninstall service").unwrap_or(false)
+                    {
+                        return anyhow::anyhow!("service escalated");
+                    }
+                    err
+                })?;
                 let _ = install::remove_marker();
                 let _ = install::remove_manifest();
                 println!("Service uninstalled.");
@@ -35,6 +49,9 @@ pub(in crate::cli) fn handle_service(args: ServiceArgs, audit: &AuditLogger) -> 
     })();
 
     if let Err(err) = &result {
+        if err.to_string() == "service escalated" {
+            return Ok(());
+        }
         let action = match args.action {
             ServiceAction::Install => "service.install",
             ServiceAction::Uninstall => "service.uninstall",

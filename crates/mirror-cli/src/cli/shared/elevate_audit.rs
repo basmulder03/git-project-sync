@@ -27,18 +27,9 @@ pub(in crate::cli) fn maybe_escalate_and_reexec(reason: &str) -> anyhow::Result<
     let args: Vec<String> = std::env::args().skip(1).collect();
 
     if cfg!(target_os = "windows") {
-        let exe_str = exe.to_string_lossy().replace('\'', "''");
-        let arg_list = args
-            .iter()
-            .map(|arg| arg.replace('\'', "''"))
-            .collect::<Vec<_>>()
-            .join(" ");
-        let command = format!(
-            "Start-Process -Verb RunAs -FilePath '{}' -ArgumentList '{}'",
-            exe_str, arg_list
-        );
+        let command = build_windows_elevate_command(&exe, &args);
         Command::new("powershell")
-            .args(["-Command", &command])
+            .args(["-NoProfile", "-Command", &command])
             .spawn()
             .context("launch elevated process")?;
         return Ok(true);
@@ -50,6 +41,23 @@ pub(in crate::cli) fn maybe_escalate_and_reexec(reason: &str) -> anyhow::Result<
         .spawn()
         .context("launch elevated process")?;
     Ok(true)
+}
+
+pub(in crate::cli) fn build_windows_elevate_command(
+    exe: &std::path::Path,
+    args: &[String],
+) -> String {
+    let exe_str = ps_single_quoted(&exe.to_string_lossy());
+    let arg_items = args
+        .iter()
+        .map(|arg| ps_single_quoted(arg))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("Start-Process -Verb RunAs -FilePath {exe_str} -ArgumentList @({arg_items})")
+}
+
+fn ps_single_quoted(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
 }
 
 pub(in crate::cli) fn audit_repo_progress(

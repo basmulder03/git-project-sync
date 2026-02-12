@@ -1,4 +1,5 @@
 use anyhow::Context;
+#[cfg(unix)]
 use directories::BaseDirs;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -65,7 +66,7 @@ pub(in crate::install) fn path_contains_dir(dir: &Path) -> bool {
         #[cfg(windows)]
         {
             let path = resolve_windows_path(&path);
-            return eq_ignore_ascii_case_wide(&path, &dir);
+            eq_ignore_ascii_case_wide(&path, &dir)
         }
         #[cfg(not(windows))]
         {

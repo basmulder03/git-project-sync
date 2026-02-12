@@ -67,12 +67,12 @@ pub async fn run() -> anyhow::Result<()> {
 /// Check if we should run TUI synchronously (no args or explicit TUI command)
 pub fn should_run_tui_sync() -> bool {
     let args: Vec<String> = std::env::args().collect();
-    
+
     // No arguments - defaults to TUI
     if args.len() == 1 {
         return true;
     }
-    
+
     // Check if TUI command is explicitly requested
     if let Ok(cli) = Cli::try_parse() {
         matches!(cli.command, Commands::Tui(_))

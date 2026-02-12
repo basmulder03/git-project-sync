@@ -1286,7 +1286,7 @@ dependencies = [
 
 [[package]]
 name = "mirror-cli"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -1308,7 +1308,7 @@ dependencies = [
 
 [[package]]
 name = "mirror-core"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "anyhow",
  "directories",
@@ -1328,7 +1328,7 @@ dependencies = [
 
 [[package]]
 name = "mirror-providers"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "anyhow",
  "keyring",

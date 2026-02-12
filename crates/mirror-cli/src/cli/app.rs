@@ -1,27 +1,45 @@
 use super::*;
 use crate::i18n::{key, resolve_locale, set_active_locale, tf};
 
-pub async fn run() -> anyhow::Result<()> {
-    let log_buffer = logging::LogBuffer::new(200);
-    let filter = EnvFilter::from_default_env();
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_subscriber::fmt::layer())
-        .with(logging::LogLayer::new(log_buffer.clone()))
-        .init();
+struct AppSetup {
+    log_buffer: logging::LogBuffer,
+    audit: AuditLogger,
+}
 
-    let audit = AuditLogger::new()?;
-    let _ = audit.record("app.start", AuditStatus::Ok, None, None, None)?;
-    let config_path = default_config_path()?;
-    let config_lang = load_or_migrate(&config_path)
-        .ok()
-        .and_then(|(config, _)| config.language);
-    let startup_locale = resolve_locale(
-        None,
-        std::env::var("MIRROR_LANG").ok().as_deref(),
-        config_lang.as_deref(),
-    );
-    set_active_locale(startup_locale);
+impl AppSetup {
+    fn init() -> anyhow::Result<Self> {
+        let log_buffer = logging::LogBuffer::new(200);
+        let filter = EnvFilter::from_default_env();
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(tracing_subscriber::fmt::layer())
+            .with(logging::LogLayer::new(log_buffer.clone()))
+            .init();
+
+        let audit = AuditLogger::new()?;
+        let _ = audit.record("app.start", AuditStatus::Ok, None, None, None)?;
+        
+        Ok(Self { log_buffer, audit })
+    }
+
+    fn init_locale_from_config(&self) -> anyhow::Result<()> {
+        let config_path = default_config_path()?;
+        let config_lang = load_or_migrate(&config_path)
+            .ok()
+            .and_then(|(config, _)| config.language);
+        let startup_locale = resolve_locale(
+            None,
+            std::env::var("MIRROR_LANG").ok().as_deref(),
+            config_lang.as_deref(),
+        );
+        set_active_locale(startup_locale);
+        Ok(())
+    }
+}
+
+pub async fn run() -> anyhow::Result<()> {
+    let setup = AppSetup::init()?;
+    setup.init_locale_from_config()?;
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() == 1 {
@@ -32,7 +50,7 @@ pub async fn run() -> anyhow::Result<()> {
             println!();
             return Ok(());
         }
-        return tui::run_tui(&audit, log_buffer.clone(), tui::StartView::Install);
+        return tui::run_tui(&setup.audit, setup.log_buffer.clone(), tui::StartView::Install);
     }
 
     let cli = Cli::parse();
@@ -54,10 +72,10 @@ pub async fn run() -> anyhow::Result<()> {
 
     if cli.check_updates
         && !matches!(cli.command, Commands::Update(_))
-        && let Err(err) = run_update_check(&audit)
+        && let Err(err) = run_update_check(&setup.audit)
     {
         warn!(error = %err, "Update check failed");
-        let _ = audit.record(
+        let _ = setup.audit.record(
             "update.check",
             AuditStatus::Failed,
             Some("update"),
@@ -82,7 +100,7 @@ pub async fn run() -> anyhow::Result<()> {
                 cache_path: &cache_path,
                 interval_secs: 86_400,
                 auto_apply: true,
-                audit: &audit,
+                audit: &setup.audit,
                 force: true,
                 interactive: is_interactive,
                 source: "cli",
@@ -100,7 +118,7 @@ pub async fn run() -> anyhow::Result<()> {
                     {
                         return Ok(());
                     }
-                    let _ = audit.record(
+                    let _ = setup.audit.record(
                         "update.check",
                         AuditStatus::Skipped,
                         Some("update"),
@@ -123,20 +141,20 @@ pub async fn run() -> anyhow::Result<()> {
             Err(_) => true,
         };
         if should_check {
-            let _ = run_token_validity_checks(&config_path, &cache_path, &audit, "cli", true).await;
+            let _ = run_token_validity_checks(&config_path, &cache_path, &setup.audit, "cli", true).await;
         }
     }
 
     let result = match cli.command {
-        Commands::Config(args) => handle_config(args, &audit),
-        Commands::Target(args) => handle_target(args, &audit),
-        Commands::Token(args) => handle_token(args, &audit).await,
-        Commands::Sync(args) => handle_sync(args, &audit).await,
-        Commands::Daemon(args) => handle_daemon(args, &audit).await,
-        Commands::Service(args) => handle_service(args, &audit),
-        Commands::Health(args) => handle_health(args, &audit).await,
-        Commands::Webhook(args) => handle_webhook(args, &audit).await,
-        Commands::Cache(args) => handle_cache(args, &audit),
+        Commands::Config(args) => handle_config(args, &setup.audit),
+        Commands::Target(args) => handle_target(args, &setup.audit),
+        Commands::Token(args) => handle_token(args, &setup.audit).await,
+        Commands::Sync(args) => handle_sync(args, &setup.audit).await,
+        Commands::Daemon(args) => handle_daemon(args, &setup.audit).await,
+        Commands::Service(args) => handle_service(args, &setup.audit),
+        Commands::Health(args) => handle_health(args, &setup.audit).await,
+        Commands::Webhook(args) => handle_webhook(args, &setup.audit).await,
+        Commands::Cache(args) => handle_cache(args, &setup.audit),
         Commands::Tui(args) => {
             let start_view = if args.install {
                 tui::StartView::Install
@@ -145,15 +163,15 @@ pub async fn run() -> anyhow::Result<()> {
             } else {
                 tui::StartView::Main
             };
-            tui::run_tui(&audit, log_buffer.clone(), start_view)
+            tui::run_tui(&setup.audit, setup.log_buffer.clone(), start_view)
         }
-        Commands::Install(args) => handle_install(args, &audit, log_buffer.clone()),
-        Commands::Task(args) => handle_task(args, &audit),
-        Commands::Update(args) => handle_update(args, &audit),
+        Commands::Install(args) => handle_install(args, &setup.audit, setup.log_buffer.clone()),
+        Commands::Task(args) => handle_task(args, &setup.audit),
+        Commands::Update(args) => handle_update(args, &setup.audit),
     };
 
     if let Err(err) = &result {
-        let _ = audit.record(
+        let _ = setup.audit.record(
             "app.error",
             AuditStatus::Failed,
             None,
@@ -167,16 +185,7 @@ pub async fn run() -> anyhow::Result<()> {
 
 /// Synchronous version of run() for TUI mode only
 pub fn run_sync() -> anyhow::Result<()> {
-    let log_buffer = logging::LogBuffer::new(200);
-    let filter = EnvFilter::from_default_env();
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_subscriber::fmt::layer())
-        .with(logging::LogLayer::new(log_buffer.clone()))
-        .init();
-
-    let audit = AuditLogger::new()?;
-    let _ = audit.record("app.start", AuditStatus::Ok, None, None, None)?;
+    let setup = AppSetup::init()?;
     let config_path = default_config_path()?;
     let config_lang = load_or_migrate(&config_path)
         .ok()
@@ -197,13 +206,10 @@ pub fn run_sync() -> anyhow::Result<()> {
             println!();
             return Ok(());
         }
-        return tui::run_tui(&audit, log_buffer.clone(), tui::StartView::Install);
+        return tui::run_tui(&setup.audit, setup.log_buffer.clone(), tui::StartView::Install);
     }
 
     let cli = Cli::parse();
-    let config_lang = load_or_migrate(&config_path)
-        .ok()
-        .and_then(|(config, _)| config.language);
     let locale = resolve_locale(
         cli.lang.as_deref(),
         std::env::var("MIRROR_LANG").ok().as_deref(),
@@ -223,7 +229,7 @@ pub fn run_sync() -> anyhow::Result<()> {
             } else {
                 tui::StartView::Main
             };
-            tui::run_tui(&audit, log_buffer.clone(), start_view)
+            tui::run_tui(&setup.audit, setup.log_buffer.clone(), start_view)
         }
         _ => {
             // Should not reach here as should_run_tui_sync() should filter
@@ -232,7 +238,7 @@ pub fn run_sync() -> anyhow::Result<()> {
     };
 
     if let Err(err) = &result {
-        let _ = audit.record(
+        let _ = setup.audit.record(
             "app.error",
             AuditStatus::Failed,
             None,

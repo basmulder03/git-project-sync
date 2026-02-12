@@ -186,16 +186,7 @@ pub async fn run() -> anyhow::Result<()> {
 /// Synchronous version of run() for TUI mode only
 pub fn run_sync() -> anyhow::Result<()> {
     let setup = AppSetup::init()?;
-    let config_path = default_config_path()?;
-    let config_lang = load_or_migrate(&config_path)
-        .ok()
-        .and_then(|(config, _)| config.language);
-    let startup_locale = resolve_locale(
-        None,
-        std::env::var("MIRROR_LANG").ok().as_deref(),
-        config_lang.as_deref(),
-    );
-    set_active_locale(startup_locale);
+    setup.init_locale_from_config()?;
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() == 1 {
@@ -210,12 +201,20 @@ pub fn run_sync() -> anyhow::Result<()> {
     }
 
     let cli = Cli::parse();
-    let locale = resolve_locale(
-        cli.lang.as_deref(),
-        std::env::var("MIRROR_LANG").ok().as_deref(),
-        config_lang.as_deref(),
-    );
-    set_active_locale(locale);
+    
+    // Apply CLI-specific locale override if provided
+    let config_path = default_config_path()?;
+    let config_lang = load_or_migrate(&config_path)
+        .ok()
+        .and_then(|(config, _)| config.language);
+    if cli.lang.is_some() {
+        let locale = resolve_locale(
+            cli.lang.as_deref(),
+            std::env::var("MIRROR_LANG").ok().as_deref(),
+            config_lang.as_deref(),
+        );
+        set_active_locale(locale);
+    }
 
     info!(command = command_label(&cli.command), "Running command");
 

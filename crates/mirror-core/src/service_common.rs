@@ -60,14 +60,24 @@ Otherwise, check your home directory permissions.",
 
 #[cfg(target_os = "windows")]
 pub(crate) fn run_schtasks(args: &[String]) -> anyhow::Result<()> {
-    let status = Command::new("schtasks")
+    let output = Command::new("schtasks")
         .args(args)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
         .context("run schtasks")?;
-    if !status.success() {
-        anyhow::bail!("schtasks failed with status {status}");
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let message = if !stderr.is_empty() { &stderr } else { &stdout };
+        if is_schtasks_access_denied(message) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("schtasks access denied: {message}"),
+            ))
+            .context("run schtasks");
+        }
+        anyhow::bail!("schtasks failed with status {}: {message}", output.status);
     }
     Ok(())
 }
@@ -81,9 +91,25 @@ pub(crate) fn run_schtasks_output(args: &[String]) -> anyhow::Result<String> {
         .output()
         .context("run schtasks")?;
     if !output.status.success() {
-        anyhow::bail!("schtasks failed with status {}", output.status);
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let message = if !stderr.is_empty() { &stderr } else { &stdout };
+        if is_schtasks_access_denied(message) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("schtasks access denied: {message}"),
+            ))
+            .context("run schtasks");
+        }
+        anyhow::bail!("schtasks failed with status {}: {message}", output.status);
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn is_schtasks_access_denied(message: &str) -> bool {
+    let normalized = message.to_ascii_lowercase();
+    normalized.contains("access is denied") || normalized.contains("0x80070005")
 }
 
 #[cfg(target_os = "windows")]

@@ -128,6 +128,7 @@ pub fn perform_install_with_progress(
         ),
     );
     let install_message = metadata::install_binary(exec_path, &install_path, is_update)?;
+    let migration_message = metadata::migrate_legacy_windows_install(&install_path)?;
     step += 1;
     report_progress(
         progress,
@@ -163,6 +164,11 @@ pub fn perform_install_with_progress(
     report_progress(progress, step, total, "Writing install metadata");
     write_marker()?;
     metadata::write_manifest(&install_path, installed_version, delayed_start)?;
+    let path = if let Some(migration_message) = migration_message {
+        format!("{path}; {migration_message}")
+    } else {
+        path
+    };
     Ok(InstallReport {
         install: install_message,
         service,

@@ -16,6 +16,8 @@ pub(in crate::install) struct InstallManifest {
 }
 
 const INSTALL_MANIFEST_VERSION: u32 = 1;
+const WINDOWS_INSTALL_DIR: &str = "mirror-cli";
+const WINDOWS_LEGACY_INSTALL_DIR: &str = "git-project-sync";
 
 pub(in crate::install) fn install_binary(
     exec_path: &Path,
@@ -66,8 +68,21 @@ pub(in crate::install) fn resolve_install_path(
     installed_path: Option<&Path>,
 ) -> anyhow::Result<PathBuf> {
     if let Some(path) = installed_path {
+        if cfg!(target_os = "windows") && is_windows_legacy_install_path(path) {
+            return default_install_path(exec_path);
+        }
         return Ok(path.to_path_buf());
     }
+
+    if cfg!(target_os = "windows") {
+        let file_name = exec_path
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("executable path has no file name"))?;
+        if windows_legacy_binary_path(file_name)?.is_some() {
+            return default_install_path(exec_path);
+        }
+    }
+
     default_install_path(exec_path)
 }
 
@@ -82,7 +97,12 @@ pub(in crate::install) fn default_install_dir() -> anyhow::Result<PathBuf> {
 }
 
 pub(in crate::install) fn build_install_dir_windows(base: &Path) -> PathBuf {
-    base.join("Programs").join("git-project-sync")
+    base.join("Programs").join(WINDOWS_INSTALL_DIR)
+}
+
+#[cfg(windows)]
+pub(in crate::install) fn build_legacy_install_dir_windows(base: &Path) -> PathBuf {
+    base.join("Programs").join(WINDOWS_LEGACY_INSTALL_DIR)
 }
 
 pub(in crate::install) fn build_install_dir_unix(base: &Path) -> PathBuf {
@@ -93,8 +113,116 @@ pub fn is_installed() -> anyhow::Result<bool> {
     if let Ok(Some(manifest)) = read_manifest() {
         return Ok(manifest.installed_path.exists());
     }
+    if infer_existing_install_path().ok().flatten().is_some() {
+        return Ok(true);
+    }
     let path = marker_path()?;
     Ok(path.exists())
+}
+
+pub(in crate::install) fn infer_existing_install_path() -> anyhow::Result<Option<PathBuf>> {
+    let current_exe = std::env::current_exe().context("resolve current executable")?;
+    let file_name = current_exe
+        .file_name()
+        .ok_or_else(|| anyhow::anyhow!("current executable path has no file name"))?;
+
+    let install_candidate = default_install_dir()?.join(file_name);
+    if install_candidate.exists() {
+        return Ok(Some(install_candidate));
+    }
+
+    if cfg!(target_os = "windows") {
+        return windows_legacy_binary_path(file_name);
+    }
+
+    Ok(None)
+}
+
+pub(in crate::install) fn migrate_legacy_windows_install(
+    install_path: &Path,
+) -> anyhow::Result<Option<String>> {
+    #[cfg(not(windows))]
+    {
+        let _ = install_path;
+        Ok(None)
+    }
+
+    #[cfg(windows)]
+    {
+        if is_windows_legacy_install_path(install_path) {
+            return Ok(None);
+        }
+
+        let file_name = install_path
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("install path has no file name"))?;
+        let Some(legacy_path) = windows_legacy_binary_path(file_name)? else {
+            return Ok(None);
+        };
+
+        match fs::remove_file(&legacy_path) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(err) if is_windows_file_in_use(&err) => {
+                return Ok(Some(format!(
+                    "migrated legacy install path; cleanup deferred for {} (binary in use)",
+                    legacy_path.display()
+                )));
+            }
+            Err(err) => {
+                return Err(err).with_context(|| {
+                    format!("remove legacy install binary {}", legacy_path.display())
+                });
+            }
+        }
+
+        if let Some(parent) = legacy_path.parent() {
+            let _ = fs::remove_dir(parent);
+        }
+
+        Ok(Some(format!(
+            "migrated legacy install path from {}",
+            legacy_path.display()
+        )))
+    }
+}
+
+fn windows_legacy_binary_path(file_name: &std::ffi::OsStr) -> anyhow::Result<Option<PathBuf>> {
+    #[cfg(windows)]
+    {
+        let base = BaseDirs::new().context("resolve base dirs")?;
+        let legacy_path = build_legacy_install_dir_windows(base.data_local_dir()).join(file_name);
+        if legacy_path.exists() {
+            Ok(Some(legacy_path))
+        } else {
+            Ok(None)
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = file_name;
+        Ok(None)
+    }
+}
+
+fn is_windows_legacy_install_path(path: &Path) -> bool {
+    let parent = match path.parent() {
+        Some(parent) => parent,
+        None => return false,
+    };
+    parent
+        .file_name()
+        .map(|name| {
+            name.to_string_lossy()
+                .eq_ignore_ascii_case(WINDOWS_LEGACY_INSTALL_DIR)
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(windows)]
+fn is_windows_file_in_use(err: &std::io::Error) -> bool {
+    matches!(err.raw_os_error(), Some(32 | 33))
 }
 
 pub fn write_marker() -> anyhow::Result<()> {
@@ -195,8 +323,41 @@ mod tests {
         let dir = build_install_dir_windows(base);
         assert_eq!(
             dir,
+            PathBuf::from("C:\\Users\\me\\AppData\\Local\\Programs\\mirror-cli")
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn build_legacy_install_dir_windows_appends_legacy_folder() {
+        let base = Path::new("C:\\Users\\me\\AppData\\Local");
+        let dir = build_legacy_install_dir_windows(base);
+        assert_eq!(
+            dir,
             PathBuf::from("C:\\Users\\me\\AppData\\Local\\Programs\\git-project-sync")
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolve_install_path_migrates_legacy_manifest_path() {
+        let exec_path =
+            Path::new("C:\\Users\\me\\AppData\\Local\\Programs\\mirror-cli\\mirror-cli.exe");
+        let installed_path =
+            Path::new("C:\\Users\\me\\AppData\\Local\\Programs\\git-project-sync\\mirror-cli.exe");
+        let resolved = resolve_install_path(exec_path, Some(installed_path)).unwrap();
+        assert_eq!(
+            resolved.file_name().and_then(|s| s.to_str()),
+            Some("mirror-cli.exe")
+        );
+        assert_eq!(
+            resolved
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|s| s.to_str()),
+            Some("mirror-cli")
+        );
+        assert!(!is_windows_legacy_install_path(&resolved));
     }
 
     #[cfg(unix)]

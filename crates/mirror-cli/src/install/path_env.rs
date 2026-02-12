@@ -2,7 +2,7 @@ use anyhow::Context;
 #[cfg(unix)]
 use directories::BaseDirs;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 #[cfg(windows)]
 use tracing::debug;
 
@@ -36,19 +36,42 @@ fn add_path_unix(_dir: &Path) -> anyhow::Result<String> {
 }
 
 fn add_path_windows(dir: &Path) -> anyhow::Result<String> {
-    let current = std::env::var("PATH").unwrap_or_default();
     let dir_str = dir.to_string_lossy().to_string();
-    if current.split(';').any(|p| p.eq_ignore_ascii_case(&dir_str)) {
+    if path_contains_dir(dir) {
         return Ok("PATH already contains mirror-cli directory".to_string());
     }
-    let updated = build_path_update(&current, &dir_str);
-    Command::new("setx")
-        .args(["PATH", &updated])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+
+    let command = format!(
+        "$dir={dir}; $userPath=[Environment]::GetEnvironmentVariable('Path','User'); \
+if ([string]::IsNullOrWhiteSpace($userPath)) {{ $newPath=$dir }} else {{ \
+$parts=@($userPath -split ';' | Where-Object {{ $_ -and $_.Trim() -ne '' }}); \
+if ($parts -contains $dir) {{ exit 0 }}; $newPath=($parts + $dir) -join ';' }}; \
+[Environment]::SetEnvironmentVariable('Path',$newPath,'User')",
+        dir = ps_single_quoted(&dir_str)
+    );
+
+    let status = Command::new("powershell")
+        .args(["-NoProfile", "-Command", &command])
         .status()
-        .context("update PATH with setx")?;
+        .context("update user PATH")?;
+    if !status.success() {
+        anyhow::bail!("update user PATH failed with status {status}");
+    }
+
+    let current = std::env::var("PATH").unwrap_or_default();
+    if !current.split(';').any(|p| p.eq_ignore_ascii_case(&dir_str)) {
+        let updated = build_path_update(&current, &dir_str);
+        unsafe {
+            std::env::set_var("PATH", updated);
+        }
+    }
+
     Ok("Updated user PATH (restart shell to apply)".to_string())
+}
+
+#[cfg(windows)]
+fn ps_single_quoted(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
 }
 
 pub(in crate::install) fn build_path_update(current: &str, add: &str) -> String {

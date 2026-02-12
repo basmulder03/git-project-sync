@@ -165,6 +165,85 @@ pub async fn run() -> anyhow::Result<()> {
     result
 }
 
+/// Synchronous version of run() for TUI mode only
+pub fn run_sync() -> anyhow::Result<()> {
+    let log_buffer = logging::LogBuffer::new(200);
+    let filter = EnvFilter::from_default_env();
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(tracing_subscriber::fmt::layer())
+        .with(logging::LogLayer::new(log_buffer.clone()))
+        .init();
+
+    let audit = AuditLogger::new()?;
+    let _ = audit.record("app.start", AuditStatus::Ok, None, None, None)?;
+    let config_path = default_config_path()?;
+    let config_lang = load_or_migrate(&config_path)
+        .ok()
+        .and_then(|(config, _)| config.language);
+    let startup_locale = resolve_locale(
+        None,
+        std::env::var("MIRROR_LANG").ok().as_deref(),
+        config_lang.as_deref(),
+    );
+    set_active_locale(startup_locale);
+
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() == 1 {
+        info!(mode = "tui", "Launching default TUI");
+        if install::is_installed().unwrap_or(false) {
+            let mut cmd = Cli::command();
+            cmd.print_help()?;
+            println!();
+            return Ok(());
+        }
+        return tui::run_tui(&audit, log_buffer.clone(), tui::StartView::Install);
+    }
+
+    let cli = Cli::parse();
+    let config_lang = load_or_migrate(&config_path)
+        .ok()
+        .and_then(|(config, _)| config.language);
+    let locale = resolve_locale(
+        cli.lang.as_deref(),
+        std::env::var("MIRROR_LANG").ok().as_deref(),
+        config_lang.as_deref(),
+    );
+    set_active_locale(locale);
+
+    info!(command = command_label(&cli.command), "Running command");
+
+    // For TUI command, just run it directly
+    let result = match cli.command {
+        Commands::Tui(args) => {
+            let start_view = if args.install {
+                tui::StartView::Install
+            } else if args.dashboard {
+                tui::StartView::Dashboard
+            } else {
+                tui::StartView::Main
+            };
+            tui::run_tui(&audit, log_buffer.clone(), start_view)
+        }
+        _ => {
+            // Should not reach here as should_run_tui_sync() should filter
+            anyhow::bail!("run_sync called for non-TUI command")
+        }
+    };
+
+    if let Err(err) = &result {
+        let _ = audit.record(
+            "app.error",
+            AuditStatus::Failed,
+            None,
+            None,
+            Some(&err.to_string()),
+        );
+    }
+
+    result
+}
+
 fn config_path_for_command(command: &Commands) -> Option<&PathBuf> {
     match command {
         Commands::Sync(args) => args.config.as_ref(),

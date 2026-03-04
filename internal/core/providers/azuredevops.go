@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/basmulder03/git-project-sync/internal/core/git"
 )
@@ -27,4 +28,8 @@ func (r *AzureDevOpsResolver) ResolveDefaultBranch(ctx context.Context, repoPath
 	}
 
 	return "", fmt.Errorf("could not resolve Azure DevOps default branch for remote %q", remote)
+}
+
+func (r *AzureDevOpsResolver) ParseRateLimit(resp *http.Response) (*RateLimitError, bool) {
+	return ParseRateLimitError("azuredevops", resp)
 }

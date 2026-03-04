@@ -53,6 +53,9 @@ func validateGitHubPAT(ctx context.Context, host, token string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if rateLimit, ok := ParseRateLimitError("github", resp); ok {
+			return rateLimit
+		}
 		return fmt.Errorf("github PAT validation failed with status %d", resp.StatusCode)
 	}
 
@@ -87,6 +90,9 @@ func validateAzureDevOpsPAT(ctx context.Context, host, organization, token strin
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if rateLimit, ok := ParseRateLimitError("azuredevops", resp); ok {
+			return rateLimit
+		}
 		return fmt.Errorf("azure devops PAT validation failed with status %d", resp.StatusCode)
 	}
 

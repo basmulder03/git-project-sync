@@ -29,6 +29,13 @@
 - Stale branch cleanup only deletes branches already merged and without unique commits.
 - Event and trace history should be used for auditability of skipped/failed actions.
 
+## Provider Rate-Limit Handling
+
+- Provider HTTP responses are inspected for throttling headers (`Retry-After`, `X-RateLimit-*`).
+- When throttling is detected, scheduler applies adaptive per-source delay before the next attempt.
+- Adaptive delays are source-scoped to avoid repeatedly hammering throttled provider accounts.
+- Rate-limit waits are logged with reason code `provider_rate_limited`.
+
 ## Update Rollback Safety
 
 - `syncctl update apply` performs checksum verification before replacement.

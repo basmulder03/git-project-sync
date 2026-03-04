@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
+	"github.com/basmulder03/git-project-sync/internal/core/providers"
 	coresync "github.com/basmulder03/git-project-sync/internal/core/sync"
 	"github.com/basmulder03/git-project-sync/internal/core/telemetry"
 )
@@ -29,17 +30,21 @@ type Scheduler struct {
 	rand     *rand.Rand
 	now      func() time.Time
 	sleepCtx func(context.Context, time.Duration) error
+
+	rateLimitMu   sync.Mutex
+	sourceBackoff map[string]time.Time
 }
 
 func NewScheduler(cfg config.DaemonConfig, logger *slog.Logger, locks *RepoLockManager, runRepo RunRepoFunc, recorder *ServiceAPI) *Scheduler {
 	return &Scheduler{
-		cfg:      cfg,
-		logger:   logger,
-		locks:    locks,
-		runRepo:  runRepo,
-		recorder: recorder,
-		rand:     rand.New(rand.NewSource(time.Now().UnixNano())),
-		now:      time.Now,
+		cfg:           cfg,
+		logger:        logger,
+		locks:         locks,
+		runRepo:       runRepo,
+		recorder:      recorder,
+		rand:          rand.New(rand.NewSource(time.Now().UnixNano())),
+		now:           time.Now,
+		sourceBackoff: map[string]time.Time{},
 		sleepCtx: func(ctx context.Context, d time.Duration) error {
 			timer := time.NewTimer(d)
 			defer timer.Stop()
@@ -101,6 +106,14 @@ func (s *Scheduler) runTaskWithRetry(ctx context.Context, traceID string, task R
 	}
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if waitFor := s.sourceWait(task.Source.ID); waitFor > 0 {
+			s.logger.Info("source backoff delay", "trace_id", traceID, "source_id", task.Source.ID, "wait_ms", waitFor.Milliseconds(), "reason_code", "provider_rate_limited")
+			s.recordEvent(ctx, telemetry.Event{TraceID: traceID, RepoPath: task.Repo.Path, Level: "warn", ReasonCode: "provider_rate_limited", Message: "waiting due to previous provider throttling", CreatedAt: s.now().UTC()})
+			if err := s.sleepCtx(ctx, waitFor); err != nil {
+				return
+			}
+		}
+
 		var lastResult coresync.RepoJobResult
 		acquired, err := s.locks.TryWithLock(task.Repo.Path, func() error {
 			opCtx, cancel := context.WithTimeout(ctx, time.Duration(s.cfg.OperationTimeoutSeconds)*time.Second)
@@ -128,6 +141,14 @@ func (s *Scheduler) runTaskWithRetry(ctx context.Context, traceID string, task R
 			return
 		}
 
+		if rateLimitErr, ok := providers.AsRateLimitError(err); ok {
+			delay := rateLimitErr.RetryAfter
+			if delay <= 0 {
+				delay = 30 * time.Second
+			}
+			s.applySourceBackoff(task.Source.ID, delay)
+		}
+
 		backoff := s.backoff(attempt)
 		s.logger.Warn("repo sync attempt failed", "trace_id", traceID, "repo_path", task.Repo.Path, "attempt", attempt, "next_backoff_ms", backoff.Milliseconds(), "error", err)
 		s.recordEvent(ctx, telemetry.Event{TraceID: traceID, RepoPath: task.Repo.Path, Level: "warn", ReasonCode: telemetry.ReasonSyncRetry, Message: err.Error(), CreatedAt: s.now().UTC()})
@@ -135,6 +156,44 @@ func (s *Scheduler) runTaskWithRetry(ctx context.Context, traceID string, task R
 			return
 		}
 	}
+}
+
+func (s *Scheduler) applySourceBackoff(sourceID string, delay time.Duration) {
+	if sourceID == "" || delay <= 0 {
+		return
+	}
+
+	next := s.now().UTC().Add(delay)
+	s.rateLimitMu.Lock()
+	defer s.rateLimitMu.Unlock()
+
+	current, ok := s.sourceBackoff[sourceID]
+	if !ok || next.After(current) {
+		s.sourceBackoff[sourceID] = next
+	}
+}
+
+func (s *Scheduler) sourceWait(sourceID string) time.Duration {
+	if sourceID == "" {
+		return 0
+	}
+
+	s.rateLimitMu.Lock()
+	until, ok := s.sourceBackoff[sourceID]
+	s.rateLimitMu.Unlock()
+	if !ok {
+		return 0
+	}
+
+	remaining := until.Sub(s.now().UTC())
+	if remaining <= 0 {
+		s.rateLimitMu.Lock()
+		delete(s.sourceBackoff, sourceID)
+		s.rateLimitMu.Unlock()
+		return 0
+	}
+
+	return remaining
 }
 
 func (s *Scheduler) recordEvent(ctx context.Context, event telemetry.Event) {

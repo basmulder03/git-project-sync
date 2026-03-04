@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
+	coregit "github.com/basmulder03/git-project-sync/internal/core/git"
 	"github.com/basmulder03/git-project-sync/internal/core/logging"
+	coresync "github.com/basmulder03/git-project-sync/internal/core/sync"
 )
 
 func main() {
@@ -49,7 +53,24 @@ func run() int {
 	}
 
 	logger.Info("syncd started", "mode", mode(*once), "workspace_root", cfg.Workspace.Root)
-	logger.Info("daemon execution is not implemented yet")
+
+	traceID := fmt.Sprintf("run-%d", time.Now().UTC().UnixNano())
+	job := coresync.NewRepoJob(coregit.NewClient(), logger)
+	for _, repo := range cfg.Repos {
+		result, err := job.Run(context.Background(), traceID, repo, *once)
+		if err != nil {
+			logger.Error("repo sync failed", "trace_id", traceID, "repo_path", repo.Path, "error", err)
+			continue
+		}
+
+		if result.Skipped {
+			continue
+		}
+
+		logger.Info("repo sync preflight complete", "trace_id", traceID, "repo_path", repo.Path)
+	}
+
+	logger.Info("syncd run completed", "trace_id", traceID, "repo_count", len(cfg.Repos))
 	return 0
 }
 

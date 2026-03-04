@@ -50,16 +50,19 @@
 ## Platform and Service
 
 10. Linux service registration
-    - Install/register daemon for user and system modes
-    - Start/stop/status actions work
+     - Install/register daemon for user and system modes
+     - Start/stop/status actions work
+     - Install/uninstall scripts are idempotent and privilege-aware
 
 11. Windows service/task registration
-    - Install/register in supported mode
-    - Start/stop/status actions work
+     - Install/register in supported mode
+     - Start/stop/status actions work
+     - Task registration validates creation and allows idempotent uninstall
 
 12. CLI parity
-    - Every TUI action has a CLI equivalent
-    - CLI can perform all daemon actions
+     - Every TUI action has a CLI equivalent
+     - CLI can perform all daemon actions
+     - Parity set includes sync all, cache refresh, and trace drill-down
 
 ## Auth and Security
 
@@ -73,10 +76,12 @@
 ## Update
 
 15. Self-update success path
-    - Tool checks and applies update with checksum validation
+     - Tool checks and applies update with checksum validation
+     - Release manifest and checksums are published for linux/windows artifacts
 
 16. Self-update rollback path
-    - Simulated failed replace recovers prior executable safely
+     - Simulated failed replace recovers prior executable safely
+     - Trace/event reason codes include update start/success/fail/rollback
 
 ## Logging and Traceability
 

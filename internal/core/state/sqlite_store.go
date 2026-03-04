@@ -126,6 +126,56 @@ func (s *SQLiteStore) GetRepoState(repoPath string) (RepoState, bool, error) {
 	return repo, true, nil
 }
 
+func (s *SQLiteStore) ListRepoStates(limit int) ([]RepoState, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+
+	rows, err := s.db.Query(`
+		SELECT repo_path, last_status, last_error, last_sync_at, updated_at, current_hash
+		FROM repo_state
+		ORDER BY updated_at DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list repo states: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]RepoState, 0, limit)
+	for rows.Next() {
+		var (
+			repo         RepoState
+			lastSyncRaw  sql.NullString
+			updatedAtRaw string
+		)
+
+		if err := rows.Scan(&repo.RepoPath, &repo.LastStatus, &repo.LastError, &lastSyncRaw, &updatedAtRaw, &repo.CurrentHash); err != nil {
+			return nil, fmt.Errorf("scan repo state row: %w", err)
+		}
+
+		if lastSyncRaw.Valid {
+			repo.LastSyncAt, err = time.Parse(time.RFC3339Nano, lastSyncRaw.String)
+			if err != nil {
+				return nil, fmt.Errorf("parse repo list last_sync_at: %w", err)
+			}
+		}
+
+		repo.UpdatedAt, err = time.Parse(time.RFC3339Nano, updatedAtRaw)
+		if err != nil {
+			return nil, fmt.Errorf("parse repo list updated_at: %w", err)
+		}
+
+		out = append(out, repo)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate repo state rows: %w", err)
+	}
+
+	return out, nil
+}
+
 func (s *SQLiteStore) AppendEvent(event Event) error {
 	if event.CreatedAt.IsZero() {
 		event.CreatedAt = time.Now().UTC()

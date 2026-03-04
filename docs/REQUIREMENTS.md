@@ -25,6 +25,7 @@ Keep many local Git repositories safely synchronized with their remote default b
 17. Run on Linux and Windows.
 18. Support self-update for distributed binaries.
 19. Provide installer/registration flow that requests required privileges.
+20. Support explicit `user` and `system` service modes with documented access implications.
 
 ## Safety Requirements
 
@@ -45,6 +46,7 @@ Keep many local Git repositories safely synchronized with their remote default b
 - Health/status endpoint or local control API for CLI/TUI.
 - Dry-run mode for diagnostics.
 - Persist non-sensitive configuration and runtime state in config file and/or local database.
+- Document permission troubleshooting for install/service operations.
 
 ## Security Requirements
 

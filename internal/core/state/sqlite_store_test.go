@@ -70,6 +70,34 @@ func TestSQLiteStoreRepoStateRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreListsRepoStates(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "state.db")
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	_ = store.PutRepoState(RepoState{RepoPath: "/repos/a", LastStatus: "ok", LastError: "", CurrentHash: "a", UpdatedAt: time.Now().UTC()})
+	_ = store.PutRepoState(RepoState{RepoPath: "/repos/b", LastStatus: "warn", LastError: "x", CurrentHash: "b", UpdatedAt: time.Now().UTC().Add(time.Second)})
+
+	repos, err := store.ListRepoStates(10)
+	if err != nil {
+		t.Fatalf("list repo states: %v", err)
+	}
+
+	if len(repos) != 2 {
+		t.Fatalf("repo states len=%d want 2", len(repos))
+	}
+	if repos[0].RepoPath != "/repos/b" {
+		t.Fatalf("newest repo_path=%q want /repos/b", repos[0].RepoPath)
+	}
+}
+
 func TestSQLiteStoreAppendsAndListsEvents(t *testing.T) {
 	t.Parallel()
 

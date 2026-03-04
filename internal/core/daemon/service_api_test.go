@@ -44,4 +44,16 @@ func TestServiceAPIRecordListAndTrace(t *testing.T) {
 	if len(trace) != 1 || trace[0].TraceID != "trace-1" {
 		t.Fatalf("unexpected trace events: %+v", trace)
 	}
+
+	if err := store.PutRepoState(state.RepoState{RepoPath: "/repos/a", LastStatus: "success", LastError: "", UpdatedAt: now, CurrentHash: "abc"}); err != nil {
+		t.Fatalf("put repo state: %v", err)
+	}
+
+	repoStatuses, err := api.RepoStatuses(10)
+	if err != nil {
+		t.Fatalf("repo statuses: %v", err)
+	}
+	if len(repoStatuses) != 1 || repoStatuses[0].RepoPath != "/repos/a" {
+		t.Fatalf("unexpected repo statuses: %+v", repoStatuses)
+	}
 }

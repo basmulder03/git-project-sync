@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/basmulder03/git-project-sync/internal/core/state"
 	"github.com/basmulder03/git-project-sync/internal/core/telemetry"
@@ -10,6 +11,14 @@ import (
 
 type ServiceAPI struct {
 	store state.Store
+}
+
+type RepoStatus struct {
+	RepoPath   string
+	LastStatus string
+	LastError  string
+	LastSyncAt time.Time
+	UpdatedAt  time.Time
 }
 
 func NewServiceAPI(store state.Store) *ServiceAPI {
@@ -67,6 +76,26 @@ func (s *ServiceAPI) Trace(traceID string, limit int) ([]telemetry.Event, error)
 			ReasonCode: event.ReasonCode,
 			Message:    event.Message,
 			CreatedAt:  event.CreatedAt,
+		})
+	}
+
+	return out, nil
+}
+
+func (s *ServiceAPI) RepoStatuses(limit int) ([]RepoStatus, error) {
+	repos, err := s.store.ListRepoStates(limit)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]RepoStatus, 0, len(repos))
+	for _, repo := range repos {
+		out = append(out, RepoStatus{
+			RepoPath:   repo.RepoPath,
+			LastStatus: repo.LastStatus,
+			LastError:  repo.LastError,
+			LastSyncAt: repo.LastSyncAt,
+			UpdatedAt:  repo.UpdatedAt,
 		})
 	}
 

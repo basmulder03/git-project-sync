@@ -31,3 +31,9 @@ jobs:
 
       - name: Integration tests
         run: go test ./tests/integration/...
+
+      - name: Build binaries
+        run: |
+          go build ./cmd/syncctl
+          go build ./cmd/syncd
+          go build ./cmd/synctui

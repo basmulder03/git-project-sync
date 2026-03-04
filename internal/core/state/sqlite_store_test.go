@@ -107,3 +107,32 @@ func TestSQLiteStoreAppendsAndListsEvents(t *testing.T) {
 		t.Fatalf("older trace_id = %q, want trace-1", events[1].TraceID)
 	}
 }
+
+func TestSQLiteStoreListsEventsByTrace(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "state.db")
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	_ = store.AppendEvent(Event{TraceID: "trace-a", RepoPath: "/repos/a", Level: "info", ReasonCode: "one", Message: "1"})
+	_ = store.AppendEvent(Event{TraceID: "trace-b", RepoPath: "/repos/b", Level: "info", ReasonCode: "two", Message: "2"})
+	_ = store.AppendEvent(Event{TraceID: "trace-a", RepoPath: "/repos/a", Level: "warn", ReasonCode: "three", Message: "3"})
+
+	events, err := store.ListEventsByTrace("trace-a", 10)
+	if err != nil {
+		t.Fatalf("list events by trace: %v", err)
+	}
+
+	if len(events) != 2 {
+		t.Fatalf("events len = %d, want 2", len(events))
+	}
+	if events[0].TraceID != "trace-a" || events[1].TraceID != "trace-a" {
+		t.Fatalf("all events should match trace-a: %+v", events)
+	}
+}

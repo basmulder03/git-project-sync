@@ -24,7 +24,7 @@ func TestSchedulerRetriesFailedTask(t *testing.T) {
 		return coresync.RepoJobResult{}, nil
 	}
 
-	s := NewScheduler(testDaemonConfig(), slog.New(slog.NewJSONHandler(io.Discard, nil)), NewRepoLockManager(), run)
+	s := NewScheduler(testDaemonConfig(), slog.New(slog.NewJSONHandler(io.Discard, nil)), NewRepoLockManager(), run, nil)
 	s.sleepCtx = func(_ context.Context, _ time.Duration) error { return nil }
 
 	s.RunCycle(context.Background(), "trace-1", []RepoTask{{Repo: config.RepoConfig{Path: "/repos/a"}}}, false)
@@ -53,7 +53,7 @@ func TestSchedulerSkipsWhenRepoLocked(t *testing.T) {
 		return coresync.RepoJobResult{}, nil
 	}
 
-	s := NewScheduler(testDaemonConfig(), slog.New(slog.NewJSONHandler(io.Discard, nil)), locks, run)
+	s := NewScheduler(testDaemonConfig(), slog.New(slog.NewJSONHandler(io.Discard, nil)), locks, run, nil)
 	s.sleepCtx = func(_ context.Context, _ time.Duration) error { return nil }
 
 	time.Sleep(10 * time.Millisecond)
@@ -70,7 +70,7 @@ func TestSchedulerIntervalUsesJitter(t *testing.T) {
 
 	s := NewScheduler(testDaemonConfig(), slog.New(slog.NewJSONHandler(io.Discard, nil)), NewRepoLockManager(), func(context.Context, string, config.SourceConfig, config.RepoConfig, bool) (coresync.RepoJobResult, error) {
 		return coresync.RepoJobResult{}, nil
-	})
+	}, nil)
 
 	for i := 0; i < 20; i++ {
 		next := s.nextInterval()

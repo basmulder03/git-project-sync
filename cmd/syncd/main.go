@@ -14,6 +14,7 @@ import (
 	"github.com/basmulder03/git-project-sync/internal/core/daemon"
 	coregit "github.com/basmulder03/git-project-sync/internal/core/git"
 	"github.com/basmulder03/git-project-sync/internal/core/logging"
+	"github.com/basmulder03/git-project-sync/internal/core/state"
 	coresync "github.com/basmulder03/git-project-sync/internal/core/sync"
 )
 
@@ -58,8 +59,18 @@ func run() int {
 	logger.Info("syncd started", "mode", mode(*once), "workspace_root", cfg.Workspace.Root)
 
 	engine := coresync.NewEngine(coregit.NewClient(), logger)
+	store, err := state.NewSQLiteStore(cfg.State.DBPath)
+	if err != nil {
+		logger.Error("failed to initialize state store", "error", err)
+		return 1
+	}
+	defer func() {
+		_ = store.Close()
+	}()
+
+	serviceAPI := daemon.NewServiceAPI(store)
 	locks := daemon.NewRepoLockManager()
-	scheduler := daemon.NewScheduler(cfg.Daemon, logger, locks, engine.RunRepo)
+	scheduler := daemon.NewScheduler(cfg.Daemon, logger, locks, engine.RunRepo, serviceAPI)
 
 	tasks := make([]daemon.RepoTask, 0, len(cfg.Repos))
 	sourcesByID := enabledSourcesByID(cfg.Sources)

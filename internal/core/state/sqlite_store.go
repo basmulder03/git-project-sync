@@ -185,6 +185,49 @@ func (s *SQLiteStore) ListEvents(limit int) ([]Event, error) {
 	return events, nil
 }
 
+func (s *SQLiteStore) ListEventsByTrace(traceID string, limit int) ([]Event, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+
+	rows, err := s.db.Query(`
+		SELECT id, trace_id, repo_path, level, reason_code, message, created_at
+		FROM events
+		WHERE trace_id = ?
+		ORDER BY id ASC
+		LIMIT ?
+	`, traceID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query events by trace: %w", err)
+	}
+	defer rows.Close()
+
+	events := make([]Event, 0, limit)
+	for rows.Next() {
+		var (
+			event      Event
+			createdRaw string
+		)
+
+		if err := rows.Scan(&event.ID, &event.TraceID, &event.RepoPath, &event.Level, &event.ReasonCode, &event.Message, &createdRaw); err != nil {
+			return nil, fmt.Errorf("scan event by trace: %w", err)
+		}
+
+		event.CreatedAt, err = time.Parse(time.RFC3339Nano, createdRaw)
+		if err != nil {
+			return nil, fmt.Errorf("parse event-by-trace timestamp: %w", err)
+		}
+
+		events = append(events, event)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate events by trace: %w", err)
+	}
+
+	return events, nil
+}
+
 func (s *SQLiteStore) Close() error {
 	if s.db == nil {
 		return nil

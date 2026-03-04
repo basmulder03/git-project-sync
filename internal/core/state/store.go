@@ -10,6 +10,7 @@ type Store interface {
 	GetRepoState(repoPath string) (RepoState, bool, error)
 	AppendEvent(Event) error
 	ListEvents(limit int) ([]Event, error)
+	ListEventsByTrace(traceID string, limit int) ([]Event, error)
 	Close() error
 }
 

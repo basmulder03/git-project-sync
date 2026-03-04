@@ -54,8 +54,10 @@ func run() int {
 	}()
 
 	provider := &statusProvider{
-		api:      daemon.NewServiceAPI(store),
-		interval: time.Duration(cfg.Daemon.IntervalSeconds) * time.Second,
+		api:              daemon.NewServiceAPI(store),
+		interval:         time.Duration(cfg.Daemon.IntervalSeconds) * time.Second,
+		providerCacheTTL: time.Duration(cfg.Cache.ProviderTTLSeconds) * time.Second,
+		branchCacheTTL:   time.Duration(cfg.Cache.BranchTTLSeconds) * time.Second,
 	}
 
 	app := tui.NewApp(provider, os.Stdin, os.Stdout)
@@ -71,8 +73,10 @@ func run() int {
 }
 
 type statusProvider struct {
-	api      *daemon.ServiceAPI
-	interval time.Duration
+	api              *daemon.ServiceAPI
+	interval         time.Duration
+	providerCacheTTL time.Duration
+	branchCacheTTL   time.Duration
 }
 
 func (p *statusProvider) DashboardStatus(ctx context.Context) (tui.DashboardStatus, error) {
@@ -81,6 +85,10 @@ func (p *statusProvider) DashboardStatus(ctx context.Context) (tui.DashboardStat
 	}
 
 	events, err := p.api.ListEvents(200)
+	if err != nil {
+		return tui.DashboardStatus{}, err
+	}
+	repoStatuses, err := p.api.RepoStatuses(200)
 	if err != nil {
 		return tui.DashboardStatus{}, err
 	}
@@ -101,11 +109,43 @@ func (p *statusProvider) DashboardStatus(ctx context.Context) (tui.DashboardStat
 		}
 	}
 
+	repos := make([]tui.RepoRow, 0, len(repoStatuses))
+	for _, repo := range repoStatuses {
+		repos = append(repos, tui.RepoRow{
+			Path:       repo.RepoPath,
+			LastStatus: repo.LastStatus,
+			LastSyncAt: repo.LastSyncAt,
+			LastError:  repo.LastError,
+		})
+	}
+
+	cacheRows := []tui.CacheRow{
+		{Name: "providers", Age: 0, TTL: p.providerCacheTTL},
+		{Name: "branches", Age: 0, TTL: p.branchCacheTTL},
+	}
+
+	eventRows := make([]tui.EventRow, 0, 20)
+	for i, event := range events {
+		if i >= 20 {
+			break
+		}
+		eventRows = append(eventRows, tui.EventRow{
+			Time:       event.CreatedAt,
+			TraceID:    event.TraceID,
+			Level:      event.Level,
+			ReasonCode: event.ReasonCode,
+			Message:    event.Message,
+		})
+	}
+
 	return tui.DashboardStatus{
 		Health:       health,
 		NextRunAt:    now.Add(p.interval),
 		ActiveJobs:   0,
 		RecentErrors: recentErrors,
+		Repos:        repos,
+		Cache:        cacheRows,
+		Events:       eventRows,
 		UpdatedAt:    now,
 	}, nil
 }

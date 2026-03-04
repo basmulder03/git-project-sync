@@ -11,7 +11,31 @@ type DashboardStatus struct {
 	NextRunAt    time.Time
 	ActiveJobs   int
 	RecentErrors []string
+	Repos        []RepoRow
+	Cache        []CacheRow
+	Events       []EventRow
 	UpdatedAt    time.Time
+}
+
+type RepoRow struct {
+	Path       string
+	LastStatus string
+	LastSyncAt time.Time
+	LastError  string
+}
+
+type CacheRow struct {
+	Name string
+	Age  time.Duration
+	TTL  time.Duration
+}
+
+type EventRow struct {
+	Time       time.Time
+	TraceID    string
+	Level      string
+	ReasonCode string
+	Message    string
 }
 
 type Dashboard struct {
@@ -20,7 +44,7 @@ type Dashboard struct {
 }
 
 func NewDashboard() *Dashboard {
-	return &Dashboard{tabs: []string{"status", "errors"}}
+	return &Dashboard{tabs: []string{"status", "repos", "cache", "logs"}}
 }
 
 func (d *Dashboard) SelectedTab() string {
@@ -52,8 +76,12 @@ func (d *Dashboard) Render(status DashboardStatus) string {
 	fmt.Fprintf(b, "Tabs: %s\n\n", d.renderTabs())
 
 	switch d.SelectedTab() {
-	case "errors":
-		d.renderErrors(b, status)
+	case "repos":
+		RenderReposView(b, status.Repos)
+	case "cache":
+		RenderCacheView(b, status.Cache)
+	case "logs":
+		RenderLogsView(b, status.Events, status.RecentErrors)
 	default:
 		d.renderStatus(b, status)
 	}
@@ -94,16 +122,4 @@ func (d *Dashboard) renderStatus(b *strings.Builder, status DashboardStatus) {
 	fmt.Fprintf(b, "Next run:      %s\n", nextRun)
 	fmt.Fprintf(b, "Active jobs:   %d\n", status.ActiveJobs)
 	fmt.Fprintf(b, "Updated:       %s\n", updated)
-}
-
-func (d *Dashboard) renderErrors(b *strings.Builder, status DashboardStatus) {
-	if len(status.RecentErrors) == 0 {
-		fmt.Fprintf(b, "No recent errors.\n")
-		return
-	}
-
-	fmt.Fprintf(b, "Recent errors:\n")
-	for _, entry := range status.RecentErrors {
-		fmt.Fprintf(b, "- %s\n", entry)
-	}
 }

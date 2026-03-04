@@ -8,6 +8,7 @@ type Store interface {
 	EnsureSchema() error
 	PutRepoState(RepoState) error
 	GetRepoState(repoPath string) (RepoState, bool, error)
+	ListRepoStates(limit int) ([]RepoState, error)
 	AppendEvent(Event) error
 	ListEvents(limit int) ([]Event, error)
 	ListEventsByTrace(traceID string, limit int) ([]Event, error)

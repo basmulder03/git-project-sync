@@ -17,8 +17,8 @@ func TestDashboardNavigation(t *testing.T) {
 	if !d.HandleKey("right") {
 		t.Fatal("expected right key to move tab")
 	}
-	if d.SelectedTab() != "errors" {
-		t.Fatalf("selected tab = %q, want errors", d.SelectedTab())
+	if d.SelectedTab() != "repos" {
+		t.Fatalf("selected tab = %q, want repos", d.SelectedTab())
 	}
 
 	if !d.HandleKey("left") {

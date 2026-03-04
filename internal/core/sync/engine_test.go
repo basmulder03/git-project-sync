@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
@@ -84,6 +85,48 @@ func TestEngineRunRepoSkipsNonFastForwardDivergence(t *testing.T) {
 	}
 }
 
+func TestEngineRunRepoDeletesCheckedOutMergedBranch(t *testing.T) {
+	t.Parallel()
+
+	_, repo := setupRemoteAndCloneEngine(t, "main")
+	runGitEngine(t, repo, "checkout", "-b", "feature/cleanup")
+
+	if err := os.WriteFile(filepath.Join(repo, "feature.txt"), []byte("feature\n"), 0o600); err != nil {
+		t.Fatalf("write feature file: %v", err)
+	}
+	runGitEngine(t, repo, "add", "feature.txt")
+	runGitEngine(t, repo, "commit", "-m", "feature")
+	runGitEngine(t, repo, "checkout", "main")
+	runGitEngine(t, repo, "merge", "--ff-only", "feature/cleanup")
+	runGitEngine(t, repo, "checkout", "feature/cleanup")
+
+	engine := NewEngine(git.NewClient(), testEngineLogger())
+	result, err := engine.RunRepo(context.Background(), "trace-3", config.SourceConfig{Provider: "github"}, config.RepoConfig{
+		Path:                       repo,
+		Remote:                     "origin",
+		Provider:                   "github",
+		SkipIfDirty:                true,
+		CleanupMergedLocalBranches: true,
+	}, false)
+	if err != nil {
+		t.Fatalf("run repo sync engine: %v", err)
+	}
+
+	if !result.Mutated {
+		t.Fatal("expected cleanup mutation")
+	}
+
+	currentBranchOut := runGitOutputEngine(t, repo, "branch", "--show-current")
+	if currentBranchOut != "main" {
+		t.Fatalf("current branch=%q want main", currentBranchOut)
+	}
+
+	branchesOut := runGitOutputEngine(t, repo, "branch", "--list", "feature/cleanup")
+	if branchesOut != "" {
+		t.Fatalf("feature branch should be deleted, got output=%q", branchesOut)
+	}
+}
+
 func testEngineLogger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(io.Discard, nil))
 }
@@ -143,4 +186,16 @@ func runGitEngine(t *testing.T, repo string, args ...string) {
 	if err != nil {
 		t.Fatalf("git %v failed: %v (%s)", args, err, string(output))
 	}
+}
+
+func runGitOutputEngine(t *testing.T, repo string, args ...string) string {
+	t.Helper()
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repo
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v (%s)", args, err, string(output))
+	}
+	return strings.TrimSpace(string(output))
 }

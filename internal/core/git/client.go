@@ -3,6 +3,7 @@ package git
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -67,4 +68,27 @@ func (c *Client) run(ctx context.Context, repoPath string, args ...string) (stri
 	}
 
 	return stdout.String(), nil
+}
+
+func (c *Client) runNoOutput(ctx context.Context, repoPath string, args ...string) error {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = repoPath
+
+	stderr := &bytes.Buffer{}
+	cmd.Stdout = &bytes.Buffer{}
+	cmd.Stderr = stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git %s failed: %w (%s)", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+	}
+
+	return nil
+}
+
+func exitCode(err error) int {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return -1
 }

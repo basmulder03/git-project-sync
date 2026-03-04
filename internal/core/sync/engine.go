@@ -55,45 +55,65 @@ func (e *Engine) RunRepo(ctx context.Context, traceID string, source config.Sour
 	if err != nil {
 		return result, err
 	}
+
+	ahead := 0
+	behind := 0
 	if !ok {
 		e.logger.Info("repo sync skipped", "trace_id", traceID, "repo_path", repo.Path, "reason_code", "upstream_missing", "reason", "current branch has no upstream configured")
 		result.Skipped = true
 		result.ReasonCode = "upstream_missing"
 		result.Reason = "current branch has no upstream configured"
-		return result, nil
-	}
-
-	currentBranch, err := e.git.CurrentBranch(ctx, repo.Path)
-	if err != nil {
-		return result, err
-	}
-
-	ahead, behind, err := e.git.AheadBehind(ctx, repo.Path, currentBranch, upstreamRef)
-	if err != nil {
-		return result, err
-	}
-
-	if ahead > 0 && behind > 0 {
-		result.Skipped = true
-		result.ReasonCode = "non_fast_forward"
-		result.Reason = "branch diverged from upstream; manual intervention required"
-		e.logger.Info("repo sync skipped", "trace_id", traceID, "repo_path", repo.Path, "reason_code", result.ReasonCode, "reason", result.Reason)
-		return result, nil
-	}
-
-	if behind > 0 && ahead == 0 {
-		if dryRun {
-			e.logger.Info("repo sync dry-run", "trace_id", traceID, "repo_path", repo.Path, "action", "fast_forward", "upstream", upstreamRef)
-			result.Mutated = false
-			return result, nil
-		}
-
-		if err := e.git.FastForwardTo(ctx, repo.Path, upstreamRef); err != nil {
+	} else {
+		currentBranch, err := e.git.CurrentBranch(ctx, repo.Path)
+		if err != nil {
 			return result, err
 		}
 
-		result.Mutated = true
-		e.logger.Info("repo fast-forwarded", "trace_id", traceID, "repo_path", repo.Path, "upstream", upstreamRef)
+		ahead, behind, err = e.git.AheadBehind(ctx, repo.Path, currentBranch, upstreamRef)
+		if err != nil {
+			return result, err
+		}
+
+		if ahead > 0 && behind > 0 {
+			result.Skipped = true
+			result.ReasonCode = "non_fast_forward"
+			result.Reason = "branch diverged from upstream; manual intervention required"
+			e.logger.Info("repo sync skipped", "trace_id", traceID, "repo_path", repo.Path, "reason_code", result.ReasonCode, "reason", result.Reason)
+			return result, nil
+		}
+
+		if behind > 0 && ahead == 0 {
+			if dryRun {
+				e.logger.Info("repo sync dry-run", "trace_id", traceID, "repo_path", repo.Path, "action", "fast_forward", "upstream", upstreamRef)
+			} else {
+				if err := e.git.FastForwardTo(ctx, repo.Path, upstreamRef); err != nil {
+					return result, err
+				}
+
+				result.Mutated = true
+				e.logger.Info("repo fast-forwarded", "trace_id", traceID, "repo_path", repo.Path, "upstream", upstreamRef)
+			}
+		}
+	}
+
+	if repo.CleanupMergedLocalBranches {
+		if dryRun {
+			e.logger.Info("cleanup dry-run", "trace_id", traceID, "repo_path", repo.Path, "default_branch", defaultBranch)
+		} else {
+			cleanup, err := e.git.CleanupCheckedOutStaleBranch(ctx, repo.Path, defaultBranch)
+			if err != nil {
+				return result, err
+			}
+			if cleanup.DeletedBranch != "" {
+				result.Skipped = false
+				result.ReasonCode = ""
+				result.Reason = ""
+				result.Mutated = true
+				e.logger.Info("stale branch deleted", "trace_id", traceID, "repo_path", repo.Path, "deleted_branch", cleanup.DeletedBranch)
+			} else if cleanup.Skipped {
+				e.logger.Info("cleanup skipped", "trace_id", traceID, "repo_path", repo.Path, "reason_code", cleanup.ReasonCode, "reason", cleanup.Reason)
+			}
+		}
 	}
 
 	e.logger.Info("repo sync completed", "trace_id", traceID, "repo_path", repo.Path, "default_branch", defaultBranch, "ahead", ahead, "behind", behind)

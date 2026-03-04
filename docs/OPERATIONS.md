@@ -29,6 +29,13 @@
 - Stale branch cleanup only deletes branches already merged and without unique commits.
 - Event and trace history should be used for auditability of skipped/failed actions.
 
+## Crash-Safe Recovery
+
+- In-flight repo run metadata is persisted in the local state database.
+- On daemon restart, unfinished runs are marked as `recovered` to avoid duplicate execution.
+- Duplicate run IDs are rejected by recovery guardrails before scheduling work.
+- Recovery outcomes remain queryable through run/event history.
+
 ## Provider Rate-Limit Handling
 
 - Provider HTTP responses are inspected for throttling headers (`Retry-After`, `X-RateLimit-*`).

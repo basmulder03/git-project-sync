@@ -26,11 +26,19 @@ Use read-only scope for v1.
 
 - Never store PAT in plaintext config files.
 - Use OS keychain/keyring if available.
+- If OS keyring is unavailable, use encrypted fallback storage (AES-GCM) and require a runtime key via environment variable.
 - Support multiple active PATs at once (one per configured source/account).
 - Store PAT entries keyed by source ID so personal and corporate accounts can coexist.
 - Redact token values in logs and UI.
 - Validate token immediately on login command.
 - Allow token rotation without deleting repo config.
+
+### Secure Fallback Details
+
+- Fallback token file contains encrypted payload only; token values are never persisted in plaintext.
+- Required environment variable: `GIT_PROJECT_SYNC_FALLBACK_KEY` (or configured equivalent).
+- Fallback file permissions should be owner-only (`0600` on Unix-like systems).
+- If no keyring and no fallback key is available, login/token-write actions must fail with an actionable error.
 
 ## Future Scope Changes
 

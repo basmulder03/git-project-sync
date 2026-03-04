@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          mkdir -p dist
+
+          for os in linux windows; do
+            for arch in amd64; do
+              ext=""
+              if [[ "$os" == "windows" ]]; then
+                ext=".exe"
+              fi
+
+              GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-X main.version=$VERSION" -o "dist/syncctl_${os}_${arch}${ext}" ./cmd/syncctl
+              GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-X main.version=$VERSION" -o "dist/syncd_${os}_${arch}${ext}" ./cmd/syncd
+              GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-X main.version=$VERSION" -o "dist/synctui_${os}_${arch}${ext}" ./cmd/synctui
+            done
+          done
+
+      - name: Create checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum * > checksums.txt
+
+      - name: Build manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          DATE_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          BASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}"
+
+          build_entry() {
+            local file="$1"
+            local os="$2"
+            local arch="$3"
+            local sha
+            sha="$(grep "  ${file}$" dist/checksums.txt | awk '{print $1}')"
+            printf '{"os":"%s","arch":"%s","url":"%s/%s","sha256":"%s","signature":""}' "$os" "$arch" "$BASE_URL" "$file" "$sha"
+          }
+
+          A1="$(build_entry syncctl_linux_amd64 linux amd64)"
+          A2="$(build_entry syncctl_windows_amd64.exe windows amd64)"
+
+          cat > dist/manifest.json <<EOF
+          {
+            "version": "${VERSION}",
+            "channel": "stable",
+            "published_at": "${DATE_UTC}",
+            "artifacts": [
+              ${A1},
+              ${A2}
+            ]
+          }
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*
+          generate_release_notes: true

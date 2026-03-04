@@ -39,6 +39,13 @@
   - `update_failed`
   - `update_rollback` (when rollback is executed)
 
+## Release Artifacts and Manifests
+
+- Release workflow builds platform artifacts for Linux and Windows.
+- `checksums.txt` is published for integrity auditing.
+- `manifest.json` is published with channel/version metadata and artifact checksum entries.
+- Updater clients consume the manifest URL and verify SHA-256 checksums before applying updates.
+
 ## Troubleshooting Permissions
 
 - Linux `system` install fails with permission errors:

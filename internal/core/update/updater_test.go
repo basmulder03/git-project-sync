@@ -65,3 +65,48 @@ func TestCheckAndDownloadVerify(t *testing.T) {
 		t.Fatalf("downloaded artifact content mismatch")
 	}
 }
+
+func TestApplyReplacesTargetBinary(t *testing.T) {
+	t.Parallel()
+
+	artifactBytes := []byte("new-binary")
+	sum := sha256.Sum256(artifactBytes)
+	checksum := hex.EncodeToString(sum[:])
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/artifact.bin" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(artifactBytes)
+	}))
+	defer server.Close()
+
+	target := filepath.Join(t.TempDir(), "syncctl")
+	if err := os.WriteFile(target, []byte("old-binary"), 0o755); err != nil {
+		t.Fatalf("write old target: %v", err)
+	}
+
+	updater := NewUpdater("v1.0.0")
+	result, err := updater.Apply(context.Background(), Artifact{
+		OS:     runtime.GOOS,
+		Arch:   runtime.GOARCH,
+		URL:    server.URL + "/artifact.bin",
+		SHA256: checksum,
+	}, target, "v2.0.0")
+	if err != nil {
+		t.Fatalf("apply update: %v", err)
+	}
+
+	if result.TargetPath != target || result.Version != "v2.0.0" {
+		t.Fatalf("unexpected apply result: %+v", result)
+	}
+
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read replaced target: %v", err)
+	}
+	if string(got) != "new-binary" {
+		t.Fatalf("target content=%q want new-binary", string(got))
+	}
+}

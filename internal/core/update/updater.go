@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -82,6 +83,32 @@ func (u *Updater) DownloadAndVerify(ctx context.Context, artifact Artifact, outp
 	}
 
 	return nil
+}
+
+func (u *Updater) Apply(ctx context.Context, artifact Artifact, targetBinaryPath string, version string) (ApplyResult, error) {
+	tmp, err := os.CreateTemp(filepath.Dir(targetBinaryPath), "sync-update-*")
+	if err != nil {
+		return ApplyResult{}, fmt.Errorf("create temp artifact file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	_ = tmp.Close()
+	defer func() {
+		_ = os.Remove(tmpPath)
+	}()
+
+	if err := u.DownloadAndVerify(ctx, artifact, tmpPath); err != nil {
+		return ApplyResult{}, err
+	}
+
+	if err := os.Chmod(tmpPath, 0o755); err != nil {
+		return ApplyResult{}, fmt.Errorf("mark downloaded artifact executable: %w", err)
+	}
+
+	if err := ReplaceBinaryWithRollback(targetBinaryPath, tmpPath); err != nil {
+		return ApplyResult{}, err
+	}
+
+	return ApplyResult{TargetPath: targetBinaryPath, Version: version}, nil
 }
 
 func matchArtifact(artifacts []Artifact, osName, arch string) (Artifact, bool) {

@@ -29,6 +29,16 @@
 - Stale branch cleanup only deletes branches already merged and without unique commits.
 - Event and trace history should be used for auditability of skipped/failed actions.
 
+## Update Rollback Safety
+
+- `syncctl update apply` performs checksum verification before replacement.
+- Binary replacement is atomic rename-based with backup/rollback safeguards.
+- Update events are emitted with reason codes:
+  - `update_started`
+  - `update_succeeded`
+  - `update_failed`
+  - `update_rollback` (when rollback is executed)
+
 ## Troubleshooting Permissions
 
 - Linux `system` install fails with permission errors:

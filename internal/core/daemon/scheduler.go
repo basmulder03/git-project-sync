@@ -105,6 +105,12 @@ func (s *Scheduler) runTaskWithRetry(ctx context.Context, traceID string, task R
 		maxAttempts = 1
 	}
 
+	retryBudget := time.Duration(s.cfg.OperationTimeoutSeconds) * time.Second
+	if retryBudget <= 0 {
+		retryBudget = 30 * time.Second
+	}
+	usedBudget := time.Duration(0)
+
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		if waitFor := s.sourceWait(task.Source.ID); waitFor > 0 {
 			s.logger.Info("source backoff delay", "trace_id", traceID, "source_id", task.Source.ID, "wait_ms", waitFor.Milliseconds(), "reason_code", "provider_rate_limited")
@@ -135,6 +141,13 @@ func (s *Scheduler) runTaskWithRetry(ctx context.Context, traceID string, task R
 			return
 		}
 
+		class, reason := providers.ClassifyError(err)
+		if class == providers.ErrorClassPermanent {
+			s.logger.Error("repo sync failed without retry", "trace_id", traceID, "repo_path", task.Repo.Path, "reason_code", reason, "error", err)
+			s.recordEvent(ctx, telemetry.Event{TraceID: traceID, RepoPath: task.Repo.Path, Level: "error", ReasonCode: reason, Message: err.Error(), CreatedAt: s.now().UTC()})
+			return
+		}
+
 		if attempt == maxAttempts {
 			s.logger.Error("repo sync failed after retries", "trace_id", traceID, "repo_path", task.Repo.Path, "attempts", attempt, "error", err)
 			s.recordEvent(ctx, telemetry.Event{TraceID: traceID, RepoPath: task.Repo.Path, Level: "error", ReasonCode: telemetry.ReasonSyncFailed, Message: err.Error(), CreatedAt: s.now().UTC()})
@@ -150,6 +163,12 @@ func (s *Scheduler) runTaskWithRetry(ctx context.Context, traceID string, task R
 		}
 
 		backoff := s.backoff(attempt)
+		usedBudget += backoff
+		if usedBudget > retryBudget {
+			s.logger.Error("repo sync retry budget exceeded", "trace_id", traceID, "repo_path", task.Repo.Path, "retry_budget_ms", retryBudget.Milliseconds(), "used_ms", usedBudget.Milliseconds(), "error", err)
+			s.recordEvent(ctx, telemetry.Event{TraceID: traceID, RepoPath: task.Repo.Path, Level: "error", ReasonCode: "retry_budget_exceeded", Message: err.Error(), CreatedAt: s.now().UTC()})
+			return
+		}
 		s.logger.Warn("repo sync attempt failed", "trace_id", traceID, "repo_path", task.Repo.Path, "attempt", attempt, "next_backoff_ms", backoff.Milliseconds(), "error", err)
 		s.recordEvent(ctx, telemetry.Event{TraceID: traceID, RepoPath: task.Repo.Path, Level: "warn", ReasonCode: telemetry.ReasonSyncRetry, Message: err.Error(), CreatedAt: s.now().UTC()})
 		if sleepErr := s.sleepCtx(ctx, backoff); sleepErr != nil {

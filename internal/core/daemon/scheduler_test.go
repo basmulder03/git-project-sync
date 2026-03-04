@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ func TestSchedulerRetriesFailedTask(t *testing.T) {
 	var calls atomic.Int32
 	run := func(_ context.Context, _ string, _ config.SourceConfig, _ config.RepoConfig, _ bool) (coresync.RepoJobResult, error) {
 		if calls.Add(1) < 3 {
-			return coresync.RepoJobResult{}, errors.New("transient")
+			return coresync.RepoJobResult{}, net.UnknownNetworkError("tcp")
 		}
 		return coresync.RepoJobResult{}, nil
 	}
@@ -146,6 +147,46 @@ func TestSchedulerWaitsForExistingSourceBackoff(t *testing.T) {
 	}
 	if len(slept) == 0 || slept[0] < 3*time.Second {
 		t.Fatalf("expected scheduler to wait for source backoff, slept=%v", slept)
+	}
+}
+
+func TestSchedulerDoesNotRetryPermanentErrors(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	run := func(_ context.Context, _ string, _ config.SourceConfig, _ config.RepoConfig, _ bool) (coresync.RepoJobResult, error) {
+		calls.Add(1)
+		return coresync.RepoJobResult{}, errors.New("invalid request payload")
+	}
+
+	s := NewScheduler(testDaemonConfig(), slog.New(slog.NewJSONHandler(io.Discard, nil)), NewRepoLockManager(), run, nil)
+	s.sleepCtx = func(_ context.Context, _ time.Duration) error { return nil }
+
+	s.RunCycle(context.Background(), "trace-permanent", []RepoTask{{Source: config.SourceConfig{ID: "gh1"}, Repo: config.RepoConfig{Path: "/repos/c"}}}, false)
+
+	if calls.Load() != 1 {
+		t.Fatalf("permanent errors should not be retried, calls=%d", calls.Load())
+	}
+}
+
+func TestSchedulerStopsWhenRetryBudgetExceeded(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	run := func(_ context.Context, _ string, _ config.SourceConfig, _ config.RepoConfig, _ bool) (coresync.RepoJobResult, error) {
+		calls.Add(1)
+		return coresync.RepoJobResult{}, providers.NewRateLimitError("github", 100*time.Millisecond, "throttled")
+	}
+
+	s := NewScheduler(testDaemonConfig(), slog.New(slog.NewJSONHandler(io.Discard, nil)), NewRepoLockManager(), run, nil)
+	s.cfg.OperationTimeoutSeconds = 1
+	s.cfg.Retry.MaxAttempts = 10
+	s.sleepCtx = func(_ context.Context, _ time.Duration) error { return nil }
+
+	s.RunCycle(context.Background(), "trace-budget", []RepoTask{{Source: config.SourceConfig{ID: "gh1"}, Repo: config.RepoConfig{Path: "/repos/d"}}}, false)
+
+	if calls.Load() >= 10 {
+		t.Fatalf("expected retries to stop before max attempts due to budget, calls=%d", calls.Load())
 	}
 }
 

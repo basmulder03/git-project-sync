@@ -43,6 +43,7 @@ Keep many local Git repositories safely synchronized with their remote default b
 - Action/event history must be queryable from CLI and visible in TUI.
 - Configurable sync interval with jitter and retry backoff.
 - Timeouts for provider and git operations.
+- Retry budget caps and transient/permanent error classification for network/provider failures.
 - Health/status endpoint or local control API for CLI/TUI.
 - Dry-run mode for diagnostics.
 - Persist non-sensitive configuration and runtime state in config file and/or local database.

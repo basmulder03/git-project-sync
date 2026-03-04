@@ -70,5 +70,11 @@ Exit criteria:
 - Add integration tests and matrix CI for Linux/Windows.
 - Complete docs and operational guidance.
 
+Current Sprint-1 integration coverage:
+
+- Dirty repo safety skip behavior with explicit reason code and trace linkage.
+- Multi-source scheduler routing and trace event persistence/query behavior.
+- CI workflow runs `go test ./...` and `go test ./tests/integration/...` on Linux and Windows.
+
 Exit criteria:
 - Full acceptance suite green on CI.

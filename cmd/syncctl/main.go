@@ -42,7 +42,7 @@ func newRootCommand() *cobra.Command {
 		newTraceCommand(&configPath),
 		newStubCommand("install", "Install and register services"),
 		newStubCommand("service", "Service registration controls"),
-		newStubCommand("update", "Check and apply updates"),
+		newUpdateCommand(&configPath),
 	)
 
 	return root

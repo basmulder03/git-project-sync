@@ -47,6 +47,12 @@ Use a deterministic workspace path convention for easy navigation:
 
 `<workspace_root>/<provider>/<account_or_org>/<project_or_repo>`
 
+Validation and repair behavior:
+
+- `syncctl workspace layout check` reports drift when configured repo paths do not match the deterministic managed layout.
+- `syncctl workspace layout fix --dry-run` previews the path updates without mutating config.
+- `syncctl workspace layout fix` updates repo paths in config and can create missing managed directories when enabled.
+
 Examples:
 
 - `workspace/github/acme-org/platform-api`

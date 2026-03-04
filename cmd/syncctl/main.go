@@ -31,7 +31,7 @@ func newRootCommand() *cobra.Command {
 		newDoctorCommand(),
 		newSourceCommand(&configPath),
 		newStubCommand("repo", "Manage repositories"),
-		newStubCommand("workspace", "Manage workspace settings"),
+		newWorkspaceCommand(&configPath),
 		newStubCommand("sync", "Trigger sync operations"),
 		newStubCommand("daemon", "Control the daemon"),
 		newStubCommand("config", "Manage configuration"),

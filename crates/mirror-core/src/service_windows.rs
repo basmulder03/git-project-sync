@@ -70,16 +70,9 @@ pub(crate) fn service_exists() -> anyhow::Result<bool> {
 
 #[cfg(target_os = "windows")]
 pub(crate) fn service_running() -> anyhow::Result<bool> {
-    let output = run_schtasks_output(&[
-        "/Query".to_string(),
-        "/TN".to_string(),
-        SERVICE_NAME.to_string(),
-        "/FO".to_string(),
-        "LIST".to_string(),
-    ])?;
-    Ok(output
-        .lines()
-        .any(|line| line.trim_start().starts_with("Status:") && line.contains("Running")))
+    let row = task_query_row()?;
+    let status = row_field(&row, SCHTASKS_STATUS_INDEX);
+    Ok(matches!(status.as_deref(), Some(value) if value.eq_ignore_ascii_case("Running")))
 }
 
 #[cfg(target_os = "windows")]
@@ -94,80 +87,21 @@ pub(crate) fn start_service_now() -> anyhow::Result<()> {
 
 #[cfg(target_os = "windows")]
 pub(crate) fn service_status() -> anyhow::Result<ServiceStatusInfo> {
-    let output = match run_schtasks_output(&[
-        "/Query".to_string(),
-        "/TN".to_string(),
-        SERVICE_NAME.to_string(),
-        "/FO".to_string(),
-        "LIST".to_string(),
-        "/V".to_string(),
-    ]) {
-        Ok(output) => output,
+    let row = match task_query_row() {
+        Ok(row) => row,
         Err(_) => return Ok(default_service_status(false, false)),
     };
 
-    let mut status = None;
-    let mut last_run_time = None;
-    let mut last_result = None;
-    let mut next_run_time = None;
-    let mut task_state = None;
-    let mut schedule_type = None;
-    let mut start_time = None;
-    let mut start_date = None;
-    let mut run_as_user = None;
-    let mut task_to_run = None;
-
-    for line in output.lines() {
-        let line = line.trim();
-        if let Some(value) = line.strip_prefix("Status:") {
-            status = Some(value.trim().to_string());
-        } else if let Some(value) = line.strip_prefix("Last Run Time:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                last_run_time = Some(value.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("Last Result:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                last_result = Some(value.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("Next Run Time:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                next_run_time = Some(value.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("Scheduled Task State:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                task_state = Some(value.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("Schedule Type:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                schedule_type = Some(value.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("Start Time:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                start_time = Some(value.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("Start Date:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                start_date = Some(value.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("Run As User:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                run_as_user = Some(value.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("Task To Run:") {
-            let value = value.trim();
-            if !value.is_empty() && value != "N/A" {
-                task_to_run = Some(value.to_string());
-            }
-        }
-    }
+    let status = row_field(&row, SCHTASKS_STATUS_INDEX);
+    let last_run_time = row_field(&row, SCHTASKS_LAST_RUN_TIME_INDEX);
+    let last_result = row_field(&row, SCHTASKS_LAST_RESULT_INDEX);
+    let next_run_time = row_field(&row, SCHTASKS_NEXT_RUN_TIME_INDEX);
+    let task_state = row_field(&row, SCHTASKS_TASK_STATE_INDEX);
+    let schedule_type = row_field(&row, SCHTASKS_SCHEDULE_TYPE_INDEX);
+    let start_time = row_field(&row, SCHTASKS_START_TIME_INDEX);
+    let start_date = row_field(&row, SCHTASKS_START_DATE_INDEX);
+    let run_as_user = row_field(&row, SCHTASKS_RUN_AS_USER_INDEX);
+    let task_to_run = row_field(&row, SCHTASKS_TASK_TO_RUN_INDEX);
 
     let running = status
         .as_deref()
@@ -186,4 +120,99 @@ pub(crate) fn service_status() -> anyhow::Result<ServiceStatusInfo> {
         run_as_user,
         task_to_run,
     })
+}
+
+#[cfg(target_os = "windows")]
+const SCHTASKS_NEXT_RUN_TIME_INDEX: usize = 2;
+#[cfg(target_os = "windows")]
+const SCHTASKS_STATUS_INDEX: usize = 3;
+#[cfg(target_os = "windows")]
+const SCHTASKS_LAST_RUN_TIME_INDEX: usize = 5;
+#[cfg(target_os = "windows")]
+const SCHTASKS_LAST_RESULT_INDEX: usize = 6;
+#[cfg(target_os = "windows")]
+const SCHTASKS_TASK_TO_RUN_INDEX: usize = 8;
+#[cfg(target_os = "windows")]
+const SCHTASKS_TASK_STATE_INDEX: usize = 11;
+#[cfg(target_os = "windows")]
+const SCHTASKS_RUN_AS_USER_INDEX: usize = 14;
+#[cfg(target_os = "windows")]
+const SCHTASKS_SCHEDULE_TYPE_INDEX: usize = 18;
+#[cfg(target_os = "windows")]
+const SCHTASKS_START_TIME_INDEX: usize = 19;
+#[cfg(target_os = "windows")]
+const SCHTASKS_START_DATE_INDEX: usize = 20;
+
+#[cfg(target_os = "windows")]
+fn task_query_row() -> anyhow::Result<Vec<String>> {
+    let output = run_schtasks_output(&[
+        "/Query".to_string(),
+        "/TN".to_string(),
+        SERVICE_NAME.to_string(),
+        "/FO".to_string(),
+        "CSV".to_string(),
+        "/V".to_string(),
+        "/NH".to_string(),
+    ])?;
+    output
+        .lines()
+        .find_map(|line| {
+            let line = line.trim();
+            if line.is_empty() {
+                return None;
+            }
+            Some(parse_csv_row(line))
+        })
+        .ok_or_else(|| anyhow::anyhow!("unexpected schtasks output format"))
+}
+
+#[cfg(target_os = "windows")]
+fn row_field(row: &[String], index: usize) -> Option<String> {
+    row.get(index).and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("N/A") {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn parse_csv_row(line: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut chars = line.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' => {
+                if in_quotes && matches!(chars.peek(), Some('"')) {
+                    current.push('"');
+                    let _ = chars.next();
+                } else {
+                    in_quotes = !in_quotes;
+                }
+            }
+            ',' if !in_quotes => {
+                values.push(current.trim().to_string());
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+    values.push(current.trim().to_string());
+    values
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::parse_csv_row;
+
+    #[test]
+    fn parse_csv_row_handles_escaped_quotes() {
+        let row = parse_csv_row("\"A\",\"B, C\",\"it\"\"s\"");
+        assert_eq!(row, vec!["A", "B, C", "it\"s"]);
+    }
 }

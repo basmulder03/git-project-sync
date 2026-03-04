@@ -18,7 +18,7 @@ impl AppSetup {
 
         let audit = AuditLogger::new()?;
         let _ = audit.record("app.start", AuditStatus::Ok, None, None, None)?;
-        
+
         Ok(Self { log_buffer, audit })
     }
 
@@ -50,7 +50,11 @@ pub async fn run() -> anyhow::Result<()> {
             println!();
             return Ok(());
         }
-        return tui::run_tui(&setup.audit, setup.log_buffer.clone(), tui::StartView::Install);
+        return tui::run_tui(
+            &setup.audit,
+            setup.log_buffer.clone(),
+            tui::StartView::Install,
+        );
     }
 
     let cli = Cli::parse();
@@ -141,7 +145,8 @@ pub async fn run() -> anyhow::Result<()> {
             Err(_) => true,
         };
         if should_check {
-            let _ = run_token_validity_checks(&config_path, &cache_path, &setup.audit, "cli", true).await;
+            let _ = run_token_validity_checks(&config_path, &cache_path, &setup.audit, "cli", true)
+                .await;
         }
     }
 
@@ -197,11 +202,15 @@ pub fn run_sync() -> anyhow::Result<()> {
             println!();
             return Ok(());
         }
-        return tui::run_tui(&setup.audit, setup.log_buffer.clone(), tui::StartView::Install);
+        return tui::run_tui(
+            &setup.audit,
+            setup.log_buffer.clone(),
+            tui::StartView::Install,
+        );
     }
 
     let cli = Cli::parse();
-    
+
     // Apply CLI-specific locale override if provided
     let config_path = default_config_path()?;
     let config_lang = load_or_migrate(&config_path)

@@ -1,5 +1,0 @@
-mode: ContinuousDeployment
-tag-prefix: "v"
-branches:
-  main:
-    increment: Patch

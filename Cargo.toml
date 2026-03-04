@@ -1,8 +1,0 @@
-[workspace]
-members = [
-  "crates/mirror-core",
-  "crates/mirror-providers",
-  "crates/mirror-cli",
-]
-resolver = "2"
-

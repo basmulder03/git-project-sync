@@ -89,3 +89,35 @@ daemon:
 		t.Fatal("expected state db path validation error")
 	}
 }
+
+func TestSaveAndLoadRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "nested", "config.yaml")
+
+	cfg := Default()
+	cfg.Workspace.Root = "/tmp/workspace"
+	cfg.Sources = []SourceConfig{{
+		ID:       "gh-personal",
+		Provider: "github",
+		Account:  "jane-doe",
+		Host:     "github.com",
+		Enabled:  true,
+	}}
+
+	if err := Save(path, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if loaded.Workspace.Root != "/tmp/workspace" {
+		t.Fatalf("workspace.root = %q, want /tmp/workspace", loaded.Workspace.Root)
+	}
+	if len(loaded.Sources) != 1 || loaded.Sources[0].ID != "gh-personal" {
+		t.Fatalf("unexpected sources after round-trip: %+v", loaded.Sources)
+	}
+}

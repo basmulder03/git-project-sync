@@ -15,17 +15,21 @@ func main() {
 }
 
 func newRootCommand() *cobra.Command {
+	var configPath string
+
 	root := &cobra.Command{
 		Use:   "syncctl",
 		Short: "Control git-project-sync",
 	}
+
+	root.PersistentFlags().StringVar(&configPath, "config", "configs/config.example.yaml", "Path to config file")
 
 	root.Version = "dev"
 	root.SetVersionTemplate("syncctl {{.Version}}\n")
 
 	root.AddCommand(
 		newDoctorCommand(),
-		newStubCommand("source", "Manage provider sources"),
+		newSourceCommand(&configPath),
 		newStubCommand("repo", "Manage repositories"),
 		newStubCommand("workspace", "Manage workspace settings"),
 		newStubCommand("sync", "Trigger sync operations"),

@@ -91,6 +91,7 @@ func Default() Config {
 			CreateMissingPaths: true,
 		},
 		State: StateConfig{
+			DBPath:            "state/sync.db",
 			PersistEventsDays: 30,
 		},
 		Daemon: DaemonConfig{
@@ -146,6 +147,14 @@ func (c Config) Validate() error {
 
 	if c.Daemon.IntervalSeconds <= 0 {
 		return errors.New("daemon.interval_seconds must be > 0")
+	}
+
+	if c.State.DBPath == "" {
+		return errors.New("state.db_path must be set")
+	}
+
+	if c.State.PersistEventsDays <= 0 {
+		return errors.New("state.persist_events_days must be > 0")
 	}
 
 	if c.Daemon.MaxParallelRepos <= 0 {

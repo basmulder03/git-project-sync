@@ -73,5 +73,9 @@ repos:
 - PAT tokens are not stored in this file.
 - Provider credentials should be in OS keyring/credential manager with source-specific keys.
 - Non-sensitive runtime state can be persisted in local DB and/or config file.
+- State DB schema is migration-versioned and managed independently from `schema_version`.
+- Recommended runtime persistence split:
+  - Config file: static, non-sensitive settings (`sources`, `repos`, daemon/update/logging/cache settings)
+  - SQLite state DB: mutable runtime state (repo sync snapshots, event history, traces)
 - Path handling must support both Linux and Windows separators.
 - Workspace layout should be deterministic and easy to navigate.

@@ -36,6 +36,10 @@ daemon:
 	if cfg.Logging.Format != "json" {
 		t.Fatalf("logging.format = %q, want json", cfg.Logging.Format)
 	}
+
+	if cfg.State.DBPath == "" {
+		t.Fatal("state.db_path should default to non-empty path")
+	}
 }
 
 func TestLoadRejectsUnsupportedSchema(t *testing.T) {
@@ -58,5 +62,30 @@ daemon:
 
 	if _, err := Load(path); err == nil {
 		t.Fatal("expected schema validation error")
+	}
+}
+
+func TestLoadRejectsEmptyStateDBPath(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	content := `schema_version: 1
+state:
+  db_path: ""
+daemon:
+  interval_seconds: 300
+  max_parallel_repos: 2
+  retry:
+    max_attempts: 3
+`
+
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected state db path validation error")
 	}
 }

@@ -15,10 +15,12 @@ type StatusProvider interface {
 
 type App struct {
 	provider        StatusProvider
+	executor        ActionExecutor
 	dashboard       *Dashboard
 	in              io.Reader
 	out             io.Writer
 	refreshInterval time.Duration
+	lastMessage     string
 }
 
 func NewApp(provider StatusProvider, in io.Reader, out io.Writer) *App {
@@ -29,6 +31,10 @@ func NewApp(provider StatusProvider, in io.Reader, out io.Writer) *App {
 		out:             out,
 		refreshInterval: 2 * time.Second,
 	}
+}
+
+func (a *App) SetExecutor(executor ActionExecutor) {
+	a.executor = executor
 }
 
 func (a *App) Run(ctx context.Context) error {
@@ -63,6 +69,12 @@ func (a *App) Run(ctx context.Context) error {
 				}
 				a.render(status)
 			default:
+				if request, ok := KeyToAction(strings.ToLower(strings.TrimSpace(key)), status); ok {
+					a.runAction(ctx, request)
+					a.render(status)
+					continue
+				}
+
 				if a.dashboard.HandleKey(key) {
 					a.render(status)
 				}
@@ -78,7 +90,26 @@ func (a *App) Run(ctx context.Context) error {
 }
 
 func (a *App) render(status DashboardStatus) {
-	fmt.Fprintf(a.out, "\x1b[2J\x1b[H%s", a.dashboard.Render(status))
+	view := a.dashboard.Render(status)
+	if a.lastMessage != "" {
+		view += "\nAction: " + a.lastMessage + "\n"
+	}
+	fmt.Fprintf(a.out, "\x1b[2J\x1b[H%s", view)
+}
+
+func (a *App) runAction(ctx context.Context, request ActionRequest) {
+	if a.executor == nil {
+		a.lastMessage = "action handler not configured"
+		return
+	}
+
+	result, err := a.executor.Execute(ctx, request)
+	if err != nil {
+		a.lastMessage = err.Error()
+		return
+	}
+
+	a.lastMessage = result
 }
 
 func (a *App) readKeys(ctx context.Context, out chan<- string) {

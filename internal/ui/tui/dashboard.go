@@ -86,7 +86,7 @@ func (d *Dashboard) Render(status DashboardStatus) string {
 		d.renderStatus(b, status)
 	}
 
-	fmt.Fprintf(b, "\nKeys: h/left l/right r(refresh) q(quit)\n")
+	fmt.Fprintf(b, "\nKeys: h/left l/right r(refresh) s(sync all) c(cache refresh) t(trace) q(quit)\n")
 	return b.String()
 }
 

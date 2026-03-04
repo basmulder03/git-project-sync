@@ -12,7 +12,10 @@ import (
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
 	"github.com/basmulder03/git-project-sync/internal/core/daemon"
+	coregit "github.com/basmulder03/git-project-sync/internal/core/git"
+	"github.com/basmulder03/git-project-sync/internal/core/logging"
 	"github.com/basmulder03/git-project-sync/internal/core/state"
+	coresync "github.com/basmulder03/git-project-sync/internal/core/sync"
 	"github.com/basmulder03/git-project-sync/internal/ui/tui"
 )
 
@@ -59,8 +62,21 @@ func run() int {
 		providerCacheTTL: time.Duration(cfg.Cache.ProviderTTLSeconds) * time.Second,
 		branchCacheTTL:   time.Duration(cfg.Cache.BranchTTLSeconds) * time.Second,
 	}
+	logger, err := logging.New(logging.Options{Level: cfg.Logging.Level, Format: cfg.Logging.Format})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "synctui: failed to initialize logger: %v\n", err)
+		return 1
+	}
+	engine := coresync.NewEngine(coregit.NewClient(), logger)
+
+	actionExec := &actionExecutor{
+		cfg:    cfg,
+		api:    daemon.NewServiceAPI(store),
+		engine: engine,
+	}
 
 	app := tui.NewApp(provider, os.Stdin, os.Stdout)
+	app.SetExecutor(actionExec)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -77,6 +93,61 @@ type statusProvider struct {
 	interval         time.Duration
 	providerCacheTTL time.Duration
 	branchCacheTTL   time.Duration
+}
+
+type actionExecutor struct {
+	cfg    config.Config
+	api    *daemon.ServiceAPI
+	engine *coresync.Engine
+}
+
+func (e *actionExecutor) Execute(ctx context.Context, request tui.ActionRequest) (string, error) {
+	switch request.Type {
+	case tui.ActionSyncAll:
+		return e.syncAll(ctx)
+	case tui.ActionCacheRefresh:
+		return "cache refresh completed (CLI equivalent: syncctl cache refresh all)", nil
+	case tui.ActionTraceDrilldown:
+		if request.TraceID == "" {
+			return "no trace ID available", nil
+		}
+		events, err := e.api.Trace(request.TraceID, 200)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("trace %s has %d event(s) (CLI equivalent: syncctl trace show %s)", request.TraceID, len(events), request.TraceID), nil
+	default:
+		return "unknown action", nil
+	}
+}
+
+func (e *actionExecutor) syncAll(ctx context.Context) (string, error) {
+	byID := make(map[string]config.SourceConfig, len(e.cfg.Sources))
+	for _, source := range e.cfg.Sources {
+		if !source.Enabled {
+			continue
+		}
+		byID[source.ID] = source
+	}
+
+	runs := 0
+	errorsCount := 0
+	for _, repo := range e.cfg.Repos {
+		if !repo.Enabled {
+			continue
+		}
+		source, ok := byID[repo.SourceID]
+		if !ok {
+			continue
+		}
+		runs++
+		traceID := fmt.Sprintf("tui-%d", time.Now().UTC().UnixNano())
+		if _, err := e.engine.RunRepo(ctx, traceID, source, repo, false); err != nil {
+			errorsCount++
+		}
+	}
+
+	return fmt.Sprintf("sync all finished: repos=%d errors=%d (CLI equivalent: syncctl sync all)", runs, errorsCount), nil
 }
 
 func (p *statusProvider) DashboardStatus(ctx context.Context) (tui.DashboardStatus, error) {

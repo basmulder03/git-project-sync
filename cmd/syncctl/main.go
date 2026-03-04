@@ -36,7 +36,7 @@ func newRootCommand() *cobra.Command {
 		newStubCommand("daemon", "Control the daemon"),
 		newStubCommand("config", "Manage configuration"),
 		newAuthCommand(&configPath),
-		newStubCommand("cache", "Inspect and refresh cache"),
+		newCacheCommand(&configPath),
 		newStubCommand("stats", "View runtime stats"),
 		newEventsCommand(&configPath),
 		newTraceCommand(&configPath),

@@ -55,9 +55,20 @@ func run() int {
 	logger.Info("syncd started", "mode", mode(*once), "workspace_root", cfg.Workspace.Root)
 
 	traceID := fmt.Sprintf("run-%d", time.Now().UTC().UnixNano())
-	job := coresync.NewRepoJob(coregit.NewClient(), logger)
+	engine := coresync.NewEngine(coregit.NewClient(), logger)
+	sourcesByID := make(map[string]config.SourceConfig, len(cfg.Sources))
+	for _, source := range cfg.Sources {
+		sourcesByID[source.ID] = source
+	}
+
 	for _, repo := range cfg.Repos {
-		result, err := job.Run(context.Background(), traceID, repo, *once)
+		source, ok := sourcesByID[repo.SourceID]
+		if !ok {
+			logger.Info("repo sync skipped", "trace_id", traceID, "repo_path", repo.Path, "reason_code", "source_missing", "reason", "configured source for repository is missing")
+			continue
+		}
+
+		result, err := engine.RunRepo(context.Background(), traceID, source, repo, *once)
 		if err != nil {
 			logger.Error("repo sync failed", "trace_id", traceID, "repo_path", repo.Path, "error", err)
 			continue

@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"reflect"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -190,11 +192,101 @@ func TestSchedulerStopsWhenRetryBudgetExceeded(t *testing.T) {
 	}
 }
 
+func TestFairOrderTasksRoundRobinAcrossSources(t *testing.T) {
+	t.Parallel()
+
+	tasks := []RepoTask{
+		{Source: config.SourceConfig{ID: "gh"}, Repo: config.RepoConfig{Path: "/repos/a"}},
+		{Source: config.SourceConfig{ID: "gh"}, Repo: config.RepoConfig{Path: "/repos/b"}},
+		{Source: config.SourceConfig{ID: "az"}, Repo: config.RepoConfig{Path: "/repos/c"}},
+		{Source: config.SourceConfig{ID: "gh"}, Repo: config.RepoConfig{Path: "/repos/d"}},
+		{Source: config.SourceConfig{ID: "az"}, Repo: config.RepoConfig{Path: "/repos/e"}},
+	}
+
+	ordered := fairOrderTasks(tasks)
+	got := make([]string, 0, len(ordered))
+	for _, task := range ordered {
+		got = append(got, task.Repo.Path)
+	}
+
+	want := []string{"/repos/a", "/repos/c", "/repos/b", "/repos/e", "/repos/d"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("fair order = %v, want %v", got, want)
+	}
+}
+
+func TestSchedulerRespectsPerSourceConcurrencyLimit(t *testing.T) {
+	t.Parallel()
+
+	start := make(chan struct{})
+	finish := make(chan struct{})
+
+	var activeBySource sync.Map
+	var maxBySource sync.Map
+
+	run := func(_ context.Context, _ string, source config.SourceConfig, _ config.RepoConfig, _ bool) (coresync.RepoJobResult, error) {
+		countAny, _ := activeBySource.LoadOrStore(source.ID, &atomic.Int32{})
+		count := countAny.(*atomic.Int32)
+		active := count.Add(1)
+
+		maxAny, _ := maxBySource.LoadOrStore(source.ID, &atomic.Int32{})
+		maxCount := maxAny.(*atomic.Int32)
+		for {
+			current := maxCount.Load()
+			if active <= current || maxCount.CompareAndSwap(current, active) {
+				break
+			}
+		}
+
+		<-start
+		<-finish
+		count.Add(-1)
+		return coresync.RepoJobResult{}, nil
+	}
+
+	s := NewScheduler(testDaemonConfig(), slog.New(slog.NewJSONHandler(io.Discard, nil)), NewRepoLockManager(), run, nil)
+	s.cfg.MaxParallelRepos = 4
+	s.cfg.MaxParallelPerSource = 1
+
+	tasks := []RepoTask{
+		{Source: config.SourceConfig{ID: "gh"}, Repo: config.RepoConfig{Path: "/repos/a"}},
+		{Source: config.SourceConfig{ID: "gh"}, Repo: config.RepoConfig{Path: "/repos/b"}},
+		{Source: config.SourceConfig{ID: "az"}, Repo: config.RepoConfig{Path: "/repos/c"}},
+		{Source: config.SourceConfig{ID: "az"}, Repo: config.RepoConfig{Path: "/repos/d"}},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		s.RunCycle(context.Background(), "trace-source-limit", tasks, false)
+		close(done)
+	}()
+
+	close(start)
+	time.Sleep(20 * time.Millisecond)
+	close(finish)
+	<-done
+
+	assertMax := func(source string) {
+		t.Helper()
+		maxAny, ok := maxBySource.Load(source)
+		if !ok {
+			t.Fatalf("missing source stats for %s", source)
+		}
+		if got := maxAny.(*atomic.Int32).Load(); got > 1 {
+			t.Fatalf("source %s max concurrency = %d, want <= 1", source, got)
+		}
+	}
+
+	assertMax("gh")
+	assertMax("az")
+}
+
 func testDaemonConfig() config.DaemonConfig {
 	return config.DaemonConfig{
 		IntervalSeconds:         5,
 		JitterSeconds:           2,
 		MaxParallelRepos:        2,
+		MaxParallelPerSource:    1,
 		OperationTimeoutSeconds: 5,
 		Retry: config.RetryConfig{
 			MaxAttempts:        3,

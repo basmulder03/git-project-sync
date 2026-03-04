@@ -38,6 +38,7 @@ type DaemonConfig struct {
 	IntervalSeconds         int         `yaml:"interval_seconds"`
 	JitterSeconds           int         `yaml:"jitter_seconds"`
 	MaxParallelRepos        int         `yaml:"max_parallel_repos"`
+	MaxParallelPerSource    int         `yaml:"max_parallel_per_source"`
 	OperationTimeoutSeconds int         `yaml:"operation_timeout_seconds"`
 	Retry                   RetryConfig `yaml:"retry"`
 }
@@ -99,6 +100,7 @@ func Default() Config {
 			IntervalSeconds:         300,
 			JitterSeconds:           30,
 			MaxParallelRepos:        4,
+			MaxParallelPerSource:    2,
 			OperationTimeoutSeconds: 120,
 			Retry: RetryConfig{
 				MaxAttempts:        3,
@@ -181,6 +183,10 @@ func (c Config) Validate() error {
 
 	if c.Daemon.MaxParallelRepos <= 0 {
 		return errors.New("daemon.max_parallel_repos must be > 0")
+	}
+
+	if c.Daemon.MaxParallelPerSource <= 0 {
+		return errors.New("daemon.max_parallel_per_source must be > 0")
 	}
 
 	if c.Daemon.Retry.MaxAttempts <= 0 {

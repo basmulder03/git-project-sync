@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,15 +60,23 @@ func NewScheduler(cfg config.DaemonConfig, logger *slog.Logger, locks *RepoLockM
 }
 
 func (s *Scheduler) RunCycle(ctx context.Context, traceID string, tasks []RepoTask, dryRun bool) {
-	maxParallel := s.cfg.MaxParallelRepos
-	if maxParallel < 1 {
-		maxParallel = 1
+	maxParallelRepos := s.cfg.MaxParallelRepos
+	if maxParallelRepos < 1 {
+		maxParallelRepos = 1
+	}
+	maxParallelPerSource := s.cfg.MaxParallelPerSource
+	if maxParallelPerSource < 1 {
+		maxParallelPerSource = 1
 	}
 
-	sem := make(chan struct{}, maxParallel)
+	orderedTasks := fairOrderTasks(tasks)
+
+	globalSem := make(chan struct{}, maxParallelRepos)
+	sourceSems := map[string]chan struct{}{}
+	var sourceSemsMu sync.Mutex
 	var wg sync.WaitGroup
 
-	for _, task := range tasks {
+	for _, task := range orderedTasks {
 		task := task
 		wg.Add(1)
 		go func() {
@@ -75,15 +84,71 @@ func (s *Scheduler) RunCycle(ctx context.Context, traceID string, tasks []RepoTa
 			select {
 			case <-ctx.Done():
 				return
-			case sem <- struct{}{}:
+			case globalSem <- struct{}{}:
 			}
-			defer func() { <-sem }()
+			defer func() { <-globalSem }()
+
+			sourceKey := sourceBucketKey(task.Source.ID)
+			sourceSemsMu.Lock()
+			sourceSem, ok := sourceSems[sourceKey]
+			if !ok {
+				sourceSem = make(chan struct{}, maxParallelPerSource)
+				sourceSems[sourceKey] = sourceSem
+			}
+			sourceSemsMu.Unlock()
+
+			select {
+			case <-ctx.Done():
+				return
+			case sourceSem <- struct{}{}:
+			}
+			defer func() { <-sourceSem }()
 
 			s.runTaskWithRetry(ctx, traceID, task, dryRun)
 		}()
 	}
 
 	wg.Wait()
+}
+
+func fairOrderTasks(tasks []RepoTask) []RepoTask {
+	if len(tasks) <= 1 {
+		return append([]RepoTask(nil), tasks...)
+	}
+
+	bySource := map[string][]RepoTask{}
+	sourceOrder := make([]string, 0)
+	for _, task := range tasks {
+		key := sourceBucketKey(task.Source.ID)
+		if _, exists := bySource[key]; !exists {
+			sourceOrder = append(sourceOrder, key)
+		}
+		bySource[key] = append(bySource[key], task)
+	}
+
+	ordered := make([]RepoTask, 0, len(tasks))
+	remaining := len(tasks)
+	for remaining > 0 {
+		for _, sourceID := range sourceOrder {
+			queue := bySource[sourceID]
+			if len(queue) == 0 {
+				continue
+			}
+			ordered = append(ordered, queue[0])
+			bySource[sourceID] = queue[1:]
+			remaining--
+		}
+	}
+
+	return ordered
+}
+
+func sourceBucketKey(sourceID string) string {
+	trimmed := strings.TrimSpace(sourceID)
+	if trimmed == "" {
+		return "_unknown_source"
+	}
+	return trimmed
 }
 
 func (s *Scheduler) RunPeriodic(ctx context.Context, tasks []RepoTask, dryRun bool) error {

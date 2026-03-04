@@ -1,0 +1,37 @@
+schema_version: 1
+
+workspace:
+  root: /path/to/workspace
+  layout: provider-account-repo
+  create_missing_paths: true
+
+state:
+  db_path: /path/to/state.db
+  persist_events_days: 30
+
+daemon:
+  interval_seconds: 300
+  jitter_seconds: 30
+  max_parallel_repos: 4
+  operation_timeout_seconds: 120
+  retry:
+    max_attempts: 3
+    base_backoff_seconds: 2
+
+update:
+  channel: stable
+  auto_check: true
+  auto_apply: false
+
+logging:
+  level: info
+  format: json
+  redact_secrets: true
+
+cache:
+  provider_ttl_seconds: 900
+  branch_ttl_seconds: 120
+
+sources: []
+
+repos: []

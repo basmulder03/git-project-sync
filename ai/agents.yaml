@@ -1,0 +1,116 @@
+version: 1
+project: git-project-sync
+default_branch: main
+
+agents:
+  - id: orchestrator
+    role: lead
+    purpose: Coordinate sequencing, dependencies, and integration quality.
+    owns:
+      - docs/REQUIREMENTS.md
+      - docs/ARCHITECTURE.md
+      - ai/backlog.yaml
+    done_when:
+      - "All epics have implementation owners"
+      - "Cross-agent integration issues are resolved"
+
+  - id: git-safety
+    role: implementation
+    purpose: Implement safe git engine and mutation guards.
+    owns:
+      - internal/core/git/**
+      - internal/core/sync/**
+    done_when:
+      - "Dirty state detection blocks mutations"
+      - "No destructive git command is used"
+      - "Stale branch deletion uses unique-commit guard"
+
+  - id: providers
+    role: implementation
+    purpose: Implement GitHub/Azure provider adapters, multi-source account registry, and default branch resolution fallback.
+    owns:
+      - internal/core/providers/**
+      - internal/core/auth/**
+    done_when:
+      - "Provider detection and PAT validation work"
+      - "Multiple active sources across providers are supported"
+      - "Personal and org account contexts are both supported"
+      - "Default branch lookup works via git and API fallback"
+
+  - id: daemon
+    role: implementation
+    purpose: Implement scheduler, locks, retries, daemon control plane, and traceable event pipeline.
+    owns:
+      - internal/core/daemon/**
+      - cmd/syncd/**
+    done_when:
+      - "Periodic sync and retry/backoff are functional"
+      - "Per-repo locking prevents concurrent mutations"
+      - "Every sync run and action emits traceable structured events"
+
+  - id: persistence
+    role: implementation
+    purpose: Implement non-sensitive persistence in config/local DB and workspace layout manager.
+    owns:
+      - internal/core/config/**
+      - internal/core/state/**
+      - internal/core/workspace/**
+      - docs/CONFIG_SCHEMA.md
+    done_when:
+      - "Config and runtime state persist safely without secrets"
+      - "Managed repository layout is deterministic and navigable"
+      - "Sensitive data references are keyring-backed"
+
+  - id: cli
+    role: implementation
+    purpose: Implement full-featured CLI with daemon parity.
+    owns:
+      - cmd/syncctl/**
+      - docs/CLI_SPEC.md
+    done_when:
+      - "All commands in CLI spec are implemented"
+      - "CLI supports one-shot and daemon actions"
+
+  - id: tui
+    role: implementation
+    purpose: Build lightweight dashboard and action triggers.
+    owns:
+      - cmd/synctui/**
+      - internal/ui/**
+    done_when:
+      - "TUI displays daemon/repo/cache/log status"
+      - "TUI actions map to CLI/daemon actions"
+
+  - id: platform
+    role: implementation
+    purpose: Linux/Windows install and service registration.
+    owns:
+      - internal/core/install/**
+      - scripts/install.sh
+      - scripts/install.ps1
+      - scripts/uninstall.sh
+      - scripts/uninstall.ps1
+    done_when:
+      - "Install and uninstall work on Linux and Windows"
+      - "Privilege prompts and modes are documented"
+
+  - id: release
+    role: implementation
+    purpose: Build release and self-update pipeline.
+    owns:
+      - internal/core/update/**
+      - .github/workflows/release.yml
+    done_when:
+      - "Signed artifacts and checksums are published"
+      - "Self-update validates and safely replaces binaries"
+
+  - id: qa
+    role: validation
+    purpose: Validate acceptance tests, edge-cases, and hardening.
+    owns:
+      - docs/ACCEPTANCE_TESTS.md
+      - tests/**
+    done_when:
+      - "Acceptance tests pass on Linux and Windows"
+      - "Safety and secret redaction checks pass"
+      - "Traceability and multi-source tests pass"

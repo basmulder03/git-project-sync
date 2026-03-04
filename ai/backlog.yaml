@@ -1,0 +1,128 @@
+version: 1
+project: git-project-sync
+
+epics:
+  - id: E1
+    title: Core git safety and sync engine
+    priority: high
+    owner: git-safety
+    tasks:
+      - id: E1-T1
+        title: Implement repository dirty-state detector
+        acceptance_ref: "ACCEPTANCE_TESTS.md#1"
+      - id: E1-T2
+        title: Implement default branch resolution from remote HEAD
+        acceptance_ref: "ACCEPTANCE_TESTS.md#4"
+      - id: E1-T3
+        title: Implement fast-forward-only sync workflow
+        acceptance_ref: "ACCEPTANCE_TESTS.md#5"
+      - id: E1-T4
+        title: Implement stale branch cleanup with unique-commit guard
+        acceptance_ref: "ACCEPTANCE_TESTS.md#8"
+
+  - id: E2
+    title: Provider integration, auth, and multi-source support
+    priority: high
+    owner: providers
+    tasks:
+      - id: E2-T1
+        title: Implement GitHub PAT validation
+        acceptance_ref: "ACCEPTANCE_TESTS.md#13"
+      - id: E2-T2
+        title: Implement Azure DevOps PAT validation
+        acceptance_ref: "ACCEPTANCE_TESTS.md#13"
+      - id: E2-T3
+        title: Implement secure token storage
+        acceptance_ref: "ACCEPTANCE_TESTS.md#14"
+      - id: E2-T4
+        title: Implement multiple active sources per provider
+        acceptance_ref: "ACCEPTANCE_TESTS.md#19"
+      - id: E2-T5
+        title: Support personal and organization account contexts
+        acceptance_ref: "ACCEPTANCE_TESTS.md#20"
+
+  - id: E3
+    title: Background daemon, control API, and traceability
+    priority: high
+    owner: daemon
+    tasks:
+      - id: E3-T1
+        title: Implement scheduler with jitter/retry/backoff
+      - id: E3-T2
+        title: Add per-repository lock manager
+      - id: E3-T3
+        title: Add local control API for CLI/TUI
+      - id: E3-T4
+        title: Add structured logs and trace IDs for all actions
+        acceptance_ref: "ACCEPTANCE_TESTS.md#17"
+      - id: E3-T5
+        title: Add queryable event history with skip/action reason codes
+        acceptance_ref: "ACCEPTANCE_TESTS.md#18"
+
+  - id: E4
+    title: CLI parity and operations
+    priority: high
+    owner: cli
+    tasks:
+      - id: E4-T1
+        title: Implement repo/config/auth/daemon commands from CLI spec
+      - id: E4-T2
+        title: Implement cache and stats commands
+      - id: E4-T3
+        title: Implement doctor diagnostics command
+      - id: E4-T4
+        title: Implement source management and trace query commands
+
+  - id: E5
+    title: Lightweight TUI
+    priority: medium
+    owner: tui
+    tasks:
+      - id: E5-T1
+        title: Build dashboard view (daemon + repo statuses)
+      - id: E5-T2
+        title: Add cache and logs views
+      - id: E5-T3
+        title: Wire manual action triggers
+
+  - id: E6
+    title: Installers and service registration
+    priority: high
+    owner: platform
+    tasks:
+      - id: E6-T1
+        title: Linux install/uninstall scripts and service registration
+      - id: E6-T2
+        title: Windows install/uninstall scripts and registration
+      - id: E6-T3
+        title: Document privilege requirements and modes
+
+  - id: E7
+    title: Self-update and release
+    priority: medium
+    owner: release
+    tasks:
+      - id: E7-T1
+        title: Implement update check/apply with checksum verification
+      - id: E7-T2
+        title: Add release workflow and artifacts
+      - id: E7-T3
+        title: Add rollback path on update failure
+
+  - id: E8
+    title: Workspace, persistence, QA, hardening, and docs
+    priority: high
+    owner: qa
+    tasks:
+      - id: E8-T1
+        title: Implement integration tests for safety-critical flows
+      - id: E8-T2
+        title: Verify Linux/Windows test matrix in CI
+      - id: E8-T3
+        title: Finalize PAT permissions and ops docs
+      - id: E8-T4
+        title: Implement deterministic workspace layout manager
+        acceptance_ref: "ACCEPTANCE_TESTS.md#21"
+      - id: E8-T5
+        title: Implement non-sensitive config/DB persistence separation
+        acceptance_ref: "ACCEPTANCE_TESTS.md#22"

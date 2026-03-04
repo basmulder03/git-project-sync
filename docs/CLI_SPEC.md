@@ -18,7 +18,7 @@ Binary name: `syncctl`
 
 ## Repo Management
 
-- `syncctl repo add <path> [--remote origin]`
+- `syncctl repo add <path> [--remote origin] [--source-id <id>]`
 - `syncctl repo clone <source-id> <repo-slug> [--into managed]`
 - `syncctl repo remove <path>`
 - `syncctl repo list`
@@ -55,7 +55,7 @@ Binary name: `syncctl`
 
 ## Credentials
 
-- `syncctl auth login <source-id>`
+- `syncctl auth login <source-id> [--token <pat>] [--force-fallback]`
 - `syncctl auth test <source-id>`
 - `syncctl auth logout <source-id>`
 

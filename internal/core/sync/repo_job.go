@@ -7,6 +7,7 @@ import (
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
 	"github.com/basmulder03/git-project-sync/internal/core/git"
+	"github.com/basmulder03/git-project-sync/internal/core/telemetry"
 )
 
 type RepoJob struct {
@@ -51,7 +52,11 @@ func (j *RepoJob) Run(ctx context.Context, traceID string, repo config.RepoConfi
 
 	if repo.SkipIfDirty && dirty.IsDirty() {
 		result.Skipped = true
-		result.ReasonCode = dirty.ReasonCode()
+		reasonCode := dirty.ReasonCode()
+		if reasonCode == "" {
+			reasonCode = telemetry.ReasonRepoDirty
+		}
+		result.ReasonCode = telemetry.EnsureReasonCode(reasonCode)
 		result.Reason = "repository is dirty; mutating sync actions are blocked"
 		j.Logger.Info("repo sync skipped", "trace_id", traceID, "repo_path", repo.Path, "reason_code", result.ReasonCode, "reason", result.Reason)
 		return result, nil

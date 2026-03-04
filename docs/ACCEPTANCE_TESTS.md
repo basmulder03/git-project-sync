@@ -93,6 +93,7 @@
 18. Skip/action reason logging
     - Every skipped mutation includes explicit reason code and human-readable reason
     - TUI/CLI can list recent events with timestamps
+    - Reason codes follow a standardized taxonomy across git safety, sync, scheduler, and update paths
 
 ## Multi-Source Accounts
 

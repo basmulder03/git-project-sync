@@ -40,6 +40,7 @@
    - Given checked-out feature branch merged into default
    - And no unique commits exist
    - Tool switches to default and deletes local stale branch
+   - Tool also deletes other local branches that are already merged and safe
    - If branch still has unique commits, cleanup is skipped with explicit reason code
 
 9. Not merged branch preserved

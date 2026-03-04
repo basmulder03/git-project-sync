@@ -100,18 +100,23 @@ func (e *Engine) RunRepo(ctx context.Context, traceID string, source config.Sour
 		if dryRun {
 			e.logger.Info("cleanup dry-run", "trace_id", traceID, "repo_path", repo.Path, "default_branch", defaultBranch)
 		} else {
-			cleanup, err := e.git.CleanupCheckedOutStaleBranch(ctx, repo.Path, defaultBranch)
+			cleanup, err := e.git.CleanupMergedLocalBranches(ctx, repo.Path, defaultBranch)
 			if err != nil {
 				return result, err
 			}
-			if cleanup.DeletedBranch != "" {
+			if len(cleanup.DeletedBranches) > 0 {
 				result.Skipped = false
 				result.ReasonCode = ""
 				result.Reason = ""
 				result.Mutated = true
-				e.logger.Info("stale branch deleted", "trace_id", traceID, "repo_path", repo.Path, "deleted_branch", cleanup.DeletedBranch)
-			} else if cleanup.Skipped {
-				e.logger.Info("cleanup skipped", "trace_id", traceID, "repo_path", repo.Path, "reason_code", cleanup.ReasonCode, "reason", cleanup.Reason)
+				e.logger.Info("stale branches deleted", "trace_id", traceID, "repo_path", repo.Path, "deleted_branches", cleanup.DeletedBranches)
+			}
+
+			for _, decision := range cleanup.Decisions {
+				if decision.Deleted {
+					continue
+				}
+				e.logger.Info("cleanup skipped", "trace_id", traceID, "repo_path", repo.Path, "branch", decision.Branch, "reason_code", decision.ReasonCode, "reason", decision.Reason)
 			}
 		}
 	}

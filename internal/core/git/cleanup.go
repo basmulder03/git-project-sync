@@ -3,52 +3,121 @@ package git
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
 
-type CleanupResult struct {
-	DeletedBranch string
-	Skipped       bool
-	ReasonCode    string
-	Reason        string
+type BranchCleanupDecision struct {
+	Branch     string
+	Deleted    bool
+	ReasonCode string
+	Reason     string
 }
 
-func (c *Client) CleanupCheckedOutStaleBranch(ctx context.Context, repoPath, defaultBranch string) (CleanupResult, error) {
+type CleanupResult struct {
+	DeletedBranches []string
+	Decisions       []BranchCleanupDecision
+}
+
+func (c *Client) CleanupMergedLocalBranches(ctx context.Context, repoPath, defaultBranch string) (CleanupResult, error) {
+	branches, err := c.ListLocalBranches(ctx, repoPath)
+	if err != nil {
+		return CleanupResult{}, err
+	}
+
 	current, err := c.CurrentBranch(ctx, repoPath)
 	if err != nil {
 		return CleanupResult{}, err
 	}
 
-	if current == defaultBranch {
-		return CleanupResult{Skipped: true, ReasonCode: "cleanup_not_applicable", Reason: "default branch is already checked out"}, nil
+	result := CleanupResult{
+		DeletedBranches: make([]string, 0),
+		Decisions:       make([]BranchCleanupDecision, 0, len(branches)),
 	}
 
-	merged, err := c.IsAncestor(ctx, repoPath, current, defaultBranch)
+	if current != defaultBranch {
+		decision, err := c.cleanupBranch(ctx, repoPath, current, defaultBranch, true)
+		if err != nil {
+			return CleanupResult{}, err
+		}
+		result.Decisions = append(result.Decisions, decision)
+		if decision.Deleted {
+			result.DeletedBranches = append(result.DeletedBranches, current)
+			current = defaultBranch
+			branches, err = c.ListLocalBranches(ctx, repoPath)
+			if err != nil {
+				return CleanupResult{}, err
+			}
+		}
+	}
+
+	for _, branch := range branches {
+		if branch == defaultBranch || branch == current {
+			continue
+		}
+
+		decision, err := c.cleanupBranch(ctx, repoPath, branch, defaultBranch, false)
+		if err != nil {
+			return CleanupResult{}, err
+		}
+
+		result.Decisions = append(result.Decisions, decision)
+		if decision.Deleted {
+			result.DeletedBranches = append(result.DeletedBranches, branch)
+		}
+	}
+
+	return result, nil
+}
+
+func (c *Client) cleanupBranch(ctx context.Context, repoPath, branch, defaultBranch string, isCurrent bool) (BranchCleanupDecision, error) {
+	merged, err := c.IsAncestor(ctx, repoPath, branch, defaultBranch)
 	if err != nil {
-		return CleanupResult{}, err
+		return BranchCleanupDecision{}, err
 	}
 	if !merged {
-		return CleanupResult{Skipped: true, ReasonCode: "cleanup_branch_not_merged", Reason: "checked-out branch is not merged into default branch"}, nil
+		return BranchCleanupDecision{Branch: branch, ReasonCode: "cleanup_branch_not_merged", Reason: "branch is not merged into default branch"}, nil
 	}
 
-	unique, err := c.HasUniqueCommits(ctx, repoPath, current, defaultBranch)
+	unique, err := c.HasUniqueCommits(ctx, repoPath, branch, defaultBranch)
 	if err != nil {
-		return CleanupResult{}, err
+		return BranchCleanupDecision{}, err
 	}
 	if unique {
-		return CleanupResult{Skipped: true, ReasonCode: "cleanup_unique_commits_present", Reason: "branch has unique commits not present on default branch"}, nil
+		return BranchCleanupDecision{Branch: branch, ReasonCode: "cleanup_unique_commits_present", Reason: "branch has unique commits not present on default branch"}, nil
 	}
 
-	if err := c.CheckoutBranch(ctx, repoPath, defaultBranch); err != nil {
-		return CleanupResult{}, err
+	if isCurrent {
+		if err := c.CheckoutBranch(ctx, repoPath, defaultBranch); err != nil {
+			return BranchCleanupDecision{}, err
+		}
 	}
 
-	if err := c.DeleteBranch(ctx, repoPath, current); err != nil {
-		return CleanupResult{}, err
+	if err := c.DeleteBranch(ctx, repoPath, branch); err != nil {
+		return BranchCleanupDecision{}, err
 	}
 
-	return CleanupResult{DeletedBranch: current}, nil
+	return BranchCleanupDecision{Branch: branch, Deleted: true}, nil
+}
+
+func (c *Client) ListLocalBranches(ctx context.Context, repoPath string) ([]string, error) {
+	out, err := c.run(ctx, repoPath, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+	if err != nil {
+		return nil, fmt.Errorf("list local branches: %w", err)
+	}
+
+	branches := make([]string, 0)
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		branch := strings.TrimSpace(line)
+		if branch == "" {
+			continue
+		}
+		branches = append(branches, branch)
+	}
+
+	sort.Strings(branches)
+	return branches, nil
 }
 
 func (c *Client) IsAncestor(ctx context.Context, repoPath, ancestor, descendant string) (bool, error) {

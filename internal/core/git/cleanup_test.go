@@ -5,10 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestCleanupCheckedOutStaleBranchDeletesMergedBranch(t *testing.T) {
+func TestCleanupMergedLocalBranchesDeletesCheckedOutMergedBranch(t *testing.T) {
 	t.Parallel()
 
 	repo := initRepoWithCommitCleanup(t)
@@ -24,13 +25,13 @@ func TestCleanupCheckedOutStaleBranchDeletesMergedBranch(t *testing.T) {
 	runGitCleanup(t, repo, "checkout", "feature/test")
 
 	client := NewClient()
-	result, err := client.CleanupCheckedOutStaleBranch(context.Background(), repo, "master")
+	result, err := client.CleanupMergedLocalBranches(context.Background(), repo, "master")
 	if err != nil {
 		t.Fatalf("cleanup stale branch: %v", err)
 	}
 
-	if result.DeletedBranch != "feature/test" {
-		t.Fatalf("deleted branch = %q, want feature/test", result.DeletedBranch)
+	if len(result.DeletedBranches) != 1 || result.DeletedBranches[0] != "feature/test" {
+		t.Fatalf("deleted branches = %+v, want [feature/test]", result.DeletedBranches)
 	}
 
 	current, err := client.CurrentBranch(context.Background(), repo)
@@ -42,7 +43,7 @@ func TestCleanupCheckedOutStaleBranchDeletesMergedBranch(t *testing.T) {
 	}
 }
 
-func TestCleanupCheckedOutStaleBranchSkipsWhenNotMerged(t *testing.T) {
+func TestCleanupMergedLocalBranchesSkipsWhenNotMerged(t *testing.T) {
 	t.Parallel()
 
 	repo := initRepoWithCommitCleanup(t)
@@ -55,16 +56,64 @@ func TestCleanupCheckedOutStaleBranchSkipsWhenNotMerged(t *testing.T) {
 	runGitCleanup(t, repo, "commit", "-m", "feature commit")
 
 	client := NewClient()
-	result, err := client.CleanupCheckedOutStaleBranch(context.Background(), repo, "master")
+	result, err := client.CleanupMergedLocalBranches(context.Background(), repo, "master")
 	if err != nil {
 		t.Fatalf("cleanup stale branch: %v", err)
 	}
 
-	if !result.Skipped {
-		t.Fatal("expected cleanup to be skipped")
+	if len(result.DeletedBranches) != 0 {
+		t.Fatalf("expected no deleted branches, got %+v", result.DeletedBranches)
 	}
-	if result.ReasonCode != "cleanup_branch_not_merged" {
-		t.Fatalf("reason_code=%q want cleanup_branch_not_merged", result.ReasonCode)
+
+	if len(result.Decisions) == 0 {
+		t.Fatal("expected at least one cleanup decision")
+	}
+	if result.Decisions[0].ReasonCode != "cleanup_branch_not_merged" {
+		t.Fatalf("reason_code=%q want cleanup_branch_not_merged", result.Decisions[0].ReasonCode)
+	}
+}
+
+func TestCleanupMergedLocalBranchesCleansAllMergedBranches(t *testing.T) {
+	t.Parallel()
+
+	repo := initRepoWithCommitCleanup(t)
+
+	createAndMerge := func(branch string) {
+		runGitCleanup(t, repo, "checkout", "-b", branch)
+		name := strings.ReplaceAll(branch, "/", "-") + ".txt"
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(branch+"\n"), 0o600); err != nil {
+			t.Fatalf("write branch file: %v", err)
+		}
+		runGitCleanup(t, repo, "add", name)
+		runGitCleanup(t, repo, "commit", "-m", branch)
+		runGitCleanup(t, repo, "checkout", "master")
+		runGitCleanup(t, repo, "merge", "--ff-only", branch)
+	}
+
+	createAndMerge("feature/one")
+	createAndMerge("feature/two")
+
+	runGitCleanup(t, repo, "checkout", "-b", "feature/not-merged")
+	if err := os.WriteFile(filepath.Join(repo, "feature-not-merged.txt"), []byte("x\n"), 0o600); err != nil {
+		t.Fatalf("write non-merged branch file: %v", err)
+	}
+	runGitCleanup(t, repo, "add", "feature-not-merged.txt")
+	runGitCleanup(t, repo, "commit", "-m", "feature/not-merged")
+	runGitCleanup(t, repo, "checkout", "master")
+
+	client := NewClient()
+	result, err := client.CleanupMergedLocalBranches(context.Background(), repo, "master")
+	if err != nil {
+		t.Fatalf("cleanup stale branches: %v", err)
+	}
+
+	if len(result.DeletedBranches) != 2 {
+		t.Fatalf("deleted branches = %+v, want 2 merged branches", result.DeletedBranches)
+	}
+
+	out := runGitCleanupOutput(t, repo, "branch", "--list")
+	if !strings.Contains(out, "feature/not-merged") {
+		t.Fatalf("expected non-merged branch to remain, branches output: %q", out)
 	}
 }
 
@@ -99,4 +148,17 @@ func runGitCleanup(t *testing.T, repo string, args ...string) {
 	if err != nil {
 		t.Fatalf("git %v failed: %v (%s)", args, err, string(output))
 	}
+}
+
+func runGitCleanupOutput(t *testing.T, repo string, args ...string) string {
+	t.Helper()
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repo
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v (%s)", args, err, string(output))
+	}
+
+	return strings.TrimSpace(string(output))
 }

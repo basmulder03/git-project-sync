@@ -73,3 +73,24 @@
   - Confirm Task Scheduler service is running.
 - Credential access fails after mode switch:
   - Re-run `syncctl auth login <source-id>` in the target user/system context.
+
+## Reason Code Troubleshooting Matrix
+
+Use `syncctl events list`, `syncctl trace show <trace-id>`, `syncctl doctor`, and `syncctl stats show` as first-line diagnostics.
+
+| Reason Code | Meaning | Immediate Operator Action |
+| --- | --- | --- |
+| `repo_conflicts` | Merge conflicts exist in working tree | Resolve conflicts manually, commit or abort merge, rerun sync |
+| `repo_staged_changes` | Staged changes detected | Commit or unstage changes before allowing sync mutations |
+| `repo_unstaged_changes` | Unstaged file modifications detected | Commit/discard local edits, then rerun sync |
+| `repo_untracked_files` | Untracked files detected in repo | Add/ignore/move files and rerun sync |
+| `upstream_missing` | Current branch has no upstream tracking ref | Set upstream (`git branch --set-upstream-to`) and rerun |
+| `non_fast_forward` | Branch diverged from upstream | Perform manual reconciliation/rebase/merge and rerun |
+| `repo_locked` | Another daemon run holds the repo lock | Wait for in-flight run to complete; verify lock clears in doctor output |
+| `provider_rate_limited` | Provider throttling/backoff active | Wait for retry window; reduce parallelism if this repeats |
+| `network_error` | Transient network/path failure | Check network/proxy/DNS and observe retry behavior |
+| `timeout` | Operation exceeded timeout budget | Increase timeout if needed and inspect provider/network latency |
+| `retry_budget_exceeded` | Retries exhausted within configured budget | Inspect root cause in trace, tune retry/timeout conservatively |
+| `permanent_error` | Non-retryable provider/API/request failure | Fix payload/auth/config issue before rerunning |
+| `update_failed` | Update apply failed | Check release artifact integrity, then inspect rollback outcome |
+| `update_rollback` | Rollback executed after update failure | Confirm previous binary health, then retry update later |

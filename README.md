@@ -25,3 +25,8 @@ This project is intended to be built with AI coding agents. Start with `AGENTS.m
 6. Installer/service registration
 7. Self-update
 8. Hardening, tests, docs
+
+## Operations and Incident Docs
+
+- `docs/OPERATIONS.md` covers service modes, safety expectations, and reason-code troubleshooting.
+- `docs/INCIDENT_RESPONSE.md` provides incident triage and recovery procedures.

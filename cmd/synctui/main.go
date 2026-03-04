@@ -1,0 +1,111 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/basmulder03/git-project-sync/internal/core/config"
+	"github.com/basmulder03/git-project-sync/internal/core/daemon"
+	"github.com/basmulder03/git-project-sync/internal/core/state"
+	"github.com/basmulder03/git-project-sync/internal/ui/tui"
+)
+
+func main() {
+	os.Exit(run())
+}
+
+func run() int {
+	fs := flag.NewFlagSet("synctui", flag.ContinueOnError)
+	configPath := fs.String("config", "configs/config.example.yaml", "Path to config file")
+	showVersion := fs.Bool("version", false, "Show version and exit")
+
+	if err := fs.Parse(os.Args[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		fmt.Fprintf(os.Stderr, "synctui: %v\n", err)
+		return 2
+	}
+
+	if *showVersion {
+		fmt.Println("synctui dev")
+		return 0
+	}
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "synctui: failed to load config: %v\n", err)
+		return 1
+	}
+
+	store, err := state.NewSQLiteStore(cfg.State.DBPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "synctui: failed to open state DB: %v\n", err)
+		return 1
+	}
+	defer func() {
+		_ = store.Close()
+	}()
+
+	provider := &statusProvider{
+		api:      daemon.NewServiceAPI(store),
+		interval: time.Duration(cfg.Daemon.IntervalSeconds) * time.Second,
+	}
+
+	app := tui.NewApp(provider, os.Stdin, os.Stdout)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := app.Run(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "synctui: %v\n", err)
+		return 1
+	}
+
+	return 0
+}
+
+type statusProvider struct {
+	api      *daemon.ServiceAPI
+	interval time.Duration
+}
+
+func (p *statusProvider) DashboardStatus(ctx context.Context) (tui.DashboardStatus, error) {
+	if p.interval <= 0 {
+		p.interval = 5 * time.Minute
+	}
+
+	events, err := p.api.ListEvents(200)
+	if err != nil {
+		return tui.DashboardStatus{}, err
+	}
+
+	recentErrors := make([]string, 0, 5)
+	health := "healthy"
+	now := time.Now().UTC()
+
+	for _, event := range events {
+		if event.Level != "error" {
+			continue
+		}
+		if now.Sub(event.CreatedAt) < 15*time.Minute {
+			health = "degraded"
+		}
+		if len(recentErrors) < 5 {
+			recentErrors = append(recentErrors, fmt.Sprintf("%s [%s] %s", event.CreatedAt.UTC().Format(time.RFC3339), event.ReasonCode, event.Message))
+		}
+	}
+
+	return tui.DashboardStatus{
+		Health:       health,
+		NextRunAt:    now.Add(p.interval),
+		ActiveJobs:   0,
+		RecentErrors: recentErrors,
+		UpdatedAt:    now,
+	}, nil
+}

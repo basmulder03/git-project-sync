@@ -1,0 +1,71 @@
+version: 1
+sprint:
+  id: S5
+  name: Scale Validation and Operational Excellence
+  goal: Validate behavior under sustained load and harden operator workflows for production incidents.
+  duration_days: 10
+
+tasks:
+  - id: S5-T01
+    title: Add large-workspace scheduler scale tests and fairness validation
+    backlog_refs: [E3-T1, E8-T1, E8-T2]
+    files:
+      - tests/integration/scale_scheduler_test.go
+      - internal/core/daemon/scheduler_test.go
+      - docs/ACCEPTANCE_TESTS.md
+    implementation_notes:
+      - Simulate high repo counts across multi-source configurations.
+      - Validate no starvation and expected completion distribution across sources.
+    tests:
+      - "go test ./internal/core/daemon/... ./tests/integration/..."
+    commit_checkpoint: "test(scale): validate scheduler fairness and throughput at large repo counts"
+
+  - id: S5-T02
+    title: Add daemon resilience drills for restart storms and lock contention spikes
+    backlog_refs: [E3-T3, E3-T5, E8-T1]
+    files:
+      - tests/integration/daemon_resilience_test.go
+      - internal/core/daemon/recovery_test.go
+      - internal/core/daemon/locks_test.go
+      - docs/INCIDENT_RESPONSE.md
+    implementation_notes:
+      - Repeatedly start/stop daemon while sync work is active.
+      - Validate recovery semantics and lock cleanup under pressure.
+    tests:
+      - "go test ./internal/core/daemon/... ./tests/integration/..."
+    commit_checkpoint: "test(resilience): add restart-storm and lock-contention reliability drills"
+
+  - id: S5-T03
+    title: Harden state DB durability and recovery tooling
+    backlog_refs: [E8-T5]
+    files:
+      - internal/core/state/sqlite_store.go
+      - internal/core/state/sqlite_store_test.go
+      - cmd/syncctl/state_cmd.go
+      - docs/OPERATIONS.md
+    implementation_notes:
+      - Add backup/restore and integrity-check commands for local state DB.
+      - Validate safe recovery from malformed or partially written state rows.
+    tests:
+      - "go test ./internal/core/state/... ./cmd/syncctl/..."
+    commit_checkpoint: "feat(state): add state backup/restore and integrity recovery tooling"
+
+  - id: S5-T04
+    title: Add operator-facing SLOs and incident severity matrix
+    backlog_refs: [E8-T3]
+    files:
+      - docs/SLOS.md
+      - docs/INCIDENT_RESPONSE.md
+      - docs/OPERATIONS.md
+    implementation_notes:
+      - Define target sync freshness, error-rate, and recovery-time objectives.
+      - Map reason-code classes to severity and response timelines.
+    tests:
+      - "n/a (docs)"
+    commit_checkpoint: "docs(ops): define SLOs and severity-based incident response matrix"
+
+definition_of_done:
+  - All tasks S5-T01..S5-T04 merged.
+  - Scale and resilience tests run on CI nightly and pass consistently.
+  - State recovery tooling is documented and verified by tests.
+  - SLOs and severity-driven incident workflows are published.

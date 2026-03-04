@@ -78,3 +78,60 @@ Current Sprint-1 integration coverage:
 
 Exit criteria:
 - Full acceptance suite green on CI.
+
+## Phase 9 - Release Readiness and Install Bootstrap
+
+- Add first-install bootstrap for fresh machines without preinstalled CLI.
+- Add install preflight diagnostics and actionable failure hints.
+- Add coverage inventory, thresholds, and CI reporting.
+
+Exit criteria:
+- Fresh machine can install and configure via bootstrap flow on Linux/Windows.
+- Coverage thresholds are enforced for critical packages.
+
+## Phase 10 - Scale and Operational Excellence
+
+- Add large-scale scheduler tests and restart/lock contention drills.
+- Add state DB backup/restore and integrity tooling.
+- Define and document operational SLOs and severity matrix.
+
+Exit criteria:
+- Scale/resilience reliability suite passes consistently.
+- Operators can triage and recover state with documented procedures.
+
+## Phase 11 - UX Polish and v1.0 Launch
+
+- Final CLI/TUI UX consistency pass.
+- Improve first-run onboarding and install docs.
+- Add release-candidate checklist mapped to acceptance criteria.
+
+Exit criteria:
+- v1.0 release candidate gates are documented and passing.
+
+## Phase 12 - Enterprise Governance
+
+- Add policy controls for allowed sync behavior and protected repos.
+- Add audit-friendly export workflows for traces/events.
+- Extend diagnostics with policy drift and governance checks.
+
+Exit criteria:
+- Governance controls are enforceable and auditable.
+
+## Phase 13 - Ecosystem Integrations
+
+- Add notification sinks for critical events.
+- Add maintenance windows/blackout scheduling controls.
+- Add export modes for external observability systems.
+
+Exit criteria:
+- Integration automation is safe, redacted, and operationally useful.
+
+## Phase 14 - Performance and LTS Baseline
+
+- Add benchmark suite and regression gates.
+- Reduce integration flakiness and document triage process.
+- Define long-term support lifecycle and maintenance policy.
+
+Exit criteria:
+- Performance and reliability baselines are enforced in CI.
+- LTS policy and maintenance workflow are published.

@@ -18,6 +18,12 @@ source_of_truth:
   - ai/sprint-01.yaml
   - ai/sprint-02.yaml
   - ai/sprint-03.yaml
+  - ai/sprint-04.yaml
+  - ai/sprint-05.yaml
+  - ai/sprint-06.yaml
+  - ai/sprint-07.yaml
+  - ai/sprint-08.yaml
+  - ai/sprint-09.yaml
   - ai/RUNBOOK.md
 
 execution_order:
@@ -40,6 +46,56 @@ execution_order:
     depends_on:
       - S1
       - S2
+    must_complete_before:
+      - S4
+      - S5
+      - S6
+  - sprint: S4
+    file: ai/sprint-04.yaml
+    objective: Release readiness, bootstrap installation, and test coverage closure
+    depends_on:
+      - S3
+    must_complete_before:
+      - S5
+      - S6
+  - sprint: S5
+    file: ai/sprint-05.yaml
+    objective: Scale validation and operational excellence
+    depends_on:
+      - S4
+    must_complete_before:
+      - S6
+  - sprint: S6
+    file: ai/sprint-06.yaml
+    objective: UX polish and v1.0 launch readiness
+    depends_on:
+      - S4
+      - S5
+    must_complete_before:
+      - S7
+      - S8
+      - S9
+  - sprint: S7
+    file: ai/sprint-07.yaml
+    objective: Enterprise policy, governance, and audit exports
+    depends_on:
+      - S6
+    must_complete_before:
+      - S8
+      - S9
+  - sprint: S8
+    file: ai/sprint-08.yaml
+    objective: Ecosystem integrations and automation controls
+    depends_on:
+      - S7
+    must_complete_before:
+      - S9
+  - sprint: S9
+    file: ai/sprint-09.yaml
+    objective: Performance tuning, maintainability, and LTS baseline
+    depends_on:
+      - S7
+      - S8
 
 governance:
   required_commit_policy:
@@ -55,8 +111,12 @@ governance:
     - Remaining risks and follow-ups
 
 global_exit_criteria:
-  - All tasks in sprint 01, 02, and 03 are completed.
+  - All tasks in sprint 01, 02, 03, 04, 05, 06, 07, 08, and 09 are completed.
   - Acceptance tests pass across Linux and Windows.
+  - Fresh-machine install works without requiring preinstalled CLI binaries.
+  - Coverage thresholds for critical packages are enforced in CI.
+  - Governance/audit exports and automation controls are operationally usable.
+  - Performance and benchmark regression gates are active in CI.
   - Logging/traceability is present from first implementation phase onward.
   - Multi-source and multi-account behavior works for GitHub and Azure DevOps.
   - Sensitive data is stored in OS credential manager (or secure fallback only).

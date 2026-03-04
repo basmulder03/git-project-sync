@@ -1,0 +1,91 @@
+version: 1
+sprint:
+  id: S4
+  name: Release Readiness and Installation Bootstrap
+  goal: Ship a true first-use installation path, close critical test gaps, and enforce release-quality gates in CI.
+  duration_days: 10
+
+tasks:
+  - id: S4-T01
+    title: Add zero-to-installed bootstrap flow for fresh machines (no CLI preinstalled)
+    backlog_refs: [E6-T1, E6-T2, E6-T3]
+    files:
+      - scripts/bootstrap/install.sh
+      - scripts/bootstrap/install.ps1
+      - scripts/install.sh
+      - scripts/install.ps1
+      - docs/INSTALL.md
+      - README.md
+    implementation_notes:
+      - Provide an explicit entrypoint that can install binaries + register service without requiring existing `syncctl`.
+      - Add preflight checks (OS, architecture, privileges, download tool availability, target paths).
+      - Include offline/manual install fallback instructions.
+    tests:
+      - "go test ./internal/core/install/... ./tests/integration/..."
+    commit_checkpoint: "feat(bootstrap): add first-install flow for machines without syncctl"
+
+  - id: S4-T02
+    title: Add installation preflight and failure-mode diagnostics
+    backlog_refs: [E6-T3, E4-T3]
+    files:
+      - internal/core/install/linux_systemd.go
+      - internal/core/install/windows_taskscheduler.go
+      - cmd/syncctl/doctor_cmd.go
+      - docs/OPERATIONS.md
+    implementation_notes:
+      - Surface actionable diagnostics for missing privileges, missing dependencies, and unsupported environments.
+      - Emit structured reason codes for install/registration skips and failures.
+    tests:
+      - "go test ./internal/core/install/... ./cmd/syncctl/..."
+    commit_checkpoint: "feat(install): add preflight diagnostics and structured install failure reasons"
+
+  - id: S4-T03
+    title: Create repository-wide test coverage inventory and enforce minimum thresholds
+    backlog_refs: [E8-T1, E8-T2]
+    files:
+      - .github/workflows/ci.yml
+      - scripts/ci/coverage.sh
+      - docs/TEST_STRATEGY.md
+    implementation_notes:
+      - Generate package-level coverage reports and publish CI artifacts.
+      - Fail CI when critical packages drop below agreed minimums.
+      - Document rationale for threshold exceptions.
+    tests:
+      - "go test ./... -coverprofile=coverage.out"
+    commit_checkpoint: "test(ci): enforce package coverage thresholds and reporting"
+
+  - id: S4-T04
+    title: Backfill tests for currently under-tested core files and command paths
+    backlog_refs: [E8-T1]
+    files:
+      - internal/core/**/**_test.go
+      - cmd/syncctl/**/*_test.go
+      - tests/integration/**/*_test.go
+    implementation_notes:
+      - Prioritize files currently lacking direct unit tests in safety, daemon, install, and update paths.
+      - Add regression tests for critical failure branches and reason-code outputs.
+    tests:
+      - "go test ./internal/core/... ./cmd/syncctl/... ./tests/integration/..."
+    commit_checkpoint: "test(core): add targeted tests for under-covered safety and ops paths"
+
+  - id: S4-T05
+    title: Add security and compliance quality gates for release readiness
+    backlog_refs: [E7-T2, E8-T2]
+    files:
+      - .github/workflows/ci.yml
+      - .github/workflows/release.yml
+      - docs/RELEASE_CHECKLIST.md
+    implementation_notes:
+      - Add vulnerability scan and secret-scan steps.
+      - Generate SBOM and checksums as release artifacts.
+      - Document required checks before tag/release promotion.
+    tests:
+      - "workflow validation + go test ./..."
+    commit_checkpoint: "ci(security): add release quality gates and compliance checklist"
+
+definition_of_done:
+  - All tasks S4-T01..S4-T05 merged.
+  - Fresh-machine install works on Linux and Windows without preinstalled `syncctl`.
+  - Coverage report is generated in CI and minimum thresholds are enforced.
+  - Critical untested paths now have direct tests.
+  - Security/compliance checks are part of normal CI and release workflow.

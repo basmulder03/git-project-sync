@@ -1,0 +1,73 @@
+version: 1
+sprint:
+  id: S6
+  name: UX Polish and v1.0 Launch Readiness
+  goal: Finalize end-user experience, operational ergonomics, and launch documentation for a stable v1.0 release.
+  duration_days: 10
+
+tasks:
+  - id: S6-T01
+    title: Polish CLI ergonomics and command consistency
+    backlog_refs: [E4-T1, E4-T2, E4-T4]
+    files:
+      - cmd/syncctl/main.go
+      - cmd/syncctl/**/*cmd.go
+      - docs/CLI_SPEC.md
+    implementation_notes:
+      - Standardize help text, exit codes, and error messages across top-level commands.
+      - Ensure command output is script-friendly and stable for automation.
+    tests:
+      - "go test ./cmd/syncctl/..."
+    commit_checkpoint: "refactor(cli): standardize command UX, exit behavior, and help output"
+
+  - id: S6-T02
+    title: Improve TUI usability for operational triage
+    backlog_refs: [E5-T1, E5-T2, E5-T3]
+    files:
+      - internal/ui/tui/app.go
+      - internal/ui/tui/dashboard.go
+      - internal/ui/tui/logs_view.go
+      - internal/ui/tui/repos_view.go
+    implementation_notes:
+      - Add filter/search and reason-code drill-down workflows.
+      - Improve empty states and stale-data indicators.
+    tests:
+      - "go test ./internal/ui/... ./cmd/synctui/..."
+    commit_checkpoint: "feat(tui): improve triage workflows with filters and reason-code drill-down"
+
+  - id: S6-T03
+    title: Final pass on installer UX and first-run configuration guidance
+    backlog_refs: [E6-T1, E6-T2, E6-T3]
+    files:
+      - scripts/bootstrap/install.sh
+      - scripts/bootstrap/install.ps1
+      - docs/INSTALL.md
+      - docs/QUICKSTART.md
+      - README.md
+    implementation_notes:
+      - Ensure bootstrap scripts provide clear next-step guidance after install.
+      - Add first-run walkthrough for source login, repo registration, and first sync.
+    tests:
+      - "go test ./internal/core/install/... ./tests/integration/..."
+    commit_checkpoint: "docs(install): add first-run onboarding and installer UX improvements"
+
+  - id: S6-T04
+    title: Final acceptance closure and v1.0 release candidate checklist
+    backlog_refs: [E8-T1, E8-T2, E8-T3]
+    files:
+      - docs/ACCEPTANCE_TESTS.md
+      - docs/RELEASE_CHECKLIST.md
+      - .github/workflows/ci.yml
+      - .github/workflows/release.yml
+    implementation_notes:
+      - Map every acceptance item to automated or manual verification steps.
+      - Add explicit release candidate gate and rollback decision checklist.
+    tests:
+      - "go test ./..."
+    commit_checkpoint: "docs(release): finalize v1.0 acceptance and release-candidate gates"
+
+definition_of_done:
+  - All tasks S6-T01..S6-T04 merged.
+  - CLI and TUI operator workflows are consistent and production-usable.
+  - Installer/bootstrap and first-run docs are validated on Linux and Windows.
+  - v1.0 release candidate checklist is complete and actionable.

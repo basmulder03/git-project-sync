@@ -1,0 +1,71 @@
+version: 1
+sprint:
+  id: S9
+  name: Performance, Maintainability, and LTS Baseline
+  goal: Establish long-term maintainability with performance tuning, test reliability hardening, and support lifecycle practices.
+  duration_days: 10
+
+tasks:
+  - id: S9-T01
+    title: Optimize scheduler and state access hot paths
+    backlog_refs: [E3-T1, E8-T5]
+    files:
+      - internal/core/daemon/scheduler.go
+      - internal/core/state/sqlite_store.go
+      - internal/core/telemetry/diagnostics.go
+    implementation_notes:
+      - Profile high-frequency paths and reduce lock contention.
+      - Add batching/indexing improvements for event and run-state queries.
+    tests:
+      - "go test ./internal/core/daemon/... ./internal/core/state/... ./internal/core/telemetry/..."
+    commit_checkpoint: "perf(core): optimize scheduler and state query hot paths"
+
+  - id: S9-T02
+    title: Add benchmark suite and performance regression gates
+    backlog_refs: [E8-T2]
+    files:
+      - internal/core/daemon/bench_test.go
+      - internal/core/state/bench_test.go
+      - scripts/ci/perf_gate.sh
+      - .github/workflows/ci.yml
+    implementation_notes:
+      - Add representative benchmarks for cycle scheduling, event append/query, and trace retrieval.
+      - Add CI regression checks with configurable tolerance thresholds.
+    tests:
+      - "go test ./internal/core/daemon/... ./internal/core/state/... -bench=."
+    commit_checkpoint: "test(perf): add benchmark suite and CI performance regression gates"
+
+  - id: S9-T03
+    title: Improve test determinism and flake triage workflow
+    backlog_refs: [E8-T1, E8-T2]
+    files:
+      - tests/integration/**/*.go
+      - .github/workflows/ci.yml
+      - docs/TEST_STRATEGY.md
+    implementation_notes:
+      - Remove timing-sensitive assumptions and introduce deterministic test helpers.
+      - Add flake triage playbook with rerun policy and quarantine process.
+    tests:
+      - "go test ./tests/integration/... -count=3"
+      - "go test ./..."
+    commit_checkpoint: "test(reliability): harden determinism and flake triage workflow"
+
+  - id: S9-T04
+    title: Define LTS support policy and maintenance automation
+    backlog_refs: [E8-T3]
+    files:
+      - docs/LTS_POLICY.md
+      - docs/RELEASE_CHECKLIST.md
+      - .github/workflows/release.yml
+    implementation_notes:
+      - Define support windows, patch cadence, and backport expectations.
+      - Add maintenance automation checks for supported release branches.
+    tests:
+      - "n/a (docs/workflow)"
+    commit_checkpoint: "docs(lts): define support lifecycle and maintenance policy"
+
+definition_of_done:
+  - All tasks S9-T01..S9-T04 merged.
+  - Performance baselines and regression gates are active in CI.
+  - Integration suite flake rate is reduced and triage process is documented.
+  - LTS lifecycle policy and maintenance workflow are published.

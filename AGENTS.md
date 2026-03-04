@@ -61,6 +61,12 @@ Use these files together:
 - `ai/sprint-01.yaml`
 - `ai/sprint-02.yaml`
 - `ai/sprint-03.yaml`
+- `ai/sprint-04.yaml`
+- `ai/sprint-05.yaml`
+- `ai/sprint-06.yaml`
+- `ai/sprint-07.yaml`
+- `ai/sprint-08.yaml`
+- `ai/sprint-09.yaml`
 
 ## Commit Requirement for Agents
 

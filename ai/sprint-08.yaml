@@ -1,0 +1,73 @@
+version: 1
+sprint:
+  id: S8
+  name: Ecosystem Integrations and Automation
+  goal: Expand automation capabilities with safe integrations for notification, scheduling, and external observability systems.
+  duration_days: 10
+
+tasks:
+  - id: S8-T01
+    title: Add webhook/notification integrations for critical daemon events
+    backlog_refs: [E3-T5, E4-T2]
+    files:
+      - internal/core/telemetry/events.go
+      - internal/core/daemon/service_api.go
+      - internal/core/config/config.go
+      - docs/CONFIG_SCHEMA.md
+    implementation_notes:
+      - Add optional sinks for webhook/slack/teams style notification endpoints.
+      - Send only severity-filtered and redacted event payloads.
+    tests:
+      - "go test ./internal/core/telemetry/... ./internal/core/daemon/... ./internal/core/config/..."
+    commit_checkpoint: "feat(notify): add configurable redacted event notification sinks"
+
+  - id: S8-T02
+    title: Add scheduled maintenance windows and blackout controls
+    backlog_refs: [E3-T1, E4-T1]
+    files:
+      - internal/core/config/config.go
+      - internal/core/daemon/scheduler.go
+      - cmd/syncctl/daemon_cmd.go
+      - docs/CLI_SPEC.md
+    implementation_notes:
+      - Allow per-source or global maintenance windows where sync is paused.
+      - Emit skip reasons and next-allowed-run hints.
+    tests:
+      - "go test ./internal/core/config/... ./internal/core/daemon/... ./cmd/syncctl/..."
+    commit_checkpoint: "feat(schedule): add maintenance windows and blackout controls"
+
+  - id: S8-T03
+    title: Add metrics export integration for external monitoring tools
+    backlog_refs: [E3-T5, E4-T2]
+    files:
+      - cmd/syncctl/stats_cmd.go
+      - internal/core/telemetry/diagnostics.go
+      - docs/OPERATIONS.md
+      - docs/CLI_SPEC.md
+    implementation_notes:
+      - Add export modes suitable for scraping/ingestion.
+      - Include counters for retries, lock contention, policy skips, and update outcomes.
+    tests:
+      - "go test ./cmd/syncctl/... ./internal/core/telemetry/..."
+    commit_checkpoint: "feat(metrics): add external monitoring export formats"
+
+  - id: S8-T04
+    title: Add integration coverage for notification and schedule controls
+    backlog_refs: [E8-T1, E8-T2]
+    files:
+      - tests/integration/notifications_test.go
+      - tests/integration/maintenance_window_test.go
+      - .github/workflows/ci.yml
+    implementation_notes:
+      - Validate no mutation occurs during blackout periods.
+      - Validate notification payload redaction and severity filtering.
+    tests:
+      - "go test ./tests/integration/..."
+      - "go test ./..."
+    commit_checkpoint: "test(integration): cover notification and maintenance-window automation"
+
+definition_of_done:
+  - All tasks S8-T01..S8-T04 merged.
+  - Event notifications are configurable, redacted, and severity-aware.
+  - Maintenance windows reliably pause mutating operations with explicit reason codes.
+  - Metrics exports support external observability integration.

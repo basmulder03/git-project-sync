@@ -1,0 +1,73 @@
+version: 1
+sprint:
+  id: S7
+  name: Enterprise Policy and Governance
+  goal: Add enterprise-grade policy controls, audit exports, and governance workflows without weakening safety guarantees.
+  duration_days: 10
+
+tasks:
+  - id: S7-T01
+    title: Add policy engine for source/repo sync constraints
+    backlog_refs: [E3-T4, E4-T1]
+    files:
+      - internal/core/config/config.go
+      - internal/core/sync/engine.go
+      - internal/core/telemetry/reason_codes.go
+      - docs/CONFIG_SCHEMA.md
+    implementation_notes:
+      - Support policy rules for include/exclude repo patterns, allowed sync windows, and protected repositories.
+      - Emit explicit reason codes when policy blocks an operation.
+    tests:
+      - "go test ./internal/core/config/... ./internal/core/sync/... ./internal/core/telemetry/..."
+    commit_checkpoint: "feat(policy): add configurable sync governance rules and policy reason codes"
+
+  - id: S7-T02
+    title: Add audit export commands for events, traces, and run metadata
+    backlog_refs: [E3-T5, E4-T4]
+    files:
+      - cmd/syncctl/events_cmd.go
+      - cmd/syncctl/trace_cmd.go
+      - cmd/syncctl/stats_cmd.go
+      - docs/CLI_SPEC.md
+    implementation_notes:
+      - Add machine-readable export formats (json/csv) with redaction-safe output.
+      - Support bounded time windows and source/repo filters.
+    tests:
+      - "go test ./cmd/syncctl/..."
+    commit_checkpoint: "feat(audit): add exportable event and trace reporting commands"
+
+  - id: S7-T03
+    title: Add config policy validation and drift detection in doctor
+    backlog_refs: [E4-T3, E8-T3]
+    files:
+      - cmd/syncctl/doctor_cmd.go
+      - internal/core/workspace/validator.go
+      - docs/OPERATIONS.md
+    implementation_notes:
+      - Report policy violations, stale source settings, and layout drift in one health report.
+      - Include remediation hints per failed check.
+    tests:
+      - "go test ./cmd/syncctl/... ./internal/core/workspace/..."
+    commit_checkpoint: "feat(doctor): add policy and drift diagnostics with remediations"
+
+  - id: S7-T04
+    title: Add governance-focused integration tests and docs
+    backlog_refs: [E8-T1, E8-T3]
+    files:
+      - tests/integration/policy_enforcement_test.go
+      - tests/integration/audit_export_test.go
+      - docs/ACCEPTANCE_TESTS.md
+      - docs/OPERATIONS.md
+    implementation_notes:
+      - Validate that policy-denied operations do not mutate repos and remain traceable.
+      - Validate export correctness and secret-safe behavior.
+    tests:
+      - "go test ./tests/integration/..."
+      - "go test ./..."
+    commit_checkpoint: "test(policy): add governance and audit export integration coverage"
+
+definition_of_done:
+  - All tasks S7-T01..S7-T04 merged.
+  - Policy enforcement is configurable and produces machine-readable skip reasons.
+  - Audit exports are available for operations and compliance workflows.
+  - Governance checks are integrated into diagnostics and acceptance coverage.

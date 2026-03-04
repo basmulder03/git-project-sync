@@ -28,7 +28,7 @@ func newRootCommand() *cobra.Command {
 	root.SetVersionTemplate("syncctl {{.Version}}\n")
 
 	root.AddCommand(
-		newDoctorCommand(),
+		newDoctorCommand(&configPath),
 		newSourceCommand(&configPath),
 		newRepoCommand(&configPath),
 		newWorkspaceCommand(&configPath),
@@ -37,7 +37,7 @@ func newRootCommand() *cobra.Command {
 		newStubCommand("config", "Manage configuration"),
 		newAuthCommand(&configPath),
 		newCacheCommand(&configPath),
-		newStubCommand("stats", "View runtime stats"),
+		newStatsCommand(&configPath),
 		newEventsCommand(&configPath),
 		newTraceCommand(&configPath),
 		newStubCommand("install", "Install and register services"),
@@ -46,16 +46,6 @@ func newRootCommand() *cobra.Command {
 	)
 
 	return root
-}
-
-func newDoctorCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "doctor",
-		Short: "Run diagnostics",
-		Run: func(cmd *cobra.Command, _ []string) {
-			cmd.Println("doctor checks are not implemented yet")
-		},
-	}
 }
 
 func newStubCommand(use, short string) *cobra.Command {

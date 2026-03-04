@@ -2,6 +2,15 @@
 
 This guide covers Linux install/uninstall in v1.
 
+## Mode Comparison
+
+- `user` mode:
+  - No elevation required.
+  - Best for per-user repositories and credentials.
+- `system` mode:
+  - Requires root/Administrator privileges.
+  - Suitable for machine-wide scheduled operation.
+
 ## Linux
 
 Two operation modes are supported:

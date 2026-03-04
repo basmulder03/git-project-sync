@@ -121,3 +121,14 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected sources after round-trip: %+v", loaded.Sources)
 	}
 }
+
+func TestValidateRejectsInvalidPerSourceConcurrency(t *testing.T) {
+	t.Parallel()
+
+	cfg := Default()
+	cfg.Daemon.MaxParallelPerSource = 0
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected daemon.max_parallel_per_source validation error")
+	}
+}

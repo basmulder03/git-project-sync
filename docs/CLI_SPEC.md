@@ -7,6 +7,7 @@ Binary name: `syncctl`
 - `syncctl --help`
 - `syncctl --version`
 - `syncctl doctor`
+  - includes health score and actionable findings (locks/runs, source auth, recent failures, cache config)
 
 ## Source Management
 
@@ -68,6 +69,7 @@ Binary name: `syncctl`
 ## Stats
 
 - `syncctl stats show`
+  - includes repo/event counters and in-flight run count
 - `syncctl events list [--limit N]`
 - `syncctl trace show <trace-id>`
 

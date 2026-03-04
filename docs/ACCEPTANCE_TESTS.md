@@ -93,6 +93,7 @@
 18. Skip/action reason logging
     - Every skipped mutation includes explicit reason code and human-readable reason
     - TUI/CLI can list recent events with timestamps
+    - Reason codes follow a standardized taxonomy across git safety, sync, scheduler, and update paths
 
 ## Multi-Source Accounts
 
@@ -112,3 +113,9 @@
 22. Persistence separation
     - Non-sensitive data persists in config file and/or local DB
     - Sensitive data exists only in OS credential manager (or secure fallback)
+
+## Operational Readiness
+
+23. Incident runbook coverage
+    - Incident procedures exist for auth failures, lock contention, and update rollback
+    - Troubleshooting guidance maps observed reason codes to concrete operator actions

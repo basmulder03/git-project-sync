@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
+	"github.com/basmulder03/git-project-sync/internal/core/providers"
 	coresync "github.com/basmulder03/git-project-sync/internal/core/sync"
 	"github.com/basmulder03/git-project-sync/internal/core/telemetry"
 )
@@ -29,17 +31,21 @@ type Scheduler struct {
 	rand     *rand.Rand
 	now      func() time.Time
 	sleepCtx func(context.Context, time.Duration) error
+
+	rateLimitMu   sync.Mutex
+	sourceBackoff map[string]time.Time
 }
 
 func NewScheduler(cfg config.DaemonConfig, logger *slog.Logger, locks *RepoLockManager, runRepo RunRepoFunc, recorder *ServiceAPI) *Scheduler {
 	return &Scheduler{
-		cfg:      cfg,
-		logger:   logger,
-		locks:    locks,
-		runRepo:  runRepo,
-		recorder: recorder,
-		rand:     rand.New(rand.NewSource(time.Now().UnixNano())),
-		now:      time.Now,
+		cfg:           cfg,
+		logger:        logger,
+		locks:         locks,
+		runRepo:       runRepo,
+		recorder:      recorder,
+		rand:          rand.New(rand.NewSource(time.Now().UnixNano())),
+		now:           time.Now,
+		sourceBackoff: map[string]time.Time{},
 		sleepCtx: func(ctx context.Context, d time.Duration) error {
 			timer := time.NewTimer(d)
 			defer timer.Stop()
@@ -54,15 +60,23 @@ func NewScheduler(cfg config.DaemonConfig, logger *slog.Logger, locks *RepoLockM
 }
 
 func (s *Scheduler) RunCycle(ctx context.Context, traceID string, tasks []RepoTask, dryRun bool) {
-	maxParallel := s.cfg.MaxParallelRepos
-	if maxParallel < 1 {
-		maxParallel = 1
+	maxParallelRepos := s.cfg.MaxParallelRepos
+	if maxParallelRepos < 1 {
+		maxParallelRepos = 1
+	}
+	maxParallelPerSource := s.cfg.MaxParallelPerSource
+	if maxParallelPerSource < 1 {
+		maxParallelPerSource = 1
 	}
 
-	sem := make(chan struct{}, maxParallel)
+	orderedTasks := fairOrderTasks(tasks)
+
+	globalSem := make(chan struct{}, maxParallelRepos)
+	sourceSems := map[string]chan struct{}{}
+	var sourceSemsMu sync.Mutex
 	var wg sync.WaitGroup
 
-	for _, task := range tasks {
+	for _, task := range orderedTasks {
 		task := task
 		wg.Add(1)
 		go func() {
@@ -70,15 +84,71 @@ func (s *Scheduler) RunCycle(ctx context.Context, traceID string, tasks []RepoTa
 			select {
 			case <-ctx.Done():
 				return
-			case sem <- struct{}{}:
+			case globalSem <- struct{}{}:
 			}
-			defer func() { <-sem }()
+			defer func() { <-globalSem }()
+
+			sourceKey := sourceBucketKey(task.Source.ID)
+			sourceSemsMu.Lock()
+			sourceSem, ok := sourceSems[sourceKey]
+			if !ok {
+				sourceSem = make(chan struct{}, maxParallelPerSource)
+				sourceSems[sourceKey] = sourceSem
+			}
+			sourceSemsMu.Unlock()
+
+			select {
+			case <-ctx.Done():
+				return
+			case sourceSem <- struct{}{}:
+			}
+			defer func() { <-sourceSem }()
 
 			s.runTaskWithRetry(ctx, traceID, task, dryRun)
 		}()
 	}
 
 	wg.Wait()
+}
+
+func fairOrderTasks(tasks []RepoTask) []RepoTask {
+	if len(tasks) <= 1 {
+		return append([]RepoTask(nil), tasks...)
+	}
+
+	bySource := map[string][]RepoTask{}
+	sourceOrder := make([]string, 0)
+	for _, task := range tasks {
+		key := sourceBucketKey(task.Source.ID)
+		if _, exists := bySource[key]; !exists {
+			sourceOrder = append(sourceOrder, key)
+		}
+		bySource[key] = append(bySource[key], task)
+	}
+
+	ordered := make([]RepoTask, 0, len(tasks))
+	remaining := len(tasks)
+	for remaining > 0 {
+		for _, sourceID := range sourceOrder {
+			queue := bySource[sourceID]
+			if len(queue) == 0 {
+				continue
+			}
+			ordered = append(ordered, queue[0])
+			bySource[sourceID] = queue[1:]
+			remaining--
+		}
+	}
+
+	return ordered
+}
+
+func sourceBucketKey(sourceID string) string {
+	trimmed := strings.TrimSpace(sourceID)
+	if trimmed == "" {
+		return "_unknown_source"
+	}
+	return trimmed
 }
 
 func (s *Scheduler) RunPeriodic(ctx context.Context, tasks []RepoTask, dryRun bool) error {
@@ -100,7 +170,21 @@ func (s *Scheduler) runTaskWithRetry(ctx context.Context, traceID string, task R
 		maxAttempts = 1
 	}
 
+	retryBudget := time.Duration(s.cfg.OperationTimeoutSeconds) * time.Second
+	if retryBudget <= 0 {
+		retryBudget = 30 * time.Second
+	}
+	usedBudget := time.Duration(0)
+
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if waitFor := s.sourceWait(task.Source.ID); waitFor > 0 {
+			s.logger.Info("source backoff delay", "trace_id", traceID, "source_id", task.Source.ID, "wait_ms", waitFor.Milliseconds(), "reason_code", "provider_rate_limited")
+			s.recordEvent(ctx, telemetry.Event{TraceID: traceID, RepoPath: task.Repo.Path, Level: "warn", ReasonCode: "provider_rate_limited", Message: "waiting due to previous provider throttling", CreatedAt: s.now().UTC()})
+			if err := s.sleepCtx(ctx, waitFor); err != nil {
+				return
+			}
+		}
+
 		var lastResult coresync.RepoJobResult
 		acquired, err := s.locks.TryWithLock(task.Repo.Path, func() error {
 			opCtx, cancel := context.WithTimeout(ctx, time.Duration(s.cfg.OperationTimeoutSeconds)*time.Second)
@@ -122,19 +206,78 @@ func (s *Scheduler) runTaskWithRetry(ctx context.Context, traceID string, task R
 			return
 		}
 
+		class, reason := providers.ClassifyError(err)
+		if class == providers.ErrorClassPermanent {
+			s.logger.Error("repo sync failed without retry", "trace_id", traceID, "repo_path", task.Repo.Path, "reason_code", reason, "error", err)
+			s.recordEvent(ctx, telemetry.Event{TraceID: traceID, RepoPath: task.Repo.Path, Level: "error", ReasonCode: reason, Message: err.Error(), CreatedAt: s.now().UTC()})
+			return
+		}
+
 		if attempt == maxAttempts {
 			s.logger.Error("repo sync failed after retries", "trace_id", traceID, "repo_path", task.Repo.Path, "attempts", attempt, "error", err)
 			s.recordEvent(ctx, telemetry.Event{TraceID: traceID, RepoPath: task.Repo.Path, Level: "error", ReasonCode: telemetry.ReasonSyncFailed, Message: err.Error(), CreatedAt: s.now().UTC()})
 			return
 		}
 
+		if rateLimitErr, ok := providers.AsRateLimitError(err); ok {
+			delay := rateLimitErr.RetryAfter
+			if delay <= 0 {
+				delay = 30 * time.Second
+			}
+			s.applySourceBackoff(task.Source.ID, delay)
+		}
+
 		backoff := s.backoff(attempt)
+		usedBudget += backoff
+		if usedBudget > retryBudget {
+			s.logger.Error("repo sync retry budget exceeded", "trace_id", traceID, "repo_path", task.Repo.Path, "retry_budget_ms", retryBudget.Milliseconds(), "used_ms", usedBudget.Milliseconds(), "error", err)
+			s.recordEvent(ctx, telemetry.Event{TraceID: traceID, RepoPath: task.Repo.Path, Level: "error", ReasonCode: "retry_budget_exceeded", Message: err.Error(), CreatedAt: s.now().UTC()})
+			return
+		}
 		s.logger.Warn("repo sync attempt failed", "trace_id", traceID, "repo_path", task.Repo.Path, "attempt", attempt, "next_backoff_ms", backoff.Milliseconds(), "error", err)
 		s.recordEvent(ctx, telemetry.Event{TraceID: traceID, RepoPath: task.Repo.Path, Level: "warn", ReasonCode: telemetry.ReasonSyncRetry, Message: err.Error(), CreatedAt: s.now().UTC()})
 		if sleepErr := s.sleepCtx(ctx, backoff); sleepErr != nil {
 			return
 		}
 	}
+}
+
+func (s *Scheduler) applySourceBackoff(sourceID string, delay time.Duration) {
+	if sourceID == "" || delay <= 0 {
+		return
+	}
+
+	next := s.now().UTC().Add(delay)
+	s.rateLimitMu.Lock()
+	defer s.rateLimitMu.Unlock()
+
+	current, ok := s.sourceBackoff[sourceID]
+	if !ok || next.After(current) {
+		s.sourceBackoff[sourceID] = next
+	}
+}
+
+func (s *Scheduler) sourceWait(sourceID string) time.Duration {
+	if sourceID == "" {
+		return 0
+	}
+
+	s.rateLimitMu.Lock()
+	until, ok := s.sourceBackoff[sourceID]
+	s.rateLimitMu.Unlock()
+	if !ok {
+		return 0
+	}
+
+	remaining := until.Sub(s.now().UTC())
+	if remaining <= 0 {
+		s.rateLimitMu.Lock()
+		delete(s.sourceBackoff, sourceID)
+		s.rateLimitMu.Unlock()
+		return 0
+	}
+
+	return remaining
 }
 
 func (s *Scheduler) recordEvent(ctx context.Context, event telemetry.Event) {

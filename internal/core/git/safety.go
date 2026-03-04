@@ -1,5 +1,7 @@
 package git
 
+import "github.com/basmulder03/git-project-sync/internal/core/telemetry"
+
 type DirtyState struct {
 	HasStagedChanges   bool
 	HasUnstagedChanges bool
@@ -16,16 +18,16 @@ func (d DirtyState) ReasonCode() string {
 		return ""
 	}
 	if d.HasConflicts {
-		return "repo_conflicts"
+		return telemetry.ReasonRepoConflicts
 	}
 	if d.HasStagedChanges {
-		return "repo_staged_changes"
+		return telemetry.ReasonRepoStagedChanges
 	}
 	if d.HasUnstagedChanges {
-		return "repo_unstaged_changes"
+		return telemetry.ReasonRepoUnstagedChanges
 	}
 	if d.HasUntrackedFiles {
-		return "repo_untracked_files"
+		return telemetry.ReasonRepoUntrackedFiles
 	}
-	return "repo_dirty"
+	return telemetry.ReasonRepoDirty
 }

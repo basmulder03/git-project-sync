@@ -21,6 +21,18 @@ type RepoStatus struct {
 	UpdatedAt  time.Time
 }
 
+type RunState struct {
+	RunID       string
+	TraceID     string
+	RepoPath    string
+	SourceID    string
+	Status      string
+	Note        string
+	StartedAt   time.Time
+	HeartbeatAt time.Time
+	CompletedAt time.Time
+}
+
 func NewServiceAPI(store state.Store) *ServiceAPI {
 	return &ServiceAPI{store: store}
 }
@@ -96,6 +108,30 @@ func (s *ServiceAPI) RepoStatuses(limit int) ([]RepoStatus, error) {
 			LastError:  repo.LastError,
 			LastSyncAt: repo.LastSyncAt,
 			UpdatedAt:  repo.UpdatedAt,
+		})
+	}
+
+	return out, nil
+}
+
+func (s *ServiceAPI) InFlightRuns(limit int) ([]RunState, error) {
+	runs, err := s.store.ListInFlightRunStates(limit)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]RunState, 0, len(runs))
+	for _, run := range runs {
+		out = append(out, RunState{
+			RunID:       run.RunID,
+			TraceID:     run.TraceID,
+			RepoPath:    run.RepoPath,
+			SourceID:    run.SourceID,
+			Status:      run.Status,
+			Note:        run.Note,
+			StartedAt:   run.StartedAt,
+			HeartbeatAt: run.HeartbeatAt,
+			CompletedAt: run.CompletedAt,
 		})
 	}
 

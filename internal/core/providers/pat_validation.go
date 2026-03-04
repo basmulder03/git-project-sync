@@ -45,7 +45,7 @@ func validateGitHubPAT(ctx context.Context, host, token string) error {
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := NewHTTPClient(10 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("github PAT validation request failed: %w", err)
@@ -53,7 +53,10 @@ func validateGitHubPAT(ctx context.Context, host, token string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("github PAT validation failed with status %d", resp.StatusCode)
+		if rateLimit, ok := ParseRateLimitError("github", resp); ok {
+			return rateLimit
+		}
+		return WrapHTTPStatusError("github", resp.StatusCode)
 	}
 
 	return nil
@@ -79,7 +82,7 @@ func validateAzureDevOpsPAT(ctx context.Context, host, organization, token strin
 	creds := base64.StdEncoding.EncodeToString([]byte(":" + token))
 	req.Header.Set("Authorization", "Basic "+creds)
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := NewHTTPClient(10 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("azure devops PAT validation request failed: %w", err)
@@ -87,7 +90,10 @@ func validateAzureDevOpsPAT(ctx context.Context, host, organization, token strin
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("azure devops PAT validation failed with status %d", resp.StatusCode)
+		if rateLimit, ok := ParseRateLimitError("azuredevops", resp); ok {
+			return rateLimit
+		}
+		return WrapHTTPStatusError("azuredevops", resp.StatusCode)
 	}
 
 	return nil

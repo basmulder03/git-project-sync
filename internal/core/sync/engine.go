@@ -43,12 +43,14 @@ func (e *Engine) RunRepo(ctx context.Context, traceID string, source config.Sour
 	}
 
 	if err := e.git.FetchAndPrune(ctx, repo.Path, remote); err != nil {
-		return result, err
+		_, reason := providers.ClassifyError(err)
+		return result, fmt.Errorf("%s: %w", reason, err)
 	}
 
 	defaultBranch, err := e.resolveDefaultBranch(ctx, source, repo)
 	if err != nil {
-		return result, err
+		_, reason := providers.ClassifyError(err)
+		return result, fmt.Errorf("%s: %w", reason, err)
 	}
 
 	upstreamRef, ok, err := e.git.UpstreamBranch(ctx, repo.Path)

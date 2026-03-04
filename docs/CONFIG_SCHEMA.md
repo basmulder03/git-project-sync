@@ -16,6 +16,7 @@ daemon:
   interval_seconds: 300
   jitter_seconds: 30
   max_parallel_repos: 4
+  max_parallel_per_source: 2
   operation_timeout_seconds: 120
   retry:
     max_attempts: 3
@@ -79,3 +80,6 @@ repos:
   - SQLite state DB: mutable runtime state (repo sync snapshots, event history, traces)
 - Path handling must support both Linux and Windows separators.
 - Workspace layout should be deterministic and easy to navigate.
+- Scheduler dispatch is fair across sources (round-robin) to prevent source starvation.
+- `daemon.max_parallel_repos` limits total concurrent repo sync jobs.
+- `daemon.max_parallel_per_source` limits concurrent repo sync jobs per source/account.

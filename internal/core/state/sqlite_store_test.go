@@ -164,3 +164,49 @@ func TestSQLiteStoreListsEventsByTrace(t *testing.T) {
 		t.Fatalf("all events should match trace-a: %+v", events)
 	}
 }
+
+func TestSQLiteStoreRunStateLifecycle(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "state.db")
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	run := RunState{
+		RunID:    "run-1",
+		TraceID:  "trace-1",
+		RepoPath: "/repos/a",
+		SourceID: "gh1",
+		Status:   "running",
+		Note:     "started",
+	}
+
+	if err := store.UpsertRunState(run); err != nil {
+		t.Fatalf("upsert run state: %v", err)
+	}
+
+	inFlight, err := store.ListInFlightRunStates(10)
+	if err != nil {
+		t.Fatalf("list in-flight runs: %v", err)
+	}
+	if len(inFlight) != 1 || inFlight[0].RunID != "run-1" {
+		t.Fatalf("unexpected in-flight runs: %+v", inFlight)
+	}
+
+	if err := store.CompleteRunState("run-1", "completed", "done"); err != nil {
+		t.Fatalf("complete run state: %v", err)
+	}
+
+	inFlight, err = store.ListInFlightRunStates(10)
+	if err != nil {
+		t.Fatalf("list in-flight runs after complete: %v", err)
+	}
+	if len(inFlight) != 0 {
+		t.Fatalf("expected no in-flight runs after completion: %+v", inFlight)
+	}
+}

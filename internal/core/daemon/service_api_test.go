@@ -56,4 +56,16 @@ func TestServiceAPIRecordListAndTrace(t *testing.T) {
 	if len(repoStatuses) != 1 || repoStatuses[0].RepoPath != "/repos/a" {
 		t.Fatalf("unexpected repo statuses: %+v", repoStatuses)
 	}
+
+	if err := store.UpsertRunState(state.RunState{RunID: "run-1", TraceID: "trace-1", RepoPath: "/repos/a", SourceID: "gh1", Status: "running", Note: "in-flight"}); err != nil {
+		t.Fatalf("upsert run state: %v", err)
+	}
+
+	inFlightRuns, err := api.InFlightRuns(10)
+	if err != nil {
+		t.Fatalf("in-flight runs query: %v", err)
+	}
+	if len(inFlightRuns) != 1 || inFlightRuns[0].RunID != "run-1" {
+		t.Fatalf("unexpected in-flight runs: %+v", inFlightRuns)
+	}
 }

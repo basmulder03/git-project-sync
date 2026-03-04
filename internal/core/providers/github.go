@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/basmulder03/git-project-sync/internal/core/git"
 )
@@ -31,4 +32,8 @@ func (r *GitHubResolver) ResolveDefaultBranch(ctx context.Context, repoPath, rem
 	}
 
 	return "", fmt.Errorf("could not resolve GitHub default branch for remote %q", remote)
+}
+
+func (r *GitHubResolver) ParseRateLimit(resp *http.Response) (*RateLimitError, bool) {
+	return ParseRateLimitError("github", resp)
 }

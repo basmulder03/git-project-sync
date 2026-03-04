@@ -2,13 +2,16 @@ package state
 
 import "time"
 
-const CurrentSchemaVersion = 1
+const CurrentSchemaVersion = 2
 
 type Store interface {
 	EnsureSchema() error
 	PutRepoState(RepoState) error
 	GetRepoState(repoPath string) (RepoState, bool, error)
 	ListRepoStates(limit int) ([]RepoState, error)
+	UpsertRunState(RunState) error
+	CompleteRunState(runID, status, note string) error
+	ListInFlightRunStates(limit int) ([]RunState, error)
 	AppendEvent(Event) error
 	ListEvents(limit int) ([]Event, error)
 	ListEventsByTrace(traceID string, limit int) ([]Event, error)
@@ -32,4 +35,16 @@ type Event struct {
 	ReasonCode string
 	Message    string
 	CreatedAt  time.Time
+}
+
+type RunState struct {
+	RunID       string
+	TraceID     string
+	RepoPath    string
+	SourceID    string
+	Status      string
+	Note        string
+	StartedAt   time.Time
+	HeartbeatAt time.Time
+	CompletedAt time.Time
 }

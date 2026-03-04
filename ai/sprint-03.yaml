@@ -1,0 +1,133 @@
+version: 1
+sprint:
+  id: S3
+  name: Hardening and Operational Readiness
+  goal: Make the system resilient for long-running production use with strong failure handling, observability, and operational safeguards.
+  duration_days: 10
+
+tasks:
+  - id: S3-T01
+    title: Add provider API rate-limit handling and adaptive backoff
+    backlog_refs: [E3-T1, E2-T1, E2-T2]
+    files:
+      - internal/core/providers/github.go
+      - internal/core/providers/azuredevops.go
+      - internal/core/daemon/scheduler.go
+      - docs/OPERATIONS.md
+    implementation_notes:
+      - Parse and respect provider rate-limit headers where available.
+      - Add adaptive delay strategy per source to prevent repeated throttling.
+    tests:
+      - "go test ./internal/core/providers/... ./internal/core/daemon/..."
+    commit_checkpoint: "feat(resilience): add adaptive provider rate-limit handling"
+
+  - id: S3-T02
+    title: Improve network resilience and timeout policy
+    backlog_refs: [E3-T1]
+    files:
+      - internal/core/daemon/scheduler.go
+      - internal/core/sync/engine.go
+      - internal/core/providers/client.go
+      - docs/REQUIREMENTS.md
+    implementation_notes:
+      - Add explicit connect/read timeouts and retry budget caps.
+      - Classify transient vs permanent errors and log reason codes.
+    tests:
+      - "go test ./internal/core/daemon/... ./internal/core/sync/... ./internal/core/providers/..."
+    commit_checkpoint: "feat(network): enforce timeout budgets and retry classification"
+
+  - id: S3-T03
+    title: Add crash-safe daemon state recovery
+    backlog_refs: [E3-T3, E8-T5]
+    files:
+      - internal/core/state/store.go
+      - internal/core/daemon/recovery.go
+      - internal/core/daemon/service_api.go
+      - docs/OPERATIONS.md
+    implementation_notes:
+      - Persist in-flight run metadata and recover cleanly after restart.
+      - Prevent duplicate execution for the same repo lock/run ID.
+    tests:
+      - "go test ./internal/core/state/... ./internal/core/daemon/..."
+    commit_checkpoint: "feat(daemon): recover safely from restart/crash using persisted run state"
+
+  - id: S3-T04
+    title: Add enhanced observability and operational diagnostics
+    backlog_refs: [E3-T5, E4-T3]
+    files:
+      - internal/core/telemetry/events.go
+      - cmd/syncctl/doctor_cmd.go
+      - cmd/syncctl/stats_cmd.go
+      - docs/CLI_SPEC.md
+    implementation_notes:
+      - Expose actionable diagnostics for locks, source auth, cache freshness, and failed jobs.
+      - Add summary health scoring in doctor output.
+    tests:
+      - "go test ./internal/core/telemetry/... ./cmd/syncctl/..."
+    commit_checkpoint: "feat(obs): expand doctor and telemetry diagnostics"
+
+  - id: S3-T05
+    title: Enforce structured reason codes across all skip/failure paths
+    backlog_refs: [E3-T4]
+    files:
+      - internal/core/telemetry/reason_codes.go
+      - internal/core/sync/repo_job.go
+      - internal/core/git/safety.go
+      - docs/ACCEPTANCE_TESTS.md
+    implementation_notes:
+      - Standardize skip/error reason taxonomy for machine-readable analysis.
+      - Ensure every skip/failure event includes a reason code.
+    tests:
+      - "go test ./internal/core/telemetry/... ./internal/core/sync/... ./internal/core/git/..."
+    commit_checkpoint: "refactor(trace): standardize reason codes for all skip/failure events"
+
+  - id: S3-T06
+    title: Add repository scale and concurrency tuning controls
+    backlog_refs: [E3-T1, E8-T2]
+    files:
+      - internal/core/config/config.go
+      - internal/core/daemon/scheduler.go
+      - docs/CONFIG_SCHEMA.md
+    implementation_notes:
+      - Add per-source and global concurrency controls.
+      - Introduce queue fairness to prevent starvation.
+    tests:
+      - "go test ./internal/core/config/... ./internal/core/daemon/..."
+    commit_checkpoint: "feat(scale): add tunable concurrency and fair scheduling controls"
+
+  - id: S3-T07
+    title: Add long-run soak and failure-injection integration tests
+    backlog_refs: [E8-T1, E8-T2]
+    files:
+      - tests/integration/soak_daemon_test.go
+      - tests/integration/failure_injection_test.go
+      - tests/integration/rate_limit_test.go
+      - .github/workflows/ci.yml
+    implementation_notes:
+      - Simulate flaky networks, provider throttling, and daemon restarts.
+      - Validate no destructive behavior under sustained load.
+    tests:
+      - "go test ./tests/integration/..."
+    commit_checkpoint: "test(soak): add long-run and failure-injection reliability tests"
+
+  - id: S3-T08
+    title: Finalize operational runbooks and incident playbooks
+    backlog_refs: [E8-T3]
+    files:
+      - docs/OPERATIONS.md
+      - docs/INCIDENT_RESPONSE.md
+      - docs/ACCEPTANCE_TESTS.md
+      - README.md
+    implementation_notes:
+      - Document recovery procedures for auth failures, lock contention, and update rollback.
+      - Add troubleshooting matrix mapped to reason codes.
+    tests:
+      - "n/a (docs)"
+    commit_checkpoint: "docs(ops): add incident response and troubleshooting playbooks"
+
+definition_of_done:
+  - All tasks S3-T01..S3-T08 merged.
+  - Reliability and soak tests are passing in CI for linux/windows.
+  - Every skip/failure path emits structured reason codes.
+  - Operational docs cover failure triage and safe recovery steps.
+  - Commit history shows logical checkpoints by task slice.

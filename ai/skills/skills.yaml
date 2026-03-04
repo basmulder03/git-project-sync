@@ -1,0 +1,49 @@
+version: 1
+skills:
+  - id: git-safety-sync
+    file: ai/skills/git-safety-sync.md
+    use_when:
+      - Implementing sync engine logic
+      - Adding branch update/delete behavior
+
+  - id: multi-source-auth
+    file: ai/skills/multi-source-auth.md
+    use_when:
+      - Working on provider/account/source management
+      - Working on PAT validation and token storage
+
+  - id: daemon-traceability
+    file: ai/skills/daemon-traceability.md
+    use_when:
+      - Building scheduler, workers, locks, retries
+      - Adding logs/events/traces and observability
+
+  - id: cli-parity
+    file: ai/skills/cli-parity.md
+    use_when:
+      - Adding commands under syncctl
+      - Mapping daemon/TUI actions to CLI
+
+  - id: tui-operations
+    file: ai/skills/tui-operations.md
+    use_when:
+      - Building lightweight operational dashboard
+      - Adding cache/log/action controls
+
+  - id: platform-install-service
+    file: ai/skills/platform-install-service.md
+    use_when:
+      - Implementing Linux/Windows registration and uninstall
+      - Writing privilege-related docs
+
+  - id: self-update-release
+    file: ai/skills/self-update-release.md
+    use_when:
+      - Building update check/apply workflow
+      - Creating release artifacts and manifests
+
+  - id: test-hardening
+    file: ai/skills/test-hardening.md
+    use_when:
+      - Adding integration tests and CI matrix
+      - Running reliability and failure-injection work

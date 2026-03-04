@@ -1,0 +1,160 @@
+version: 1
+sprint:
+  id: S2
+  name: Operations UX, Installers, and Self-Update
+  goal: Deliver TUI parity, platform installation flows, and production-ready update path with verification and rollback.
+  duration_days: 10
+
+tasks:
+  - id: S2-T01
+    title: Build TUI app shell and daemon status dashboard
+    backlog_refs: [E5-T1]
+    files:
+      - cmd/synctui/main.go
+      - internal/ui/tui/app.go
+      - internal/ui/tui/dashboard.go
+    implementation_notes:
+      - Show daemon health, next run, active jobs, and recent errors.
+      - Ensure keyboard navigation is responsive and lightweight.
+    tests:
+      - "go test ./internal/ui/... ./cmd/synctui/..."
+    commit_checkpoint: "feat(tui): add dashboard shell with daemon status view"
+
+  - id: S2-T02
+    title: Add TUI repo list, cache, and logs/event panels
+    backlog_refs: [E5-T2]
+    files:
+      - internal/ui/tui/repos_view.go
+      - internal/ui/tui/cache_view.go
+      - internal/ui/tui/logs_view.go
+      - internal/core/daemon/service_api.go
+    implementation_notes:
+      - Render repo health and sync state table.
+      - Add cache age/refresh UI and event timeline with trace IDs.
+    tests:
+      - "go test ./internal/ui/... ./internal/core/daemon/..."
+    commit_checkpoint: "feat(tui): add repo, cache, and logs panels"
+
+  - id: S2-T03
+    title: Wire TUI manual actions with daemon parity
+    backlog_refs: [E5-T3, E4-T1]
+    files:
+      - internal/ui/tui/actions.go
+      - cmd/syncctl/sync_cmd.go
+      - docs/CLI_SPEC.md
+    implementation_notes:
+      - Trigger sync all/repo, cache refresh, and trace drill-down.
+      - Guarantee each TUI action has an equivalent CLI command.
+    tests:
+      - "go test ./internal/ui/... ./cmd/syncctl/..."
+    commit_checkpoint: "feat(tui): wire manual actions with CLI-equivalent operations"
+
+  - id: S2-T04
+    title: Implement Linux install/uninstall and service registration
+    backlog_refs: [E6-T1]
+    files:
+      - internal/core/install/linux_systemd.go
+      - scripts/install.sh
+      - scripts/uninstall.sh
+      - docs/INSTALL.md
+    implementation_notes:
+      - Support user and system modes.
+      - Validate privilege checks and idempotent registration.
+    tests:
+      - "go test ./internal/core/install/..."
+    commit_checkpoint: "feat(install-linux): add systemd registration and uninstall flow"
+
+  - id: S2-T05
+    title: Implement Windows install/uninstall and task/service registration
+    backlog_refs: [E6-T2]
+    files:
+      - internal/core/install/windows_taskscheduler.go
+      - scripts/install.ps1
+      - scripts/uninstall.ps1
+      - docs/INSTALL.md
+    implementation_notes:
+      - Prefer Task Scheduler in v1 with optional service mode abstraction.
+      - Include privilege prompts and registration validation.
+    tests:
+      - "go test ./internal/core/install/..."
+    commit_checkpoint: "feat(install-windows): add task registration and uninstall flow"
+
+  - id: S2-T06
+    title: Document privilege model and operation modes
+    backlog_refs: [E6-T3]
+    files:
+      - docs/OPERATIONS.md
+      - docs/INSTALL.md
+      - docs/REQUIREMENTS.md
+    implementation_notes:
+      - Clarify user/system mode differences and access implications.
+      - Include troubleshooting for permission errors.
+    tests:
+      - "n/a (docs)"
+    commit_checkpoint: "docs(ops): document privilege and service operation modes"
+
+  - id: S2-T07
+    title: Implement update manifest client with checksum/signature verification
+    backlog_refs: [E7-T1]
+    files:
+      - internal/core/update/updater.go
+      - internal/core/update/manifest.go
+      - cmd/syncctl/update_cmd.go
+    implementation_notes:
+      - Support update check and apply commands.
+      - Verify integrity before replacing binaries.
+    tests:
+      - "go test ./internal/core/update/... ./cmd/syncctl/..."
+    commit_checkpoint: "feat(update): add verified manifest and apply workflow"
+
+  - id: S2-T08
+    title: Add rollback-safe binary replacement
+    backlog_refs: [E7-T3]
+    files:
+      - internal/core/update/replace.go
+      - internal/core/update/updater.go
+      - docs/OPERATIONS.md
+    implementation_notes:
+      - Implement atomic swap and rollback on failure.
+      - Emit traceable events for update start/success/fail/rollback.
+    tests:
+      - "go test ./internal/core/update/..."
+    commit_checkpoint: "feat(update): implement atomic replace with rollback safeguards"
+
+  - id: S2-T09
+    title: Add release workflow for multi-platform artifacts
+    backlog_refs: [E7-T2]
+    files:
+      - .github/workflows/release.yml
+      - .github/workflows/ci.yml
+      - docs/OPERATIONS.md
+    implementation_notes:
+      - Build linux/windows artifacts and checksums.
+      - Publish release manifest consumed by updater.
+    tests:
+      - "workflow validation + go test ./..."
+    commit_checkpoint: "ci(release): publish signed multi-platform artifacts and manifests"
+
+  - id: S2-T10
+    title: Expand acceptance coverage for installers, TUI parity, and update paths
+    backlog_refs: [E8-T1, E8-T2]
+    files:
+      - tests/integration/install_linux_test.go
+      - tests/integration/install_windows_test.go
+      - tests/integration/update_flow_test.go
+      - tests/integration/tui_cli_parity_test.go
+      - docs/ACCEPTANCE_TESTS.md
+    implementation_notes:
+      - Cover acceptance tests 10, 11, 12, 15, 16.
+      - Ensure logs/events remain secret-safe during update/install actions.
+    tests:
+      - "go test ./tests/integration/..."
+      - "go test ./..."
+    commit_checkpoint: "test(integration): cover installer, parity, and self-update acceptance flows"
+
+definition_of_done:
+  - All tasks S2-T01..S2-T10 merged.
+  - Acceptance tests 10, 11, 12, 15, 16 pass on CI matrix.
+  - TUI operational parity exists for core daemon actions.
+  - Install/uninstall and update flows are traceable and rollback-safe.
+  - Commit history shows logical checkpoints by task slice.

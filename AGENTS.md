@@ -55,3 +55,15 @@ Use these files together:
 - `docs/ACCEPTANCE_TESTS.md`
 - `ai/agents.yaml`
 - `ai/backlog.yaml`
+- `ai/master-plan.yaml`
+- `ai/START_HERE.md`
+- `ai/skills/skills.yaml`
+- `ai/sprint-01.yaml`
+- `ai/sprint-02.yaml`
+- `ai/sprint-03.yaml`
+
+## Commit Requirement for Agents
+
+- Agents must create commits at logical checkpoints during implementation.
+- Commits should group one cohesive change and include related tests.
+- Do not bundle unrelated changes in the same commit.

@@ -1,0 +1,64 @@
+version: 1
+project: git-project-sync
+default_branch: main
+
+source_of_truth:
+  - AGENTS.md
+  - docs/REQUIREMENTS.md
+  - docs/ARCHITECTURE.md
+  - docs/CLI_SPEC.md
+  - docs/CONFIG_SCHEMA.md
+  - docs/PAT_PERMISSIONS.md
+  - docs/ACCEPTANCE_TESTS.md
+  - docs/IMPLEMENTATION_PLAN.md
+  - ai/agents.yaml
+  - ai/backlog.yaml
+  - ai/START_HERE.md
+  - ai/skills/skills.yaml
+  - ai/sprint-01.yaml
+  - ai/sprint-02.yaml
+  - ai/sprint-03.yaml
+  - ai/RUNBOOK.md
+
+execution_order:
+  - sprint: S1
+    file: ai/sprint-01.yaml
+    objective: Foundations, safety core, traceability, multi-source plumbing
+    must_complete_before:
+      - S2
+      - S3
+  - sprint: S2
+    file: ai/sprint-02.yaml
+    objective: TUI parity, install/service registration, self-update and release
+    depends_on:
+      - S1
+    must_complete_before:
+      - S3
+  - sprint: S3
+    file: ai/sprint-03.yaml
+    objective: Hardening, resilience, long-run operational readiness
+    depends_on:
+      - S1
+      - S2
+
+governance:
+  required_commit_policy:
+    - Create commits at logical checkpoints.
+    - Keep one cohesive change per commit.
+    - Include related tests with each logical change.
+    - Do not bundle unrelated changes.
+    - Keep secret-safe output (no token leakage in logs or commit content).
+  required_handoff:
+    - Files changed
+    - Tests run and results
+    - Commits created (hash, message, rationale)
+    - Remaining risks and follow-ups
+
+global_exit_criteria:
+  - All tasks in sprint 01, 02, and 03 are completed.
+  - Acceptance tests pass across Linux and Windows.
+  - Logging/traceability is present from first implementation phase onward.
+  - Multi-source and multi-account behavior works for GitHub and Azure DevOps.
+  - Sensitive data is stored in OS credential manager (or secure fallback only).
+  - Non-sensitive state/config persists in config file and/or local DB.
+  - Managed workspace layout is deterministic and navigable.

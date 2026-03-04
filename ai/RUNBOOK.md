@@ -24,6 +24,24 @@ For each task:
 4. Require test output and explicit pass/fail summary.
 5. Require documentation updates if behavior changed.
 
+## 2.1) Commit Discipline (Required)
+
+Agents must create commits at logical checkpoints, not only at the end.
+
+- Commit after completing a cohesive unit of work (feature slice, test slice, refactor slice).
+- Each commit must keep the repository in a buildable/testable state for that slice.
+- Commit message should explain intent and reason, not only file changes.
+- Never mix unrelated work in one commit.
+- Run the smallest relevant tests before each commit and include results in handoff.
+
+Recommended commit cadence for implementation tasks:
+
+1. Core behavior commit (implementation only)
+2. Test coverage commit (unit/integration tests)
+3. Docs/spec alignment commit (if required)
+
+If a task is very small, combine into one commit.
+
 ## 3) Definition of Done (Per Task)
 
 - Feature behavior matches acceptance criteria.
@@ -53,10 +71,12 @@ Constraints:
 - Keep changes scoped to this task.
 - Add/adjust tests proving acceptance behavior.
 - Update docs if command/behavior changes.
+- Create logical commits during the task; do not wait until all epics are done.
 
 Return:
 1) Files changed
 2) What was implemented
 3) Tests run + results
-4) Remaining risks or TODOs
+4) Commits created (hash + message + rationale)
+5) Remaining risks or TODOs
 ```

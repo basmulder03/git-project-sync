@@ -18,6 +18,8 @@ import (
 	coresync "github.com/basmulder03/git-project-sync/internal/core/sync"
 )
 
+var version = "dev"
+
 func main() {
 	os.Exit(run())
 }
@@ -37,7 +39,7 @@ func run() int {
 	}
 
 	if *showVersion {
-		fmt.Println("syncd dev")
+		fmt.Printf("syncd %s\n", version)
 		return 0
 	}
 

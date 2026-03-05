@@ -16,8 +16,28 @@ if [[ "$MODE" == "system" && "$(id -u)" -ne 0 ]]; then
   exit 1
 fi
 
-BIN_PATH="${BIN_PATH:-/usr/local/bin/syncd}"
-CONFIG_PATH="${CONFIG_PATH:-$HOME/.config/git-project-sync/config.yaml}"
+if [[ "$MODE" == "user" ]]; then
+  BIN_PATH="${BIN_PATH:-$HOME/.local/bin/syncd}"
+  CONFIG_PATH="${CONFIG_PATH:-$HOME/.config/git-project-sync/config.yaml}"
+else
+  BIN_PATH="${BIN_PATH:-/usr/local/bin/syncd}"
+  CONFIG_PATH="${CONFIG_PATH:-/etc/git-project-sync/config.yaml}"
+fi
+
+if [[ ! -x "$BIN_PATH" ]]; then
+  echo "syncd binary not found or not executable at $BIN_PATH"
+  exit 1
+fi
+
+mkdir -p "$(dirname "$CONFIG_PATH")"
+if [[ ! -f "$CONFIG_PATH" ]]; then
+  cat >"$CONFIG_PATH" <<EOF
+daemon:
+  interval: 5m
+repositories: []
+sources: []
+EOF
+fi
 
 if [[ "$MODE" == "user" ]]; then
   SERVICE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"

@@ -17,10 +17,11 @@ func TestLinuxInstallScriptsContainServiceRegistrationFlow(t *testing.T) {
 	}
 
 	root := repoRoot(t)
+	bootstrapScript := filepath.Join(root, "scripts", "bootstrap", "install.sh")
 	installScript := filepath.Join(root, "scripts", "install.sh")
 	uninstallScript := filepath.Join(root, "scripts", "uninstall.sh")
 
-	for _, script := range []string{installScript, uninstallScript} {
+	for _, script := range []string{bootstrapScript, installScript, uninstallScript} {
 		if _, err := os.Stat(script); err != nil {
 			t.Fatalf("expected script %s: %v", script, err)
 		}
@@ -30,6 +31,10 @@ func TestLinuxInstallScriptsContainServiceRegistrationFlow(t *testing.T) {
 		}
 	}
 
+	bootstrapContent, err := os.ReadFile(bootstrapScript)
+	if err != nil {
+		t.Fatalf("read bootstrap script: %v", err)
+	}
 	installContent, err := os.ReadFile(installScript)
 	if err != nil {
 		t.Fatalf("read install script: %v", err)
@@ -37,6 +42,12 @@ func TestLinuxInstallScriptsContainServiceRegistrationFlow(t *testing.T) {
 	uninstallContent, err := os.ReadFile(uninstallScript)
 	if err != nil {
 		t.Fatalf("read uninstall script: %v", err)
+	}
+
+	for _, want := range []string{"releases/latest/download", "scripts/install.sh", "syncd_linux_${ARCH}"} {
+		if !strings.Contains(string(bootstrapContent), want) {
+			t.Fatalf("bootstrap script missing %q", want)
+		}
 	}
 
 	for _, want := range []string{"systemctl", "enable --now"} {

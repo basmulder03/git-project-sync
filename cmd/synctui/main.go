@@ -19,6 +19,8 @@ import (
 	"github.com/basmulder03/git-project-sync/internal/ui/tui"
 )
 
+var version = "dev"
+
 func main() {
 	os.Exit(run())
 }
@@ -37,7 +39,7 @@ func run() int {
 	}
 
 	if *showVersion {
-		fmt.Println("synctui dev")
+		fmt.Printf("synctui %s\n", version)
 		return 0
 	}
 

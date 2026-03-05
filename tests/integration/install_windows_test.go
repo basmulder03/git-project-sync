@@ -16,9 +16,14 @@ func TestWindowsInstallScriptsContainTaskRegistrationFlow(t *testing.T) {
 	}
 
 	root := repoRoot(t)
+	bootstrapScript := filepath.Join(root, "scripts", "bootstrap", "install.ps1")
 	installScript := filepath.Join(root, "scripts", "install.ps1")
 	uninstallScript := filepath.Join(root, "scripts", "uninstall.ps1")
 
+	bootstrapContent, err := os.ReadFile(bootstrapScript)
+	if err != nil {
+		t.Fatalf("read bootstrap.ps1: %v", err)
+	}
 	installContent, err := os.ReadFile(installScript)
 	if err != nil {
 		t.Fatalf("read install.ps1: %v", err)
@@ -26,6 +31,12 @@ func TestWindowsInstallScriptsContainTaskRegistrationFlow(t *testing.T) {
 	uninstallContent, err := os.ReadFile(uninstallScript)
 	if err != nil {
 		t.Fatalf("read uninstall.ps1: %v", err)
+	}
+
+	for _, want := range []string{"Invoke-WebRequest", "releases/latest/download", "scripts\\install.ps1"} {
+		if !strings.Contains(string(bootstrapContent), want) {
+			t.Fatalf("bootstrap.ps1 missing %q", want)
+		}
 	}
 
 	for _, want := range []string{"schtasks", "/Create", "/Query"} {

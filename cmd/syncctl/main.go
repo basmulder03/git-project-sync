@@ -7,6 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var version = "dev"
+
 func main() {
 	if err := newRootCommand().Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -24,7 +26,7 @@ func newRootCommand() *cobra.Command {
 
 	root.PersistentFlags().StringVar(&configPath, "config", "configs/config.example.yaml", "Path to config file")
 
-	root.Version = "dev"
+	root.Version = version
 	root.SetVersionTemplate("syncctl {{.Version}}\n")
 
 	root.AddCommand(

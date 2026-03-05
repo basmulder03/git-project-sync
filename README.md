@@ -10,6 +10,7 @@ This project is intended to be built with AI coding agents. Start with `AGENTS.m
 - Sync safely in a background daemon.
 - Offer full control through a CLI.
 - Provide a lightweight TUI dashboard.
+- Provide a lightweight setup TUI (`syncsetup`) for install/uninstall flows.
 - Support GitHub and Azure DevOps PAT authentication.
 - Support multiple provider sources/accounts at the same time.
 - Avoid all destructive behavior and skip dirty repositories.
@@ -30,3 +31,4 @@ This project is intended to be built with AI coding agents. Start with `AGENTS.m
 
 - `docs/OPERATIONS.md` covers service modes, safety expectations, and reason-code troubleshooting.
 - `docs/INCIDENT_RESPONSE.md` provides incident triage and recovery procedures.
+- `docs/INSTALL.md` documents fresh-machine bootstrap installation and service registration flows.

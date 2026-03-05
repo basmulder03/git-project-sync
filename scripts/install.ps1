@@ -13,8 +13,40 @@ if ($Mode -eq "system") {
 }
 
 $taskName = "GitProjectSync"
-$binPath = if ($env:BIN_PATH) { $env:BIN_PATH } else { "$env:ProgramFiles\git-project-sync\syncd.exe" }
-$configPath = if ($env:CONFIG_PATH) { $env:CONFIG_PATH } else { "$env:APPDATA\git-project-sync\config.yaml" }
+if ($env:BIN_PATH) {
+  $binPath = $env:BIN_PATH
+} elseif ($Mode -eq "system") {
+  $binPath = "$env:ProgramFiles\git-project-sync\syncd.exe"
+} else {
+  $binPath = "$env:LOCALAPPDATA\git-project-sync\bin\syncd.exe"
+}
+
+if ($env:CONFIG_PATH) {
+  $configPath = $env:CONFIG_PATH
+} elseif ($Mode -eq "system") {
+  $configPath = "$env:ProgramData\git-project-sync\config.yaml"
+} else {
+  $configPath = "$env:APPDATA\git-project-sync\config.yaml"
+}
+
+if (-not (Test-Path -LiteralPath $binPath -PathType Leaf)) {
+  throw "syncd binary not found at $binPath"
+}
+
+$configDir = Split-Path -Parent $configPath
+if (-not (Test-Path -LiteralPath $configDir)) {
+  New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+}
+
+if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
+  @"
+daemon:
+  interval: 5m
+repositories: []
+sources: []
+"@ | Set-Content -Path $configPath -NoNewline
+}
+
 $exec = "`"$binPath`" --config `"$configPath`""
 
 if ($Mode -eq "system") {

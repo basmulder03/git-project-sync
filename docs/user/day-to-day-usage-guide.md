@@ -4,8 +4,8 @@ This guide explains day-to-day usage of `git-project-sync` for operators and dev
 
 ## Typical Workflow
 
-1. Install and register services (`docs/INSTALL.md`).
-2. Complete first-run onboarding (`docs/QUICKSTART.md`).
+1. Install and register services (`docs/getting-started/installation-and-service-registration.md`).
+2. Complete first-run onboarding (`docs/getting-started/first-run-onboarding.md`).
 3. Monitor health and event history.
 4. Use TUI/CLI actions for triage and manual interventions.
 
@@ -65,6 +65,6 @@ syncctl state restore --input /path/to/backup.db
 
 ## Where to Go Next
 
-- Operational procedures: `docs/OPERATIONS.md`
-- Incident handling: `docs/INCIDENT_RESPONSE.md`
-- SLOs and reliability targets: `docs/SLOS.md`
+- Operational procedures: `docs/operations/service-operations-guide.md`
+- Incident handling: `docs/operations/incident-response-playbook.md`
+- SLOs and reliability targets: `docs/operations/reliability-slos-and-error-budgets.md`

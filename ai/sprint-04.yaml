@@ -14,7 +14,7 @@ tasks:
       - scripts/bootstrap/install.ps1
       - scripts/install.sh
       - scripts/install.ps1
-      - docs/INSTALL.md
+      - docs/getting-started/installation-and-service-registration.md
       - README.md
     implementation_notes:
       - Provide an explicit entrypoint that can install binaries + register service without requiring existing `syncctl`.
@@ -31,7 +31,7 @@ tasks:
       - internal/core/install/linux_systemd.go
       - internal/core/install/windows_taskscheduler.go
       - cmd/syncctl/doctor_cmd.go
-      - docs/OPERATIONS.md
+      - docs/operations/service-operations-guide.md
     implementation_notes:
       - Surface actionable diagnostics for missing privileges, missing dependencies, and unsupported environments.
       - Emit structured reason codes for install/registration skips and failures.
@@ -45,7 +45,7 @@ tasks:
     files:
       - .github/workflows/ci.yml
       - scripts/ci/coverage.sh
-      - docs/TEST_STRATEGY.md
+      - docs/engineering/test-strategy-and-coverage.md
     implementation_notes:
       - Generate package-level coverage reports and publish CI artifacts.
       - Fail CI when critical packages drop below agreed minimums.
@@ -74,7 +74,7 @@ tasks:
     files:
       - .github/workflows/ci.yml
       - .github/workflows/release.yml
-      - docs/RELEASE_CHECKLIST.md
+      - docs/release/release-candidate-checklist.md
     implementation_notes:
       - Add vulnerability scan and secret-scan steps.
       - Generate SBOM and checksums as release artifacts.

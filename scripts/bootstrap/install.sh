@@ -124,4 +124,4 @@ echo "4) Register repos: $BIN_DIR/syncctl repo add <path> --source-id <source-id
 echo "5) Dry-run first sync: $BIN_DIR/syncctl sync all --dry-run"
 echo "6) Monitor health: $BIN_DIR/syncctl doctor && $BIN_DIR/syncctl daemon status"
 echo
-echo "See docs/QUICKSTART.md for guided onboarding."
+echo "See docs/getting-started/first-run-onboarding.md for guided onboarding."

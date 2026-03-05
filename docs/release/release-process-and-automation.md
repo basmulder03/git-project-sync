@@ -24,8 +24,8 @@ Use the `Release` workflow (`workflow_dispatch`) and provide:
 
 ## Required Pre-Checks
 
-- Complete `docs/RELEASE_CHECKLIST.md`.
-- Confirm acceptance mapping in `docs/ACCEPTANCE_TESTS.md`.
+- Complete `docs/release/release-candidate-checklist.md`.
+- Confirm acceptance mapping in `docs/engineering/acceptance-test-matrix.md`.
 - Ensure no unresolved release blockers.
 
 ## Post-Release Checks

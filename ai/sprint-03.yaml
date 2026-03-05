@@ -13,7 +13,7 @@ tasks:
       - internal/core/providers/github.go
       - internal/core/providers/azuredevops.go
       - internal/core/daemon/scheduler.go
-      - docs/OPERATIONS.md
+      - docs/operations/service-operations-guide.md
     implementation_notes:
       - Parse and respect provider rate-limit headers where available.
       - Add adaptive delay strategy per source to prevent repeated throttling.
@@ -28,7 +28,7 @@ tasks:
       - internal/core/daemon/scheduler.go
       - internal/core/sync/engine.go
       - internal/core/providers/client.go
-      - docs/REQUIREMENTS.md
+      - docs/project/product-requirements.md
     implementation_notes:
       - Add explicit connect/read timeouts and retry budget caps.
       - Classify transient vs permanent errors and log reason codes.
@@ -43,7 +43,7 @@ tasks:
       - internal/core/state/store.go
       - internal/core/daemon/recovery.go
       - internal/core/daemon/service_api.go
-      - docs/OPERATIONS.md
+      - docs/operations/service-operations-guide.md
     implementation_notes:
       - Persist in-flight run metadata and recover cleanly after restart.
       - Prevent duplicate execution for the same repo lock/run ID.
@@ -58,7 +58,7 @@ tasks:
       - internal/core/telemetry/events.go
       - cmd/syncctl/doctor_cmd.go
       - cmd/syncctl/stats_cmd.go
-      - docs/CLI_SPEC.md
+      - docs/reference/cli-command-specification.md
     implementation_notes:
       - Expose actionable diagnostics for locks, source auth, cache freshness, and failed jobs.
       - Add summary health scoring in doctor output.
@@ -73,7 +73,7 @@ tasks:
       - internal/core/telemetry/reason_codes.go
       - internal/core/sync/repo_job.go
       - internal/core/git/safety.go
-      - docs/ACCEPTANCE_TESTS.md
+      - docs/engineering/acceptance-test-matrix.md
     implementation_notes:
       - Standardize skip/error reason taxonomy for machine-readable analysis.
       - Ensure every skip/failure event includes a reason code.
@@ -87,7 +87,7 @@ tasks:
     files:
       - internal/core/config/config.go
       - internal/core/daemon/scheduler.go
-      - docs/CONFIG_SCHEMA.md
+      - docs/reference/configuration-schema.md
     implementation_notes:
       - Add per-source and global concurrency controls.
       - Introduce queue fairness to prevent starvation.
@@ -114,9 +114,9 @@ tasks:
     title: Finalize operational runbooks and incident playbooks
     backlog_refs: [E8-T3]
     files:
-      - docs/OPERATIONS.md
-      - docs/INCIDENT_RESPONSE.md
-      - docs/ACCEPTANCE_TESTS.md
+      - docs/operations/service-operations-guide.md
+      - docs/operations/incident-response-playbook.md
+      - docs/engineering/acceptance-test-matrix.md
       - README.md
     implementation_notes:
       - Document recovery procedures for auth failures, lock contention, and update rollback.

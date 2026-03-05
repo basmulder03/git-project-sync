@@ -7,9 +7,9 @@ Use this runbook when assigning work to coding agents.
 Provide this context to the agent:
 
 - Read and follow `AGENTS.md`.
-- Treat `docs/REQUIREMENTS.md` as product source of truth.
-- Match behavior to `docs/ACCEPTANCE_TESTS.md`.
-- Keep CLI behavior aligned with `docs/CLI_SPEC.md`.
+- Treat `docs/project/product-requirements.md` as product source of truth.
+- Match behavior to `docs/engineering/acceptance-test-matrix.md`.
+- Keep CLI behavior aligned with `docs/reference/cli-command-specification.md`.
 - Treat logging and traceability as mandatory from first implementation tasks.
 - Preserve multi-source and multi-account compatibility in all designs.
 - Do not violate safety rules under any condition.

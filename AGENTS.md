@@ -48,11 +48,11 @@ Build a cross-platform application that keeps local git repositories in sync wit
 
 Use these files together:
 
-- `docs/REQUIREMENTS.md`
-- `docs/ARCHITECTURE.md`
-- `docs/CLI_SPEC.md`
-- `docs/PAT_PERMISSIONS.md`
-- `docs/ACCEPTANCE_TESTS.md`
+- `docs/project/product-requirements.md`
+- `docs/engineering/system-architecture.md`
+- `docs/reference/cli-command-specification.md`
+- `docs/reference/pat-permission-requirements.md`
+- `docs/engineering/acceptance-test-matrix.md`
 - `ai/agents.yaml`
 - `ai/backlog.yaml`
 - `ai/master-plan.yaml`

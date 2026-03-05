@@ -35,7 +35,7 @@ Exit criteria:
 
 ## Phase 4 - CLI Parity
 
-- Implement full CLI command set from `docs/CLI_SPEC.md`.
+- Implement full CLI command set from `docs/reference/cli-command-specification.md`.
 - Ensure daemon operations and one-shot actions work.
 
 Exit criteria:

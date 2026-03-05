@@ -41,7 +41,7 @@ tasks:
     files:
       - internal/ui/tui/actions.go
       - cmd/syncctl/sync_cmd.go
-      - docs/CLI_SPEC.md
+      - docs/reference/cli-command-specification.md
     implementation_notes:
       - Trigger sync all/repo, cache refresh, and trace drill-down.
       - Guarantee each TUI action has an equivalent CLI command.
@@ -56,7 +56,7 @@ tasks:
       - internal/core/install/linux_systemd.go
       - scripts/install.sh
       - scripts/uninstall.sh
-      - docs/INSTALL.md
+      - docs/getting-started/installation-and-service-registration.md
     implementation_notes:
       - Support user and system modes.
       - Validate privilege checks and idempotent registration.
@@ -71,7 +71,7 @@ tasks:
       - internal/core/install/windows_taskscheduler.go
       - scripts/install.ps1
       - scripts/uninstall.ps1
-      - docs/INSTALL.md
+      - docs/getting-started/installation-and-service-registration.md
     implementation_notes:
       - Prefer Task Scheduler in v1 with optional service mode abstraction.
       - Include privilege prompts and registration validation.
@@ -83,9 +83,9 @@ tasks:
     title: Document privilege model and operation modes
     backlog_refs: [E6-T3]
     files:
-      - docs/OPERATIONS.md
-      - docs/INSTALL.md
-      - docs/REQUIREMENTS.md
+      - docs/operations/service-operations-guide.md
+      - docs/getting-started/installation-and-service-registration.md
+      - docs/project/product-requirements.md
     implementation_notes:
       - Clarify user/system mode differences and access implications.
       - Include troubleshooting for permission errors.
@@ -113,7 +113,7 @@ tasks:
     files:
       - internal/core/update/replace.go
       - internal/core/update/updater.go
-      - docs/OPERATIONS.md
+      - docs/operations/service-operations-guide.md
     implementation_notes:
       - Implement atomic swap and rollback on failure.
       - Emit traceable events for update start/success/fail/rollback.
@@ -127,7 +127,7 @@ tasks:
     files:
       - .github/workflows/release.yml
       - .github/workflows/ci.yml
-      - docs/OPERATIONS.md
+      - docs/operations/service-operations-guide.md
     implementation_notes:
       - Build linux/windows artifacts and checksums.
       - Publish release manifest consumed by updater.
@@ -143,7 +143,7 @@ tasks:
       - tests/integration/install_windows_test.go
       - tests/integration/update_flow_test.go
       - tests/integration/tui_cli_parity_test.go
-      - docs/ACCEPTANCE_TESTS.md
+      - docs/engineering/acceptance-test-matrix.md
     implementation_notes:
       - Cover acceptance tests 10, 11, 12, 15, 16.
       - Ensure logs/events remain secret-safe during update/install actions.

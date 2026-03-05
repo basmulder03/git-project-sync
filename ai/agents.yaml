@@ -7,8 +7,8 @@ agents:
     role: lead
     purpose: Coordinate sequencing, dependencies, and integration quality.
     owns:
-      - docs/REQUIREMENTS.md
-      - docs/ARCHITECTURE.md
+      - docs/project/product-requirements.md
+      - docs/engineering/system-architecture.md
       - ai/backlog.yaml
     done_when:
       - "All epics have implementation owners"
@@ -55,7 +55,7 @@ agents:
       - internal/core/config/**
       - internal/core/state/**
       - internal/core/workspace/**
-      - docs/CONFIG_SCHEMA.md
+      - docs/reference/configuration-schema.md
     done_when:
       - "Config and runtime state persist safely without secrets"
       - "Managed repository layout is deterministic and navigable"
@@ -66,7 +66,7 @@ agents:
     purpose: Implement full-featured CLI with daemon parity.
     owns:
       - cmd/syncctl/**
-      - docs/CLI_SPEC.md
+      - docs/reference/cli-command-specification.md
     done_when:
       - "All commands in CLI spec are implemented"
       - "CLI supports one-shot and daemon actions"
@@ -108,7 +108,7 @@ agents:
     role: validation
     purpose: Validate acceptance tests, edge-cases, and hardening.
     owns:
-      - docs/ACCEPTANCE_TESTS.md
+      - docs/engineering/acceptance-test-matrix.md
       - tests/**
     done_when:
       - "Acceptance tests pass on Linux and Windows"

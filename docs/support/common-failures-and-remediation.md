@@ -35,7 +35,7 @@ syncctl trace show <trace-id>
 - Reduce concurrency:
   - `daemon.max_parallel_repos`
   - `daemon.max_parallel_per_source`
-- See `docs/INCIDENT_RESPONSE.md` for lock-contention runbook.
+- See `docs/operations/incident-response-playbook.md` for lock-contention runbook.
 
 ## Network or Provider Failures
 
@@ -79,5 +79,5 @@ syncctl state restore --input /tmp/sync.db.backup
 
 ## Escalation
 
-- Follow severity matrix and response targets in `docs/INCIDENT_RESPONSE.md`.
-- If SLO risk persists, follow `docs/SLOS.md` error budget policy.
+- Follow severity matrix and response targets in `docs/operations/incident-response-playbook.md`.
+- If SLO risk persists, follow `docs/operations/reliability-slos-and-error-budgets.md` error budget policy.

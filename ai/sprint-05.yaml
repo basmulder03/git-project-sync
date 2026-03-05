@@ -12,7 +12,7 @@ tasks:
     files:
       - tests/integration/scale_scheduler_test.go
       - internal/core/daemon/scheduler_test.go
-      - docs/ACCEPTANCE_TESTS.md
+      - docs/engineering/acceptance-test-matrix.md
     implementation_notes:
       - Simulate high repo counts across multi-source configurations.
       - Validate no starvation and expected completion distribution across sources.
@@ -27,7 +27,7 @@ tasks:
       - tests/integration/daemon_resilience_test.go
       - internal/core/daemon/recovery_test.go
       - internal/core/daemon/locks_test.go
-      - docs/INCIDENT_RESPONSE.md
+      - docs/operations/incident-response-playbook.md
     implementation_notes:
       - Repeatedly start/stop daemon while sync work is active.
       - Validate recovery semantics and lock cleanup under pressure.
@@ -42,7 +42,7 @@ tasks:
       - internal/core/state/sqlite_store.go
       - internal/core/state/sqlite_store_test.go
       - cmd/syncctl/state_cmd.go
-      - docs/OPERATIONS.md
+      - docs/operations/service-operations-guide.md
     implementation_notes:
       - Add backup/restore and integrity-check commands for local state DB.
       - Validate safe recovery from malformed or partially written state rows.
@@ -54,9 +54,9 @@ tasks:
     title: Add operator-facing SLOs and incident severity matrix
     backlog_refs: [E8-T3]
     files:
-      - docs/SLOS.md
-      - docs/INCIDENT_RESPONSE.md
-      - docs/OPERATIONS.md
+      - docs/operations/reliability-slos-and-error-budgets.md
+      - docs/operations/incident-response-playbook.md
+      - docs/operations/service-operations-guide.md
     implementation_notes:
       - Define target sync freshness, error-rate, and recovery-time objectives.
       - Map reason-code classes to severity and response timelines.

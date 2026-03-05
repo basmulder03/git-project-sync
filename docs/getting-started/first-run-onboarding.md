@@ -93,4 +93,4 @@ syncctl trace show <trace-id>
 
 - Sync mutations are skipped on dirty repositories by design.
 - Use `syncctl state backup --output <path>` before high-risk changes.
-- See `docs/INSTALL.md` for install/repair flows and mode-specific behavior.
+- See `docs/getting-started/installation-and-service-registration.md` for install/repair flows and mode-specific behavior.

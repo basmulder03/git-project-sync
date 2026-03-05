@@ -72,16 +72,16 @@ It includes runtime and setup interfaces:
 
 ## Getting started in 2 minutes
 
-1. Install using `docs/INSTALL.md`.
-2. Run first-time onboarding from `docs/QUICKSTART.md`.
+1. Install using `docs/getting-started/installation-and-service-registration.md`.
+2. Run first-time onboarding from `docs/getting-started/first-run-onboarding.md`.
 3. Validate health with `syncctl doctor`.
 
 ## Quick Start
 
 Install and onboard:
 
-1. Follow `docs/INSTALL.md`.
-2. Follow `docs/QUICKSTART.md`.
+1. Follow `docs/getting-started/installation-and-service-registration.md`.
+2. Follow `docs/getting-started/first-run-onboarding.md`.
 
 Minimal first-run command flow:
 

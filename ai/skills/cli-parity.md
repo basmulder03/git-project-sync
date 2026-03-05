@@ -6,7 +6,7 @@ Ensure every operational action is available via `syncctl`.
 
 ## Checklist
 
-- Follow command contracts in `docs/CLI_SPEC.md`.
+- Follow command contracts in `docs/reference/cli-command-specification.md`.
 - Ensure daemon and one-shot sync actions both work.
 - Add source/auth/workspace/cache/stats/trace commands as specified.
 - Keep command output concise, script-friendly, and secret-safe.

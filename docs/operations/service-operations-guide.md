@@ -31,9 +31,9 @@
 
 ## SLO Targets
 
-- Service objectives and error budgets are defined in `docs/SLOS.md`.
+- Service objectives and error budgets are defined in `docs/operations/reliability-slos-and-error-budgets.md`.
 - Operators should treat sustained freshness, success-rate, or restart-recovery drift as incident triggers.
-- Severity defaults and response timelines are defined in `docs/INCIDENT_RESPONSE.md`.
+- Severity defaults and response timelines are defined in `docs/operations/incident-response-playbook.md`.
 
 ## Crash-Safe Recovery
 

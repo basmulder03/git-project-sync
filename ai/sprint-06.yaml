@@ -12,7 +12,7 @@ tasks:
     files:
       - cmd/syncctl/main.go
       - cmd/syncctl/**/*cmd.go
-      - docs/CLI_SPEC.md
+      - docs/reference/cli-command-specification.md
     implementation_notes:
       - Standardize help text, exit codes, and error messages across top-level commands.
       - Ensure command output is script-friendly and stable for automation.
@@ -41,8 +41,8 @@ tasks:
     files:
       - scripts/bootstrap/install.sh
       - scripts/bootstrap/install.ps1
-      - docs/INSTALL.md
-      - docs/QUICKSTART.md
+      - docs/getting-started/installation-and-service-registration.md
+      - docs/getting-started/first-run-onboarding.md
       - README.md
     implementation_notes:
       - Ensure bootstrap scripts provide clear next-step guidance after install.
@@ -55,8 +55,8 @@ tasks:
     title: Final acceptance closure and v1.0 release candidate checklist
     backlog_refs: [E8-T1, E8-T2, E8-T3]
     files:
-      - docs/ACCEPTANCE_TESTS.md
-      - docs/RELEASE_CHECKLIST.md
+      - docs/engineering/acceptance-test-matrix.md
+      - docs/release/release-candidate-checklist.md
       - .github/workflows/ci.yml
       - .github/workflows/release.yml
     implementation_notes:

@@ -6,12 +6,12 @@ Use this file as your entry point before implementing anything.
 
 1. `AGENTS.md`
 2. `ai/master-plan.yaml`
-3. `docs/REQUIREMENTS.md`
-4. `docs/ARCHITECTURE.md`
-5. `docs/ACCEPTANCE_TESTS.md`
-6. `docs/CLI_SPEC.md`
-7. `docs/CONFIG_SCHEMA.md`
-8. `docs/PAT_PERMISSIONS.md`
+3. `docs/project/product-requirements.md`
+4. `docs/engineering/system-architecture.md`
+5. `docs/engineering/acceptance-test-matrix.md`
+6. `docs/reference/cli-command-specification.md`
+7. `docs/reference/configuration-schema.md`
+8. `docs/reference/pat-permission-requirements.md`
 9. `ai/backlog.yaml`
 10. Current sprint file (`ai/sprint-01.yaml` ... `ai/sprint-09.yaml`)
 11. `ai/RUNBOOK.md`

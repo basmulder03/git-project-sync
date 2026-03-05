@@ -41,7 +41,7 @@ tasks:
     files:
       - tests/integration/**/*.go
       - .github/workflows/ci.yml
-      - docs/TEST_STRATEGY.md
+      - docs/engineering/test-strategy-and-coverage.md
     implementation_notes:
       - Remove timing-sensitive assumptions and introduce deterministic test helpers.
       - Add flake triage playbook with rerun policy and quarantine process.
@@ -55,7 +55,7 @@ tasks:
     backlog_refs: [E8-T3]
     files:
       - docs/LTS_POLICY.md
-      - docs/RELEASE_CHECKLIST.md
+      - docs/release/release-candidate-checklist.md
       - .github/workflows/release.yml
     implementation_notes:
       - Define support windows, patch cadence, and backport expectations.

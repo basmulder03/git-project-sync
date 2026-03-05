@@ -154,7 +154,7 @@ Each acceptance item is mapped to a primary automated/manual verification path f
 | 20 | `go test ./internal/core/providers/... ./tests/integration/...` + org/personal source config validation | automated + manual |
 | 21 | `go test ./internal/core/workspace/... ./cmd/syncctl/...` | automated |
 | 22 | `go test ./internal/core/auth/... ./internal/core/state/...` + manual credential-store check on target OS | automated + manual |
-| 23 | Manual runbook review in `docs/INCIDENT_RESPONSE.md` and `docs/OPERATIONS.md` | manual |
+| 23 | Manual runbook review in `docs/operations/incident-response-playbook.md` and `docs/operations/service-operations-guide.md` | manual |
 | 24 | `go test ./internal/core/daemon/... ./tests/integration/...` (scale fairness tests) | automated |
 
 Release candidate closure requires all automated checks green and all manual checks signed in `docs/release/release-candidate-checklist.md`.

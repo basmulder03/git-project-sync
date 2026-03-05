@@ -4,13 +4,13 @@ default_branch: main
 
 source_of_truth:
   - AGENTS.md
-  - docs/REQUIREMENTS.md
-  - docs/ARCHITECTURE.md
-  - docs/CLI_SPEC.md
-  - docs/CONFIG_SCHEMA.md
-  - docs/PAT_PERMISSIONS.md
-  - docs/ACCEPTANCE_TESTS.md
-  - docs/IMPLEMENTATION_PLAN.md
+  - docs/project/product-requirements.md
+  - docs/engineering/system-architecture.md
+  - docs/reference/cli-command-specification.md
+  - docs/reference/configuration-schema.md
+  - docs/reference/pat-permission-requirements.md
+  - docs/engineering/acceptance-test-matrix.md
+  - docs/project/implementation-roadmap.md
   - ai/agents.yaml
   - ai/backlog.yaml
   - ai/START_HERE.md

@@ -13,7 +13,7 @@ tasks:
       - internal/core/config/config.go
       - internal/core/sync/engine.go
       - internal/core/telemetry/reason_codes.go
-      - docs/CONFIG_SCHEMA.md
+      - docs/reference/configuration-schema.md
     implementation_notes:
       - Support policy rules for include/exclude repo patterns, allowed sync windows, and protected repositories.
       - Emit explicit reason codes when policy blocks an operation.
@@ -28,7 +28,7 @@ tasks:
       - cmd/syncctl/events_cmd.go
       - cmd/syncctl/trace_cmd.go
       - cmd/syncctl/stats_cmd.go
-      - docs/CLI_SPEC.md
+      - docs/reference/cli-command-specification.md
     implementation_notes:
       - Add machine-readable export formats (json/csv) with redaction-safe output.
       - Support bounded time windows and source/repo filters.
@@ -42,7 +42,7 @@ tasks:
     files:
       - cmd/syncctl/doctor_cmd.go
       - internal/core/workspace/validator.go
-      - docs/OPERATIONS.md
+      - docs/operations/service-operations-guide.md
     implementation_notes:
       - Report policy violations, stale source settings, and layout drift in one health report.
       - Include remediation hints per failed check.
@@ -56,8 +56,8 @@ tasks:
     files:
       - tests/integration/policy_enforcement_test.go
       - tests/integration/audit_export_test.go
-      - docs/ACCEPTANCE_TESTS.md
-      - docs/OPERATIONS.md
+      - docs/engineering/acceptance-test-matrix.md
+      - docs/operations/service-operations-guide.md
     implementation_notes:
       - Validate that policy-denied operations do not mutate repos and remain traceable.
       - Validate export correctness and secret-safe behavior.

@@ -2,7 +2,7 @@
 
 This guide covers bootstrap install plus service registration for Linux and Windows.
 
-For first-run onboarding after install, follow `docs/QUICKSTART.md`.
+For first-run onboarding after install, follow `docs/getting-started/first-run-onboarding.md`.
 
 ## Mode Comparison
 

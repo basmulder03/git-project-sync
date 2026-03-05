@@ -29,7 +29,7 @@ tasks:
       - internal/core/config/config.go
       - internal/core/state/store.go
       - internal/core/state/sqlite_store.go
-      - docs/CONFIG_SCHEMA.md
+      - docs/reference/configuration-schema.md
     implementation_notes:
       - Persist non-sensitive data in config and local SQLite.
       - Add migration-safe schema/version handling.
@@ -44,7 +44,7 @@ tasks:
       - internal/core/auth/token_store.go
       - internal/core/auth/keyring_store.go
       - internal/core/auth/fallback_store.go
-      - docs/PAT_PERMISSIONS.md
+      - docs/reference/pat-permission-requirements.md
     implementation_notes:
       - Store sensitive data only in OS credential manager when available.
       - Add explicit secure fallback behavior for unsupported environments.
@@ -59,7 +59,7 @@ tasks:
       - internal/core/providers/sources.go
       - internal/core/config/config.go
       - cmd/syncctl/source_cmd.go
-      - docs/CLI_SPEC.md
+      - docs/reference/cli-command-specification.md
     implementation_notes:
       - Support multiple active GitHub/Azure sources simultaneously.
       - Include personal and organization metadata per source.
@@ -74,7 +74,7 @@ tasks:
       - internal/core/workspace/layout.go
       - internal/core/workspace/validator.go
       - cmd/syncctl/workspace_cmd.go
-      - docs/ARCHITECTURE.md
+      - docs/engineering/system-architecture.md
     implementation_notes:
       - Implement deterministic path convention provider/account/repo.
       - Add layout validation and dry-run fix preview.
@@ -117,7 +117,7 @@ tasks:
     files:
       - internal/core/git/cleanup.go
       - internal/core/sync/repo_job.go
-      - docs/ACCEPTANCE_TESTS.md
+      - docs/engineering/acceptance-test-matrix.md
     implementation_notes:
       - If checked-out branch is merged and safe, switch to default then delete.
       - Verify no unique local commits before deletion.
@@ -161,7 +161,7 @@ tasks:
       - cmd/syncctl/repo_cmd.go
       - cmd/syncctl/auth_cmd.go
       - cmd/syncctl/source_cmd.go
-      - docs/CLI_SPEC.md
+      - docs/reference/cli-command-specification.md
     implementation_notes:
       - Implement one-shot sync for single repo and all repos.
       - Implement source login/test/logout operations.
@@ -176,7 +176,7 @@ tasks:
       - tests/integration/sync_safety_test.go
       - tests/integration/multi_source_test.go
       - .github/workflows/ci.yml
-      - docs/IMPLEMENTATION_PLAN.md
+      - docs/project/implementation-roadmap.md
     implementation_notes:
       - Cover dirty-repo skip, trace logging, and multi-source routing.
       - Run matrix for linux/windows.

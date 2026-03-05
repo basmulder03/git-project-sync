@@ -14,5 +14,5 @@ Use these skills to speed up execution while preserving project safety rules.
 ## Important
 
 - Skills do not override `AGENTS.md` safety rules.
-- Skills do not replace acceptance criteria in `docs/ACCEPTANCE_TESTS.md`.
+- Skills do not replace acceptance criteria in `docs/engineering/acceptance-test-matrix.md`.
 - Skills must follow logical commit discipline from `ai/RUNBOOK.md`.

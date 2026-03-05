@@ -67,4 +67,4 @@ Write-Host "4) Register repos: $syncctlPath repo add <path> --source-id <source-
 Write-Host "5) Dry-run first sync: $syncctlPath sync all --dry-run"
 Write-Host "6) Monitor health: $syncctlPath doctor ; $syncctlPath daemon status"
 Write-Host ""
-Write-Host "See docs/QUICKSTART.md for guided onboarding."
+Write-Host "See docs/getting-started/first-run-onboarding.md for guided onboarding."

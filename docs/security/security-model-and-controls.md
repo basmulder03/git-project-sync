@@ -8,7 +8,7 @@ This document summarizes security controls for `git-project-sync`.
 - Sensitive credentials are stored in OS credential storage (or secure fallback).
 - Tokens are never persisted in plain config/state files.
 
-See PAT scope requirements in `docs/PAT_PERMISSIONS.md`.
+See PAT scope requirements in `docs/reference/pat-permission-requirements.md`.
 
 ## Data Classification
 

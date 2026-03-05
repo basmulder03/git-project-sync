@@ -44,7 +44,7 @@ This document defines operator-facing reliability objectives for `git-project-sy
 
 ## Severity Mapping Overview
 
-Detailed severity matrix is maintained in `docs/INCIDENT_RESPONSE.md`.
+Detailed severity matrix is maintained in `docs/operations/incident-response-playbook.md`.
 
 - Sev-1: sustained global service unavailability or data safety risk.
 - Sev-2: major degradation affecting multiple sources/repos or SLO breach in progress.

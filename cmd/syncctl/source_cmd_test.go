@@ -60,5 +60,8 @@ func executeSyncctl(args ...string) (string, error) {
 	cmd.SetErr(buffer)
 	cmd.SetArgs(args)
 	err := cmd.Execute()
+	if err != nil && buffer.Len() == 0 {
+		buffer.WriteString(formatCLIError(err))
+	}
 	return buffer.String(), err
 }

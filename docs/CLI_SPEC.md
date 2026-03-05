@@ -9,6 +9,20 @@ Binary name: `syncctl`
 - `syncctl doctor`
   - includes health score and actionable findings (locks/runs, source auth, recent failures, cache config)
 
+### Exit Codes
+
+- `0`: success
+- `1`: runtime/operational failure (I/O, provider, state, install, update, etc.)
+- `2`: usage/validation failure (unknown command/flag, missing required args/flags, invalid values)
+
+### Output Stability
+
+- Human-readable success lines are stable and automation-friendly.
+- Structured command outputs follow either:
+  - `key: value` lines (for detail/status commands), or
+  - tab-separated records (for list/event style commands).
+- Error output is always prefixed with `error:` on stderr.
+
 ## Source Management
 
 - `syncctl source add github <source-id> [--account <name>] [--org <name>]`
@@ -72,6 +86,12 @@ Binary name: `syncctl`
   - includes repo/event counters and in-flight run count
 - `syncctl events list [--limit N]`
 - `syncctl trace show <trace-id>`
+
+## State
+
+- `syncctl state check`
+- `syncctl state backup --output <path> [--overwrite]`
+- `syncctl state restore --input <path>`
 
 ## Install and Service
 

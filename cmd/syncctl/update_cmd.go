@@ -32,7 +32,7 @@ func newUpdateCommand(configPath *string) *cobra.Command {
 		Short: "Check for updates",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if manifestURL == "" {
-				return fmt.Errorf("--manifest-url is required")
+				return fmt.Errorf("required flag: --manifest-url")
 			}
 
 			updater := update.NewUpdater(currentVersion)
@@ -59,7 +59,7 @@ func newUpdateCommand(configPath *string) *cobra.Command {
 		Short: "Download, verify, and apply update artifact",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if manifestURL == "" {
-				return fmt.Errorf("--manifest-url is required")
+				return fmt.Errorf("required flag: --manifest-url")
 			}
 
 			target := binaryPath

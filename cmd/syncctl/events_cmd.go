@@ -86,7 +86,7 @@ func formatTime(value time.Time) string {
 
 func requireNonEmpty(value, name string) error {
 	if value == "" {
-		return fmt.Errorf("%s is required", name)
+		return fmt.Errorf("required argument: %s", name)
 	}
 	return nil
 }

@@ -62,7 +62,7 @@ func newStateBackupCommand(configPath *string) *cobra.Command {
 		Short: "Create a consistent backup of the state DB",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if outputPath == "" {
-				return fmt.Errorf("--output is required")
+				return fmt.Errorf("required flag: --output")
 			}
 
 			cfg, err := config.Load(*configPath)
@@ -97,7 +97,7 @@ func newStateRestoreCommand(configPath *string) *cobra.Command {
 		Short: "Restore state DB from a backup file",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if inputPath == "" {
-				return fmt.Errorf("--input is required")
+				return fmt.Errorf("required flag: --input")
 			}
 
 			cfg, err := config.Load(*configPath)

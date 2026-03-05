@@ -42,7 +42,7 @@ func newSourceAddCommand(configPath *string) *cobra.Command {
 			sourceID := strings.TrimSpace(args[1])
 
 			if account == "" {
-				return errors.New("--account is required")
+				return errors.New("required flag: --account")
 			}
 
 			if host == "" {

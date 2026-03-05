@@ -1,6 +1,7 @@
 package state
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -208,5 +209,60 @@ func TestSQLiteStoreRunStateLifecycle(t *testing.T) {
 	}
 	if len(inFlight) != 0 {
 		t.Fatalf("expected no in-flight runs after completion: %+v", inFlight)
+	}
+}
+
+func TestSQLiteStoreBackupRestoreAndIntegrityRecovery(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "state.db")
+	backupPath := filepath.Join(dir, "backup", "state-backup.db")
+
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+
+	if err := store.PutRepoState(RepoState{RepoPath: "/repos/a", LastStatus: "ok", LastError: "", CurrentHash: "abc"}); err != nil {
+		t.Fatalf("put repo state: %v", err)
+	}
+	if err := store.IntegrityCheck(); err != nil {
+		t.Fatalf("initial integrity check: %v", err)
+	}
+	if err := store.BackupTo(backupPath, false); err != nil {
+		t.Fatalf("backup state db: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close store before corruption: %v", err)
+	}
+
+	if err := os.WriteFile(dbPath, []byte("not-a-sqlite-db"), 0o600); err != nil {
+		t.Fatalf("corrupt db file: %v", err)
+	}
+
+	corruptStore, err := NewSQLiteStore(dbPath)
+	if err == nil {
+		_ = corruptStore.Close()
+		t.Fatal("expected opening corrupted db to fail")
+	}
+
+	if err := RestoreSQLiteDB(dbPath, backupPath); err != nil {
+		t.Fatalf("restore sqlite db: %v", err)
+	}
+
+	restored, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("open restored db: %v", err)
+	}
+	t.Cleanup(func() { _ = restored.Close() })
+
+	if err := restored.IntegrityCheck(); err != nil {
+		t.Fatalf("restored integrity check: %v", err)
+	}
+	if _, found, err := restored.GetRepoState("/repos/a"); err != nil {
+		t.Fatalf("get restored repo state: %v", err)
+	} else if !found {
+		t.Fatal("expected restored repo state to exist")
 	}
 }

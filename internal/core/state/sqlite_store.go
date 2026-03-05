@@ -4,15 +4,18 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
 
 type SQLiteStore struct {
-	db *sql.DB
+	db     *sql.DB
+	dbPath string
 }
 
 func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
@@ -29,13 +32,120 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("open sqlite db: %w", err)
 	}
 
-	store := &SQLiteStore{db: db}
+	store := &SQLiteStore{db: db, dbPath: dbPath}
 	if err := store.EnsureSchema(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 
 	return store, nil
+}
+
+func (s *SQLiteStore) BackupTo(backupPath string, overwrite bool) error {
+	if strings.TrimSpace(backupPath) == "" {
+		return errors.New("backup path is required")
+	}
+	if err := os.MkdirAll(filepath.Dir(backupPath), 0o755); err != nil {
+		return fmt.Errorf("create backup directory: %w", err)
+	}
+	if _, err := os.Stat(backupPath); err == nil {
+		if !overwrite {
+			return fmt.Errorf("backup file already exists: %s", backupPath)
+		}
+		if removeErr := os.Remove(backupPath); removeErr != nil {
+			return fmt.Errorf("remove existing backup file: %w", removeErr)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("check backup path: %w", err)
+	}
+
+	escapedPath := strings.ReplaceAll(backupPath, "'", "''")
+	query := fmt.Sprintf("VACUUM INTO '%s';", escapedPath)
+	if _, err := s.db.Exec(query); err == nil {
+		return nil
+	}
+
+	if err := copyFile(s.dbPath, backupPath); err != nil {
+		return fmt.Errorf("copy sqlite file backup fallback: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) IntegrityCheck() error {
+	rows, err := s.db.Query(`PRAGMA integrity_check;`)
+	if err != nil {
+		return fmt.Errorf("run integrity check: %w", err)
+	}
+	defer rows.Close()
+
+	failures := make([]string, 0)
+	for rows.Next() {
+		var result string
+		if err := rows.Scan(&result); err != nil {
+			return fmt.Errorf("scan integrity row: %w", err)
+		}
+		if strings.EqualFold(strings.TrimSpace(result), "ok") {
+			continue
+		}
+		failures = append(failures, result)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate integrity rows: %w", err)
+	}
+	if len(failures) > 0 {
+		return fmt.Errorf("integrity check failed: %s", strings.Join(failures, "; "))
+	}
+	return nil
+}
+
+func RestoreSQLiteDB(dbPath, backupPath string) error {
+	if strings.TrimSpace(dbPath) == "" {
+		return errors.New("db path is required")
+	}
+	if strings.TrimSpace(backupPath) == "" {
+		return errors.New("backup path is required")
+	}
+	if dbPath == backupPath {
+		return errors.New("backup path must differ from db path")
+	}
+
+	if _, err := os.Stat(backupPath); err != nil {
+		return fmt.Errorf("backup file is unavailable: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		return fmt.Errorf("create state directory: %w", err)
+	}
+
+	tmp := dbPath + ".restore.tmp"
+	if err := copyFile(backupPath, tmp); err != nil {
+		return fmt.Errorf("copy backup to temp file: %w", err)
+	}
+	if err := os.Rename(tmp, dbPath); err != nil {
+		return fmt.Errorf("replace db with restored backup: %w", err)
+	}
+
+	_ = os.Remove(dbPath + "-wal")
+	_ = os.Remove(dbPath + "-shm")
+	return nil
+}
+
+func copyFile(src, dst string) error {
+	from, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer from.Close()
+
+	to, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	defer to.Close()
+
+	if _, err := io.Copy(to, from); err != nil {
+		return err
+	}
+	return to.Sync()
 }
 
 func (s *SQLiteStore) EnsureSchema() error {

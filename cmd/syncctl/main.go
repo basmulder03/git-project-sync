@@ -42,6 +42,7 @@ func newRootCommand() *cobra.Command {
 		newStatsCommand(&configPath),
 		newEventsCommand(&configPath),
 		newTraceCommand(&configPath),
+		newStateCommand(&configPath),
 		newStubCommand("install", "Install and register services"),
 		newStubCommand("service", "Service registration controls"),
 		newUpdateCommand(&configPath),

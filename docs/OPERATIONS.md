@@ -36,6 +36,18 @@
 - Duplicate run IDs are rejected by recovery guardrails before scheduling work.
 - Recovery outcomes remain queryable through run/event history.
 
+## State DB Durability and Recovery Tooling
+
+- Create a state backup: `syncctl state backup --output <path>`
+- Verify integrity: `syncctl state check`
+- Restore from backup: `syncctl state restore --input <path>`
+
+Recommended operator workflow:
+
+1. Run `syncctl state check` before and after maintenance windows.
+2. Create a backup before upgrades or major config changes.
+3. If state corruption is suspected, stop daemon writes, restore latest known-good backup, then re-run integrity check.
+
 ## Provider Rate-Limit Handling
 
 - Provider HTTP responses are inspected for throttling headers (`Retry-After`, `X-RateLimit-*`).

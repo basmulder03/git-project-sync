@@ -1,8 +1,11 @@
 import { defineConfig } from 'vitepress'
 
+const isCI = process.env.GITHUB_ACTIONS === 'true'
+
 export default defineConfig({
   title: 'Git Project Sync',
   description: 'Safe cross-platform Git repository synchronization',
+  base: isCI ? '/git-project-sync/' : '/',
   cleanUrls: true,
   themeConfig: {
     nav: [

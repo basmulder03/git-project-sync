@@ -79,6 +79,28 @@ func TestRepoLockManagerContentionSpikeDoesNotPoisonLock(t *testing.T) {
 	const contenders = 25
 
 	for round := 0; round < rounds; round++ {
+		holderReady := make(chan struct{})
+		releaseHolder := make(chan struct{})
+		holderDone := make(chan struct{})
+
+		go func() {
+			defer close(holderDone)
+			acquired, err := locks.TryWithLock("/repos/hot", func() error {
+				close(holderReady)
+				<-releaseHolder
+				return nil
+			})
+			if err != nil {
+				t.Errorf("holder lock error: %v", err)
+				return
+			}
+			if !acquired {
+				t.Error("holder failed to acquire lock")
+			}
+		}()
+
+		<-holderReady
+
 		start := make(chan struct{})
 		var wg sync.WaitGroup
 		var acquiredCount int
@@ -108,9 +130,12 @@ func TestRepoLockManagerContentionSpikeDoesNotPoisonLock(t *testing.T) {
 		close(start)
 		wg.Wait()
 
-		if acquiredCount != 1 {
-			t.Fatalf("round %d acquired count = %d, want 1", round, acquiredCount)
+		if acquiredCount != 0 {
+			t.Fatalf("round %d contender acquired count = %d, want 0 while holder lock is active", round, acquiredCount)
 		}
+
+		close(releaseHolder)
+		<-holderDone
 	}
 
 	acquired, err := locks.TryWithLock("/repos/hot", func() error { return nil })

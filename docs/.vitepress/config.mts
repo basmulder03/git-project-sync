@@ -61,7 +61,6 @@ export default defineConfig({
           { text: 'Release Process and Automation', link: '/release/release-process-and-automation' },
           { text: 'Release Candidate Checklist', link: '/release/release-candidate-checklist' },
           { text: 'Product Requirements', link: '/project/product-requirements' },
-          { text: 'Implementation Roadmap', link: '/project/implementation-roadmap' },
           { text: 'Contributing Guide', link: '/project/contributing-guide' }
         ]
       }

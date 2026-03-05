@@ -74,6 +74,12 @@
 - Credential access fails after mode switch:
   - Re-run `syncctl auth login <source-id>` in the target user/system context.
 
+## Install Preflight Diagnostics
+
+- Run install-focused diagnostics with `syncctl doctor --install-mode user` or `syncctl doctor --install-mode system`.
+- Doctor surfaces structured install findings as `finding: install_preflight reason_code=<code> severity=<level>`.
+- For installer/registration failures, inspect reason code + hint and retry with corrected privileges/dependencies.
+
 ## Reason Code Troubleshooting Matrix
 
 Use `syncctl events list`, `syncctl trace show <trace-id>`, `syncctl doctor`, and `syncctl stats show` as first-line diagnostics.
@@ -94,3 +100,11 @@ Use `syncctl events list`, `syncctl trace show <trace-id>`, `syncctl doctor`, an
 | `permanent_error` | Non-retryable provider/API/request failure | Fix payload/auth/config issue before rerunning |
 | `update_failed` | Update apply failed | Check release artifact integrity, then inspect rollback outcome |
 | `update_rollback` | Rollback executed after update failure | Confirm previous binary health, then retry update later |
+| `install_unsupported_environment` | Installer invoked on unsupported OS/runtime | Run Linux installer on Linux or Windows installer on Windows |
+| `install_invalid_mode` | Install mode value is invalid | Use `user` or `system` mode |
+| `install_missing_binary_path` | Binary path was not configured | Set/override `BIN_PATH` to an existing syncd binary |
+| `install_binary_missing` | syncd binary does not exist at expected path | Run bootstrap/download first, then retry registration |
+| `install_dependency_missing` | Required platform tool missing (`systemctl`/`schtasks`) | Install/enable system service tooling and ensure it is on PATH |
+| `install_insufficient_privileges` | System-mode install attempted without elevation | Re-run with `sudo`/Administrator shell or switch to user mode |
+| `install_registration_failed` | Service/task registration command failed | Check command output, service manager health, and permissions |
+| `install_validation_failed` | Preflight or post-registration validation failed | Resolve the cited preflight finding and retry install |

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
+	"github.com/basmulder03/git-project-sync/internal/core/install"
 	"github.com/basmulder03/git-project-sync/internal/core/state"
 )
 
@@ -74,6 +75,50 @@ func TestStatsShowOutputsRuntimeCounters(t *testing.T) {
 	for _, want := range []string{"repos_configured", "repo_states", "events_warn"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("stats output missing %q: %s", want, out)
+		}
+	}
+}
+
+func TestDoctorIncludesInstallPreflightReasonCodes(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	statePath := filepath.Join(dir, "state.db")
+
+	cfg := config.Default()
+	cfg.State.DBPath = statePath
+	if err := config.Save(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	store, err := state.NewSQLiteStore(statePath)
+	if err != nil {
+		t.Fatalf("open state db: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	original := evaluateInstallPreflight
+	evaluateInstallPreflight = func(mode install.Mode) []install.Finding {
+		if mode != install.ModeSystem {
+			t.Fatalf("expected mode system, got %s", mode)
+		}
+		return []install.Finding{{
+			Severity: "critical",
+			Code:     install.ReasonInstallDependencyMissing,
+			Message:  "missing required dependency: systemctl",
+			Hint:     "install systemctl",
+		}}
+	}
+	t.Cleanup(func() {
+		evaluateInstallPreflight = original
+	})
+
+	out, err := executeSyncctl("--config", configPath, "doctor", "--install-mode", "system")
+	if err != nil {
+		t.Fatalf("doctor command failed: %v output=%s", err, out)
+	}
+	for _, want := range []string{"finding: install_preflight reason_code=install_dependency_missing", "severity=critical", "hint: install systemctl"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("doctor output missing %q: %s", want, out)
 		}
 	}
 }

@@ -1,6 +1,7 @@
 package install
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,9 @@ func TestLinuxSystemdInstallUserMode(t *testing.T) {
 	var calls []string
 	installer := NewLinuxSystemdInstaller(binaryPath, configPath)
 	installer.UserServiceDir = serviceDir
+	installer.goos = "linux"
+	installer.lookPath = func(string) (string, error) { return "/usr/bin/systemctl", nil }
+	installer.stat = func(string) (os.FileInfo, error) { return nil, nil }
 	installer.run = func(name string, args ...string) error {
 		calls = append(calls, name+" "+strings.Join(args, " "))
 		return nil
@@ -48,10 +52,21 @@ func TestLinuxSystemdInstallSystemModeRequiresRoot(t *testing.T) {
 	t.Parallel()
 
 	installer := NewLinuxSystemdInstaller("/usr/local/bin/syncd", "/tmp/config.yaml")
+	installer.goos = "linux"
+	installer.lookPath = func(string) (string, error) { return "/usr/bin/systemctl", nil }
+	installer.stat = func(string) (os.FileInfo, error) { return nil, nil }
 	installer.geteuid = func() int { return 1000 }
 
-	if err := installer.Install(ModeSystem); err == nil {
+	err := installer.Install(ModeSystem)
+	if err == nil {
 		t.Fatal("expected permission error for non-root system install")
+	}
+	var reasonErr *ReasonError
+	if !errors.As(err, &reasonErr) {
+		t.Fatalf("expected reason error, got %T", err)
+	}
+	if reasonErr.Code != ReasonInstallValidationFailed {
+		t.Fatalf("unexpected code %q", reasonErr.Code)
 	}
 }
 
@@ -62,6 +77,9 @@ func TestLinuxSystemdUninstallIsIdempotent(t *testing.T) {
 	serviceDir := filepath.Join(root, "user-systemd")
 	installer := NewLinuxSystemdInstaller("/usr/local/bin/syncd", "/tmp/config.yaml")
 	installer.UserServiceDir = serviceDir
+	installer.goos = "linux"
+	installer.lookPath = func(string) (string, error) { return "/usr/bin/systemctl", nil }
+	installer.stat = func(string) (os.FileInfo, error) { return nil, nil }
 	installer.run = func(string, ...string) error { return nil }
 
 	if err := os.MkdirAll(serviceDir, 0o755); err != nil {
@@ -77,5 +95,26 @@ func TestLinuxSystemdUninstallIsIdempotent(t *testing.T) {
 	}
 	if err := installer.Uninstall(ModeUser); err != nil {
 		t.Fatalf("uninstall second run should be idempotent: %v", err)
+	}
+}
+
+func TestLinuxSystemdPreflightReportsMissingDependency(t *testing.T) {
+	t.Parallel()
+
+	installer := NewLinuxSystemdInstaller("/usr/local/bin/syncd", "/tmp/config.yaml")
+	installer.goos = "linux"
+	installer.stat = func(string) (os.FileInfo, error) { return nil, nil }
+	installer.lookPath = func(string) (string, error) { return "", os.ErrNotExist }
+
+	findings := installer.Preflight(ModeUser)
+	found := false
+	for _, finding := range findings {
+		if finding.Code == ReasonInstallDependencyMissing {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected %s finding, got %+v", ReasonInstallDependencyMissing, findings)
 	}
 }

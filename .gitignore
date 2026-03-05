@@ -9,8 +9,8 @@ coverage/
 dist/
 
 # Local Go build outputs when built from repo root
-syncctl
-syncd
-synctui
-syncsetup
+/syncctl
+/syncd
+/synctui
+/syncsetup
 *.exe

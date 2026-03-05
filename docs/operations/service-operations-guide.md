@@ -98,6 +98,16 @@ Recommended operator workflow:
 - Doctor surfaces structured install findings as `finding: install_preflight reason_code=<code> severity=<level>`.
 - For installer/registration failures, inspect reason code + hint and retry with corrected privileges/dependencies.
 
+## Governance and Audit Diagnostics
+
+- `syncctl doctor` now reports:
+  - governance policy drift (`governance_policy_source_missing`)
+  - workspace layout drift findings with remediation hints
+- Export events/traces/stats for audit workflows:
+  - `syncctl events list --format json|csv ...`
+  - `syncctl trace show <trace-id> --format json|csv ...`
+  - `syncctl stats show --format json|csv ...`
+
 ## Reason Code Troubleshooting Matrix
 
 Use `syncctl events list`, `syncctl trace show <trace-id>`, `syncctl doctor`, and `syncctl stats show` as first-line diagnostics.

@@ -19,6 +19,7 @@ func TestEventsListAndTraceShowCommands(t *testing.T) {
 
 	cfg := config.Default()
 	cfg.State.DBPath = statePath
+	cfg.Repos = []config.RepoConfig{{Path: "/repos/a", SourceID: "gh1", Enabled: true}}
 	if err := config.Save(configPath, cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
@@ -47,5 +48,23 @@ func TestEventsListAndTraceShowCommands(t *testing.T) {
 	}
 	if !strings.Contains(traceOut, "repo_dirty") {
 		t.Fatalf("trace output missing expected event: %s", traceOut)
+	}
+
+	jsonOut, err := executeSyncctl("--config", configPath, "events", "list", "--format", "json", "--source-id", "gh1", "--since", now.Add(-time.Minute).Format(time.RFC3339), "--until", now.Add(5*time.Minute).Format(time.RFC3339))
+	if err != nil {
+		t.Fatalf("events json export failed: %v output=%s", err, jsonOut)
+	}
+	for _, want := range []string{"\"trace_id\": \"trace-abc\"", "\"source_id\": \"gh1\""} {
+		if !strings.Contains(jsonOut, want) {
+			t.Fatalf("events json output missing %q: %s", want, jsonOut)
+		}
+	}
+
+	csvOut, err := executeSyncctl("--config", configPath, "trace", "show", "trace-abc", "--format", "csv", "--repo-path", "/repos/a")
+	if err != nil {
+		t.Fatalf("trace csv export failed: %v output=%s", err, csvOut)
+	}
+	if !strings.Contains(csvOut, "time,trace_id,level,reason_code,repo_path,source_id,message") {
+		t.Fatalf("trace csv output missing header: %s", csvOut)
 	}
 }

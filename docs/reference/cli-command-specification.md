@@ -8,6 +8,7 @@ Binary name: `syncctl`
 - `syncctl --version`
 - `syncctl doctor`
   - includes health score and actionable findings (locks/runs, source auth, recent failures, cache config)
+  - includes governance drift and workspace layout drift findings with remediation hints
 
 ### Exit Codes
 
@@ -82,10 +83,16 @@ Binary name: `syncctl`
 
 ## Stats
 
-- `syncctl stats show`
+- `syncctl stats show [--format kv|json|csv] [--source-id <id>] [--repo-path <path>] [--since <rfc3339>] [--until <rfc3339>]`
   - includes repo/event counters and in-flight run count
-- `syncctl events list [--limit N]`
-- `syncctl trace show <trace-id>`
+- `syncctl events list [--limit N] [--format table|json|csv] [--source-id <id>] [--repo-path <path>] [--since <rfc3339>] [--until <rfc3339>]`
+- `syncctl trace show <trace-id> [--limit N] [--format table|json|csv] [--source-id <id>] [--repo-path <path>] [--since <rfc3339>] [--until <rfc3339>]`
+
+Export behavior:
+
+- `json` and `csv` outputs are intended for compliance/audit pipelines.
+- Export output applies redaction-safe message formatting for common secret patterns.
+- Time window filters are bounded and require RFC3339 timestamps.
 
 ## State
 

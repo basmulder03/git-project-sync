@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/basmulder03/git-project-sync/internal/core/config"
 	"github.com/basmulder03/git-project-sync/internal/core/install"
 	"github.com/basmulder03/git-project-sync/internal/core/telemetry"
+	"github.com/basmulder03/git-project-sync/internal/core/workspace"
 )
 
 var evaluateInstallPreflight = defaultInstallPreflight
@@ -77,6 +79,27 @@ func newDoctorCommand(configPath *string) *cobra.Command {
 				}
 			}
 
+			policyDriftFindings := governanceDriftFindings(cfg)
+			for _, finding := range policyDriftFindings {
+				warning++
+				cmd.Printf("finding: governance_drift reason_code=%s severity=warning\n", finding.Code)
+				cmd.Printf("  detail: %s\n", finding.Message)
+				if strings.TrimSpace(finding.Hint) != "" {
+					cmd.Printf("  hint: %s\n", finding.Hint)
+				}
+			}
+
+			validator, vErr := workspace.NewValidator(cfg)
+			if vErr == nil {
+				drifts, dErr := validator.Check(cfg)
+				if dErr == nil && len(drifts) > 0 {
+					warning++
+					cmd.Printf("finding: workspace_drift count=%d\n", len(drifts))
+					cmd.Printf("  detail: workspace layout drift detected\n")
+					cmd.Printf("  hint: run syncctl workspace layout check or syncctl workspace layout fix --dry-run\n")
+				}
+			}
+
 			score := telemetry.HealthScore(critical, warning)
 
 			cmd.Printf("health_score: %d\n", score)
@@ -109,6 +132,32 @@ func newDoctorCommand(configPath *string) *cobra.Command {
 	cmd.Flags().StringVar(&installMode, "install-mode", string(install.ModeUser), "Install diagnostics mode: user or system")
 
 	return cmd
+}
+
+func governanceDriftFindings(cfg config.Config) []install.Finding {
+	if len(cfg.Governance.SourcePolicies) == 0 {
+		return nil
+	}
+	configured := map[string]struct{}{}
+	for _, source := range cfg.Sources {
+		configured[source.ID] = struct{}{}
+	}
+	missing := make([]string, 0)
+	for sourceID := range cfg.Governance.SourcePolicies {
+		if _, ok := configured[sourceID]; !ok {
+			missing = append(missing, sourceID)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	sort.Strings(missing)
+	return []install.Finding{{
+		Severity: "warning",
+		Code:     "governance_policy_source_missing",
+		Message:  "governance source policy references unknown source IDs: " + strings.Join(missing, ","),
+		Hint:     "remove stale governance.source_policies entries or add matching sources",
+	}}
 }
 
 func defaultInstallPreflight(mode install.Mode) []install.Finding {

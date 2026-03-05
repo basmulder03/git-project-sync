@@ -79,6 +79,37 @@ func TestStatsShowOutputsRuntimeCounters(t *testing.T) {
 	}
 }
 
+func TestStatsShowJSONAndCSVExports(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	statePath := filepath.Join(dir, "state.db")
+
+	cfg := config.Default()
+	cfg.State.DBPath = statePath
+	cfg.Repos = []config.RepoConfig{{Path: "/repos/a", Enabled: true, SourceID: "gh1"}}
+	if err := config.Save(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	jsonOut, err := executeSyncctl("--config", configPath, "stats", "show", "--format", "json")
+	if err != nil {
+		t.Fatalf("stats json failed: %v output=%s", err, jsonOut)
+	}
+	if !strings.Contains(jsonOut, "\"summary\"") {
+		t.Fatalf("stats json output missing summary: %s", jsonOut)
+	}
+
+	csvOut, err := executeSyncctl("--config", configPath, "stats", "show", "--format", "csv")
+	if err != nil {
+		t.Fatalf("stats csv failed: %v output=%s", err, csvOut)
+	}
+	if !strings.Contains(csvOut, "metric,value") {
+		t.Fatalf("stats csv output missing header: %s", csvOut)
+	}
+}
+
 func TestDoctorIncludesInstallPreflightReasonCodes(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
@@ -117,6 +148,34 @@ func TestDoctorIncludesInstallPreflightReasonCodes(t *testing.T) {
 		t.Fatalf("doctor command failed: %v output=%s", err, out)
 	}
 	for _, want := range []string{"finding: install_preflight reason_code=install_dependency_missing", "severity=critical", "hint: install systemctl"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("doctor output missing %q: %s", want, out)
+		}
+	}
+}
+
+func TestDoctorIncludesGovernanceAndWorkspaceDriftFindings(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	statePath := filepath.Join(dir, "state.db")
+
+	cfg := config.Default()
+	cfg.State.DBPath = statePath
+	cfg.Workspace.Root = filepath.Join(dir, "workspace")
+	cfg.Sources = []config.SourceConfig{{ID: "gh1", Provider: "github", Account: "jane", Enabled: true}}
+	cfg.Governance.SourcePolicies = map[string]config.SyncPolicyConfig{"ghost-source": {ProtectedRepoPatterns: []string{"/x/"}}}
+	cfg.Repos = []config.RepoConfig{{Path: "/tmp/non-managed", SourceID: "gh1", Enabled: true}}
+	if err := config.Save(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	out, err := executeSyncctl("--config", configPath, "doctor")
+	if err != nil {
+		t.Fatalf("doctor command failed: %v output=%s", err, out)
+	}
+	for _, want := range []string{"finding: governance_drift reason_code=governance_policy_source_missing", "finding: workspace_drift", "syncctl workspace layout fix --dry-run"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("doctor output missing %q: %s", want, out)
 		}

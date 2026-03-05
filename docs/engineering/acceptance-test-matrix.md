@@ -94,6 +94,7 @@
     - Every skipped mutation includes explicit reason code and human-readable reason
     - TUI/CLI can list recent events with timestamps
     - Reason codes follow a standardized taxonomy across git safety, sync, scheduler, and update paths
+    - CLI supports machine-readable audit exports (json/csv) for events/traces/stats
 
 ## Multi-Source Accounts
 
@@ -126,6 +127,12 @@
     - Then each source receives execution opportunities without starvation
     - And completion counts match configured repository distribution
 
+25. Governance policy enforcement and diagnostics
+    - Given repository governance policies are configured
+    - When sync is attempted for a policy-denied repository
+    - Then sync is skipped with explicit `policy_*` reason code and no mutation
+    - And `syncctl doctor` reports governance/source-policy drift with remediation hints
+
 ## Verification Mapping
 
 Each acceptance item is mapped to a primary automated/manual verification path for release closure.
@@ -156,5 +163,6 @@ Each acceptance item is mapped to a primary automated/manual verification path f
 | 22 | `go test ./internal/core/auth/... ./internal/core/state/...` + manual credential-store check on target OS | automated + manual |
 | 23 | Manual runbook review in `docs/operations/incident-response-playbook.md` and `docs/operations/service-operations-guide.md` | manual |
 | 24 | `go test ./internal/core/daemon/... ./tests/integration/...` (scale fairness tests) | automated |
+| 25 | `go test ./internal/core/sync/... ./cmd/syncctl/... ./tests/integration/...` (policy enforcement + doctor governance diagnostics) | automated |
 
 Release candidate closure requires all automated checks green and all manual checks signed in `docs/release/release-candidate-checklist.md`.

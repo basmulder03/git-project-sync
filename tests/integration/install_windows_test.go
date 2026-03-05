@@ -39,7 +39,7 @@ func TestWindowsInstallScriptsContainTaskRegistrationFlow(t *testing.T) {
 		}
 	}
 
-	for _, want := range []string{"schtasks", "/Create", "/Query", "cmd /c", "Add-ToPath", "SetEnvironmentVariable"} {
+	for _, want := range []string{"schtasks", "/Create", "/Query", "run-syncd.cmd", "Add-ToPath", "SetEnvironmentVariable", "Set-Content"} {
 		if !strings.Contains(string(installContent), want) {
 			t.Fatalf("install.ps1 missing %q", want)
 		}

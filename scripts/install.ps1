@@ -99,7 +99,13 @@ sources: []
 "@ | Set-Content -Path $configPath -NoNewline
 }
 
-$taskCommand = "cmd /c `"`"$binPath`" --config `"$configPath`"`""
+$launcherPath = Join-Path $configDir "run-syncd.cmd"
+@"
+@echo off
+"$binPath" --config "$configPath"
+"@ | Set-Content -Path $launcherPath -NoNewline
+
+$taskCommand = "`"$launcherPath`""
 
 $pathScope = if ($Mode -eq "system") { "Machine" } else { "User" }
 Add-ToPath -Directory (Split-Path -Parent $binPath) -Scope $pathScope

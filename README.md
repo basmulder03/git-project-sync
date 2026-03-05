@@ -101,14 +101,6 @@ synctui
 syncsetup
 ```
 
-## Documentation Map
-
-- Start: `docs/index.md`
-- Install and onboarding: `docs/getting-started/installation-and-service-registration.md`, `docs/getting-started/first-run-onboarding.md`, `docs/user/day-to-day-usage-guide.md`
-- Operations and support: `docs/operations/service-operations-guide.md`, `docs/support/common-failures-and-remediation.md`, `docs/operations/incident-response-playbook.md`, `docs/operations/reliability-slos-and-error-budgets.md`
-- Engineering references: `docs/engineering/system-architecture.md`, `docs/reference/cli-command-specification.md`, `docs/reference/configuration-schema.md`, `docs/engineering/test-strategy-and-coverage.md`
-- Security and release: `docs/security/security-model-and-controls.md`, `docs/reference/pat-permission-requirements.md`, `docs/release/release-process-and-automation.md`, `docs/release/release-candidate-checklist.md`
-
 ## Release Process
 
 Use the `Release` GitHub Actions workflow (`workflow_dispatch`) to do a one-click release:

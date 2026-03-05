@@ -41,6 +41,24 @@ Procedure:
 4. Restart daemon if lock state appears stale.
 5. Verify lock contention returns to normal levels in `syncctl stats show`.
 
+## Restart Storm Recovery
+
+Symptoms:
+- Frequent daemon restarts while sync work is active.
+- Repeated short-lived in-flight runs with degraded throughput.
+
+Procedure:
+1. Stabilize process lifecycle (disable crash loop trigger, stop external restarts temporarily).
+2. Confirm in-flight recovery behavior after restart:
+   - `syncctl doctor`
+   - `syncctl events list --limit 100`
+3. Verify no stale in-flight state remains and new runs progress normally.
+4. Resume normal daemon restart policy once run completion and lock behavior normalize.
+
+Escalation criteria:
+- If repeated restart storms continue for more than 2 scheduler intervals, escalate as a service reliability incident.
+- If lock contention and restart storms occur together, reduce concurrency and treat as sev-2 until stable.
+
 ## Update Failure and Rollback Recovery
 
 Symptoms:

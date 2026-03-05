@@ -69,3 +69,52 @@ func TestRepoLockManagerDifferentReposCanRun(t *testing.T) {
 		t.Fatal("different repo locks should not serialize execution")
 	}
 }
+
+func TestRepoLockManagerContentionSpikeDoesNotPoisonLock(t *testing.T) {
+	t.Parallel()
+
+	locks := NewRepoLockManager()
+
+	const rounds = 30
+	const contenders = 25
+
+	for round := 0; round < rounds; round++ {
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		var acquiredCount int
+		var mu sync.Mutex
+
+		for i := 0; i < contenders; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				acquired, err := locks.TryWithLock("/repos/hot", func() error {
+					time.Sleep(2 * time.Millisecond)
+					return nil
+				})
+				if err != nil {
+					t.Errorf("unexpected lock error: %v", err)
+					return
+				}
+				if acquired {
+					mu.Lock()
+					acquiredCount++
+					mu.Unlock()
+				}
+			}()
+		}
+
+		close(start)
+		wg.Wait()
+
+		if acquiredCount != 1 {
+			t.Fatalf("round %d acquired count = %d, want 1", round, acquiredCount)
+		}
+	}
+
+	acquired, err := locks.TryWithLock("/repos/hot", func() error { return nil })
+	if err != nil || !acquired {
+		t.Fatalf("lock should remain usable after contention spike: acquired=%t err=%v", acquired, err)
+	}
+}

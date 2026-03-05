@@ -59,29 +59,18 @@ It includes runtime and setup interfaces:
 - `syncsetup` (installer/repair TUI),
 - `syncd` (background daemon).
 
-## Project Stats
-
-| Metric | Value |
-| --- | ---: |
-| Supported operating systems | 2 (Linux, Windows) |
-| Provider types | 2 (GitHub, Azure DevOps) |
-| Primary binaries | 4 (`syncctl`, `syncd`, `synctui`, `syncsetup`) |
-| Acceptance criteria tracked | 24 |
-| Backlog epics | 8 |
-| Release artifact targets | 8 (4 binaries x 2 OSes) |
-
 ## Getting started in 2 minutes
 
-1. Install using `docs/getting-started/installation-and-service-registration.md`.
-2. Run first-time onboarding from `docs/getting-started/first-run-onboarding.md`.
+1. Install: [Installation and Service Registration](https://basmulder03.github.io/git-project-sync/getting-started/installation-and-service-registration)
+2. Onboard: [First-Run Onboarding](https://basmulder03.github.io/git-project-sync/getting-started/first-run-onboarding)
 3. Validate health with `syncctl doctor`.
 
 ## Quick Start
 
 Install and onboard:
 
-1. Follow `docs/getting-started/installation-and-service-registration.md`.
-2. Follow `docs/getting-started/first-run-onboarding.md`.
+1. Follow [Installation and Service Registration](https://basmulder03.github.io/git-project-sync/getting-started/installation-and-service-registration).
+2. Follow [First-Run Onboarding](https://basmulder03.github.io/git-project-sync/getting-started/first-run-onboarding).
 
 Minimal first-run command flow:
 
@@ -108,13 +97,13 @@ Use the `Release` GitHub Actions workflow (`workflow_dispatch`) to do a one-clic
 - provide `version` and `target_ref`,
 - workflow validates the version, creates/pushes the tag, builds artifacts, generates checksums/SBOM/manifest, and publishes the GitHub Release.
 
-Details: `docs/release/release-process-and-automation.md`.
+Details: [Release Process and Automation](https://basmulder03.github.io/git-project-sync/release/release-process-and-automation).
 
 ## Reliability focus
 
-- SLOs and error budgets: `docs/operations/reliability-slos-and-error-budgets.md`
-- Acceptance closure and verification mapping: `docs/engineering/acceptance-test-matrix.md`
-- RC and rollback gates: `docs/release/release-candidate-checklist.md`
+- SLOs and error budgets: [Reliability SLOs and Error Budgets](https://basmulder03.github.io/git-project-sync/operations/reliability-slos-and-error-budgets)
+- Acceptance closure and verification mapping: [Acceptance Test Matrix](https://basmulder03.github.io/git-project-sync/engineering/acceptance-test-matrix)
+- RC and rollback gates: [Release Candidate Checklist](https://basmulder03.github.io/git-project-sync/release/release-candidate-checklist)
 
 ## Built with AI Agent Workflow
 

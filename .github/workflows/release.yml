@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -33,6 +35,8 @@ jobs:
 
       - name: Run gitleaks secret scan
         uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --source . --no-git --redact --exit-code 1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

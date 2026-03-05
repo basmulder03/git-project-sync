@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -12,15 +15,16 @@ import (
 const CurrentSchemaVersion = 1
 
 type Config struct {
-	SchemaVersion int             `yaml:"schema_version"`
-	Workspace     WorkspaceConfig `yaml:"workspace"`
-	State         StateConfig     `yaml:"state"`
-	Daemon        DaemonConfig    `yaml:"daemon"`
-	Update        UpdateConfig    `yaml:"update"`
-	Logging       LoggingConfig   `yaml:"logging"`
-	Cache         CacheConfig     `yaml:"cache"`
-	Sources       []SourceConfig  `yaml:"sources"`
-	Repos         []RepoConfig    `yaml:"repos"`
+	SchemaVersion int              `yaml:"schema_version"`
+	Workspace     WorkspaceConfig  `yaml:"workspace"`
+	State         StateConfig      `yaml:"state"`
+	Daemon        DaemonConfig     `yaml:"daemon"`
+	Update        UpdateConfig     `yaml:"update"`
+	Logging       LoggingConfig    `yaml:"logging"`
+	Cache         CacheConfig      `yaml:"cache"`
+	Governance    GovernanceConfig `yaml:"governance"`
+	Sources       []SourceConfig   `yaml:"sources"`
+	Repos         []RepoConfig     `yaml:"repos"`
 }
 
 type WorkspaceConfig struct {
@@ -63,6 +67,24 @@ type LoggingConfig struct {
 type CacheConfig struct {
 	ProviderTTLSeconds int `yaml:"provider_ttl_seconds"`
 	BranchTTLSeconds   int `yaml:"branch_ttl_seconds"`
+}
+
+type GovernanceConfig struct {
+	DefaultPolicy  SyncPolicyConfig            `yaml:"default_policy"`
+	SourcePolicies map[string]SyncPolicyConfig `yaml:"source_policies"`
+}
+
+type SyncPolicyConfig struct {
+	IncludeRepoPatterns   []string           `yaml:"include_repo_patterns"`
+	ExcludeRepoPatterns   []string           `yaml:"exclude_repo_patterns"`
+	ProtectedRepoPatterns []string           `yaml:"protected_repo_patterns"`
+	AllowedSyncWindows    []SyncWindowConfig `yaml:"allowed_sync_windows"`
+}
+
+type SyncWindowConfig struct {
+	Days  []string `yaml:"days"`
+	Start string   `yaml:"start"`
+	End   string   `yaml:"end"`
 }
 
 type SourceConfig struct {
@@ -119,6 +141,9 @@ func Default() Config {
 		Cache: CacheConfig{
 			ProviderTTLSeconds: 900,
 			BranchTTLSeconds:   120,
+		},
+		Governance: GovernanceConfig{
+			SourcePolicies: map[string]SyncPolicyConfig{},
 		},
 		Sources: []SourceConfig{},
 		Repos:   []RepoConfig{},
@@ -193,5 +218,80 @@ func (c Config) Validate() error {
 		return errors.New("daemon.retry.max_attempts must be > 0")
 	}
 
+	if err := validatePolicy(c.Governance.DefaultPolicy, "governance.default_policy"); err != nil {
+		return err
+	}
+
+	for sourceID, policy := range c.Governance.SourcePolicies {
+		if strings.TrimSpace(sourceID) == "" {
+			return errors.New("governance.source_policies keys must be non-empty")
+		}
+		if err := validatePolicy(policy, fmt.Sprintf("governance.source_policies[%q]", sourceID)); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func validatePolicy(policy SyncPolicyConfig, path string) error {
+	for i, pattern := range append(append([]string{}, policy.IncludeRepoPatterns...), append(policy.ExcludeRepoPatterns, policy.ProtectedRepoPatterns...)...) {
+		if strings.TrimSpace(pattern) == "" {
+			return fmt.Errorf("%s contains empty repository pattern at index %d", path, i)
+		}
+		if _, err := regexp.Compile(pattern); err != nil {
+			return fmt.Errorf("%s invalid repository pattern %q: %w", path, pattern, err)
+		}
+	}
+
+	for i, window := range policy.AllowedSyncWindows {
+		if len(window.Days) == 0 {
+			return fmt.Errorf("%s.allowed_sync_windows[%d].days must not be empty", path, i)
+		}
+		for _, day := range window.Days {
+			if _, ok := dayNameToWeekday(day); !ok {
+				return fmt.Errorf("%s.allowed_sync_windows[%d].days contains invalid day %q", path, i, day)
+			}
+		}
+		if _, err := parseClock(window.Start); err != nil {
+			return fmt.Errorf("%s.allowed_sync_windows[%d].start: %w", path, i, err)
+		}
+		if _, err := parseClock(window.End); err != nil {
+			return fmt.Errorf("%s.allowed_sync_windows[%d].end: %w", path, i, err)
+		}
+	}
+
+	return nil
+}
+
+func parseClock(raw string) (time.Duration, error) {
+	if strings.TrimSpace(raw) == "" {
+		return 0, errors.New("time must be set as HH:MM")
+	}
+	t, err := time.Parse("15:04", raw)
+	if err != nil {
+		return 0, errors.New("time must use 24h HH:MM format")
+	}
+	return time.Duration(t.Hour())*time.Hour + time.Duration(t.Minute())*time.Minute, nil
+}
+
+func dayNameToWeekday(day string) (time.Weekday, bool) {
+	switch strings.ToLower(strings.TrimSpace(day)) {
+	case "sun", "sunday":
+		return time.Sunday, true
+	case "mon", "monday":
+		return time.Monday, true
+	case "tue", "tuesday":
+		return time.Tuesday, true
+	case "wed", "wednesday":
+		return time.Wednesday, true
+	case "thu", "thursday":
+		return time.Thursday, true
+	case "fri", "friday":
+		return time.Friday, true
+	case "sat", "saturday":
+		return time.Saturday, true
+	default:
+		return time.Sunday, false
+	}
 }

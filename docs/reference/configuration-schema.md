@@ -36,6 +36,27 @@ cache:
   provider_ttl_seconds: 900
   branch_ttl_seconds: 120
 
+governance:
+  default_policy:
+    include_repo_patterns:
+      - '^/workspace/'
+    exclude_repo_patterns:
+      - '/archive/'
+    protected_repo_patterns:
+      - '/critical/'
+    allowed_sync_windows:
+      - days: [monday, tuesday, wednesday, thursday, friday]
+        start: "08:00"
+        end: "20:00"
+  source_policies:
+    gh-work:
+      protected_repo_patterns:
+        - '/regulated/'
+      allowed_sync_windows:
+        - days: [monday, wednesday, friday]
+          start: "09:00"
+          end: "17:00"
+
 sources:
   - id: gh-personal
     provider: github
@@ -83,3 +104,5 @@ repos:
 - Scheduler dispatch is fair across sources (round-robin) to prevent source starvation.
 - `daemon.max_parallel_repos` limits total concurrent repo sync jobs.
 - `daemon.max_parallel_per_source` limits concurrent repo sync jobs per source/account.
+- Governance policies can block sync by include/exclude/protected patterns and allowed time windows.
+- Policy blocks emit explicit reason codes (`policy_repo_not_included`, `policy_repo_excluded`, `policy_repo_protected`, `policy_outside_sync_window`).

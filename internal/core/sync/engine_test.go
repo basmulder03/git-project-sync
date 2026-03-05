@@ -127,6 +127,32 @@ func TestEngineRunRepoDeletesCheckedOutMergedBranch(t *testing.T) {
 	}
 }
 
+func TestEngineRunRepoSkipsProtectedRepoByPolicy(t *testing.T) {
+	t.Parallel()
+
+	_, repo := setupRemoteAndCloneEngine(t, "main")
+	engine := NewEngine(git.NewClient(), testEngineLogger())
+	engine.SetGovernance(config.GovernanceConfig{
+		DefaultPolicy: config.SyncPolicyConfig{ProtectedRepoPatterns: []string{`/clone$`}},
+	})
+
+	result, err := engine.RunRepo(context.Background(), "trace-policy-1", config.SourceConfig{Provider: "github"}, config.RepoConfig{
+		Path:        repo,
+		Remote:      "origin",
+		Provider:    "github",
+		SkipIfDirty: true,
+	}, false)
+	if err != nil {
+		t.Fatalf("run repo sync engine: %v", err)
+	}
+	if !result.Skipped {
+		t.Fatal("expected repo to be skipped by policy")
+	}
+	if result.ReasonCode != "policy_repo_protected" {
+		t.Fatalf("reason_code=%q want policy_repo_protected", result.ReasonCode)
+	}
+}
+
 func testEngineLogger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(io.Discard, nil))
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
 	"github.com/basmulder03/git-project-sync/internal/core/git"
@@ -12,10 +13,11 @@ import (
 )
 
 type Engine struct {
-	git       *git.Client
-	preflight *RepoJob
-	logger    *slog.Logger
-	resolvers map[string]providers.DefaultBranchResolver
+	git        *git.Client
+	preflight  *RepoJob
+	logger     *slog.Logger
+	resolvers  map[string]providers.DefaultBranchResolver
+	governance config.GovernanceConfig
 }
 
 func NewEngine(client *git.Client, logger *slog.Logger) *Engine {
@@ -28,10 +30,21 @@ func NewEngine(client *git.Client, logger *slog.Logger) *Engine {
 			"azure":       providers.NewAzureDevOpsResolver(client),
 			"azuredevops": providers.NewAzureDevOpsResolver(client),
 		},
+		governance: config.GovernanceConfig{SourcePolicies: map[string]config.SyncPolicyConfig{}},
 	}
 }
 
+func (e *Engine) SetGovernance(governance config.GovernanceConfig) {
+	e.governance = governance
+}
+
 func (e *Engine) RunRepo(ctx context.Context, traceID string, source config.SourceConfig, repo config.RepoConfig, dryRun bool) (RepoJobResult, error) {
+	decision := evaluatePolicy(time.Now().UTC(), source, e.governance, repo)
+	if !decision.allowed {
+		e.logger.Info("repo sync skipped", "trace_id", traceID, "repo_path", repo.Path, "reason_code", decision.reasonCode, "reason", decision.reason)
+		return RepoJobResult{Skipped: true, ReasonCode: decision.reasonCode, Reason: decision.reason}, nil
+	}
+
 	result, err := e.preflight.Run(ctx, traceID, repo, dryRun)
 	if err != nil || result.Skipped {
 		return result, err

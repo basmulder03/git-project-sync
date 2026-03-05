@@ -132,3 +132,25 @@ func TestValidateRejectsInvalidPerSourceConcurrency(t *testing.T) {
 		t.Fatal("expected daemon.max_parallel_per_source validation error")
 	}
 }
+
+func TestValidateRejectsInvalidGovernanceRegex(t *testing.T) {
+	t.Parallel()
+
+	cfg := Default()
+	cfg.Governance.DefaultPolicy.IncludeRepoPatterns = []string{"["}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected governance regex validation error")
+	}
+}
+
+func TestValidateRejectsInvalidGovernanceWindowDay(t *testing.T) {
+	t.Parallel()
+
+	cfg := Default()
+	cfg.Governance.DefaultPolicy.AllowedSyncWindows = []SyncWindowConfig{{Days: []string{"funday"}, Start: "09:00", End: "17:00"}}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected governance day validation error")
+	}
+}

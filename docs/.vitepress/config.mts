@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress'
+import taskLists from 'markdown-it-task-lists'
 
 const isCI = process.env.GITHUB_ACTIONS === 'true'
 
@@ -7,6 +8,11 @@ export default defineConfig({
   description: 'Safe cross-platform Git repository synchronization',
   base: isCI ? '/git-project-sync/' : '/',
   cleanUrls: true,
+  markdown: {
+    config: (md) => {
+      md.use(taskLists, { enabled: true, label: true, labelAfter: true })
+    }
+  },
   themeConfig: {
     nav: [
       { text: 'Getting Started', link: '/getting-started/installation-and-service-registration' },

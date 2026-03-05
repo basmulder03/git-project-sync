@@ -5,6 +5,46 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Add-ToPath {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Directory,
+    [ValidateSet("User", "Machine")]
+    [string]$Scope = "User"
+  )
+
+  if (-not (Test-Path -LiteralPath $Directory -PathType Container)) {
+    return
+  }
+
+  $current = [Environment]::GetEnvironmentVariable("Path", $Scope)
+  $segments = @()
+  if ($current) {
+    $segments = $current.Split(';') | Where-Object { $_ -and $_.Trim() -ne "" }
+  }
+
+  $alreadyPresent = $false
+  foreach ($segment in $segments) {
+    if ($segment.TrimEnd('\\') -ieq $Directory.TrimEnd('\\')) {
+      $alreadyPresent = $true
+      break
+    }
+  }
+
+  if (-not $alreadyPresent) {
+    $newValue = (($segments + $Directory) | Select-Object -Unique) -join ';'
+    [Environment]::SetEnvironmentVariable("Path", $newValue, $Scope)
+  }
+
+  if (-not (($env:Path -split ';') | Where-Object { $_.TrimEnd('\\') -ieq $Directory.TrimEnd('\\') })) {
+    if ($env:Path -and $env:Path.Trim() -ne "") {
+      $env:Path = "$env:Path;$Directory"
+    } else {
+      $env:Path = $Directory
+    }
+  }
+}
+
 if ($Mode -eq "system") {
   $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
   if (-not $isAdmin) {
@@ -47,13 +87,17 @@ sources: []
 "@ | Set-Content -Path $configPath -NoNewline
 }
 
-$exec = "`"$binPath`" --config `"$configPath`""
+$taskCommand = "cmd /c `"`"$binPath`" --config `"$configPath`"`""
+
+$pathScope = if ($Mode -eq "system") { "Machine" } else { "User" }
+Add-ToPath -Directory (Split-Path -Parent $binPath) -Scope $pathScope
 
 if ($Mode -eq "system") {
-  schtasks /Create /F /SC MINUTE /MO 5 /TN $taskName /TR $exec /RL HIGHEST /RU SYSTEM | Out-Null
+  schtasks /Create /F /SC MINUTE /MO 5 /TN $taskName /TR $taskCommand /RL HIGHEST /RU SYSTEM | Out-Null
 } else {
-  schtasks /Create /F /SC MINUTE /MO 5 /TN $taskName /TR $exec /RL LIMITED | Out-Null
+  schtasks /Create /F /SC MINUTE /MO 5 /TN $taskName /TR $taskCommand /RL LIMITED | Out-Null
 }
 
 schtasks /Query /TN $taskName | Out-Null
 Write-Host "Installed scheduled task '$taskName' in $Mode mode"
+Write-Host "Added $(Split-Path -Parent $binPath) to $pathScope PATH scope"

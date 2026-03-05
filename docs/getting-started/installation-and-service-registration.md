@@ -132,6 +132,7 @@ Environment overrides:
 - Windows:
   - `BIN_PATH` default: `%LOCALAPPDATA%\git-project-sync\bin\syncd.exe` (user), `%ProgramFiles%\git-project-sync\syncd.exe` (system)
   - `CONFIG_PATH` default: `%APPDATA%\git-project-sync\config.yaml` (user), `%ProgramData%\git-project-sync\config.yaml` (system)
+  - installer adds the binary directory to PATH for the selected scope (`User` for user mode, `Machine` for system mode)
 
 Service files:
 

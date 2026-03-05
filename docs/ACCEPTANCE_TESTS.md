@@ -125,3 +125,36 @@
     - When one full scheduler cycle runs
     - Then each source receives execution opportunities without starvation
     - And completion counts match configured repository distribution
+
+## Verification Mapping
+
+Each acceptance item is mapped to a primary automated/manual verification path for release closure.
+
+| ID | Primary Verification | Type |
+| --- | --- | --- |
+| 1 | `go test ./internal/core/git/... ./internal/core/sync/...` + integration dirty-repo scenarios | automated |
+| 2 | `go test ./internal/core/git/...` + code review of git client operations | automated + manual review |
+| 3 | `go test ./internal/core/git/...` (cleanup/branch protection tests) | automated |
+| 4 | `go test ./internal/core/providers/... ./internal/core/sync/...` | automated |
+| 5 | `go test ./internal/core/sync/... ./internal/core/git/...` | automated |
+| 6 | `go test ./internal/core/sync/... ./internal/core/git/...` | automated |
+| 7 | `go test ./internal/core/sync/...` + trace/event assertions | automated |
+| 8 | `go test ./internal/core/git/...` + integration stale-branch flows | automated |
+| 9 | `go test ./internal/core/git/...` | automated |
+| 10 | `go test ./internal/core/install/... ./tests/integration/...` (linux install scripts + service tests) | automated |
+| 11 | `go test ./internal/core/install/... ./tests/integration/...` (windows task tests) | automated |
+| 12 | `go test ./cmd/syncctl/... ./internal/ui/tui/...` + CLI/TUI parity spot check | automated + manual |
+| 13 | `go test ./internal/core/providers/... ./cmd/syncctl/...` | automated |
+| 14 | `go test ./internal/core/logging/... ./internal/core/telemetry/...` + manual log inspection sample | automated + manual |
+| 15 | `go test ./internal/core/update/... ./cmd/syncctl/...` + release artifact checks | automated |
+| 16 | `go test ./internal/core/update/... ./cmd/syncctl/...` (rollback tests) | automated |
+| 17 | `go test ./internal/core/daemon/... ./cmd/syncctl/...` (trace/run state tests) | automated |
+| 18 | `go test ./internal/core/telemetry/... ./cmd/syncctl/... ./internal/ui/tui/...` | automated |
+| 19 | `go test ./internal/core/providers/... ./internal/core/sync/... ./tests/integration/...` | automated |
+| 20 | `go test ./internal/core/providers/... ./tests/integration/...` + org/personal source config validation | automated + manual |
+| 21 | `go test ./internal/core/workspace/... ./cmd/syncctl/...` | automated |
+| 22 | `go test ./internal/core/auth/... ./internal/core/state/...` + manual credential-store check on target OS | automated + manual |
+| 23 | Manual runbook review in `docs/INCIDENT_RESPONSE.md` and `docs/OPERATIONS.md` | manual |
+| 24 | `go test ./internal/core/daemon/... ./tests/integration/...` (scale fairness tests) | automated |
+
+Release candidate closure requires all automated checks green and all manual checks signed in `docs/RELEASE_CHECKLIST.md`.

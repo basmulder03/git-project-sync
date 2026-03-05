@@ -92,3 +92,29 @@ jobs:
           args: detect --source . --no-git --redact --exit-code 1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  acceptance-closure:
+    runs-on: ubuntu-latest
+    needs: [test, coverage, security]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Verify acceptance/release gate docs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f docs/ACCEPTANCE_TESTS.md
+          test -f docs/RELEASE_CHECKLIST.md
+          grep -q "## Verification Mapping" docs/ACCEPTANCE_TESTS.md
+          grep -q "## Release Candidate Gate" docs/RELEASE_CHECKLIST.md
+          grep -q "## Rollback Decision Checklist" docs/RELEASE_CHECKLIST.md
+
+      - name: Final release-candidate regression sweep
+        run: go test ./...

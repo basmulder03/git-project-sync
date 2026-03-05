@@ -2,6 +2,12 @@
 
 Use this checklist before promoting a tag to a production release.
 
+## Release Candidate Gate (v1.0)
+
+- [ ] Acceptance mapping reviewed in `docs/ACCEPTANCE_TESTS.md` and all required automated/manual items are accounted for.
+- [ ] Candidate version is explicitly marked as RC (`vX.Y.Z-rcN`) before final promotion tag.
+- [ ] Release owner confirms go/no-go decision and records timestamp + approver.
+
 ## Pre-Tag Gate (CI on main/PR)
 
 - [ ] `test` job passed on Linux and Windows (`go test ./...`, integration suite, reliability subset).
@@ -29,3 +35,11 @@ Use this checklist before promoting a tag to a production release.
 - [ ] Install/update path sanity-check completed (bootstrap/setup flow).
 - [ ] No unresolved critical incidents or rollback blockers in operations tracker.
 - [ ] Final approval recorded by release owner.
+
+## Rollback Decision Checklist
+
+- [ ] Previous stable artifacts are available and checksummed.
+- [ ] Rollback trigger criteria are defined (for example: repeated `update_failed`, post-release sev-1, sustained SLO breach).
+- [ ] Rollback owner and execution channel are identified.
+- [ ] Verification commands after rollback are prepared (`syncctl --version`, `syncctl doctor`, `syncctl stats show`).
+- [ ] Customer/operator communication template for rollback is prepared.

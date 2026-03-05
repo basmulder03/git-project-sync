@@ -5,6 +5,15 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      rc_gate_approved:
+        description: "Release candidate gate reviewed and approved"
+        required: true
+        type: boolean
+      rollback_plan_reviewed:
+        description: "Rollback decision checklist reviewed"
+        required: true
+        type: boolean
 
 permissions:
   contents: write
@@ -23,6 +32,28 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+
+      - name: Enforce release candidate gate (manual dispatch)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.rc_gate_approved }}" != "true" ]]; then
+            echo "rc_gate_approved must be true"
+            exit 1
+          fi
+          if [[ "${{ inputs.rollback_plan_reviewed }}" != "true" ]]; then
+            echo "rollback_plan_reviewed must be true"
+            exit 1
+          fi
+
+      - name: Verify acceptance/release gate docs
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "## Verification Mapping" docs/ACCEPTANCE_TESTS.md
+          grep -q "## Release Candidate Gate" docs/RELEASE_CHECKLIST.md
+          grep -q "## Rollback Decision Checklist" docs/RELEASE_CHECKLIST.md
 
       - name: Run tests
         run: go test ./...

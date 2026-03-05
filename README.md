@@ -1,41 +1,131 @@
 # git-project-sync
 
-Cross-platform Git repository synchronizer for local repositories.
+[![CI](https://github.com/basmulder03/git-project-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/basmulder03/git-project-sync/actions/workflows/ci.yml)
+[![Docs](https://github.com/basmulder03/git-project-sync/actions/workflows/docs.yml/badge.svg)](https://github.com/basmulder03/git-project-sync/actions/workflows/docs.yml)
+[![Release](https://github.com/basmulder03/git-project-sync/actions/workflows/release.yml/badge.svg)](https://github.com/basmulder03/git-project-sync/actions/workflows/release.yml)
+[![Go Version](https://img.shields.io/badge/go-1.26-00ADD8?logo=go)](https://go.dev/)
 
-This project is intended to be built with AI coding agents. Start with `AGENTS.md`, then follow the docs in `docs/` and structured tasks in `ai/`.
+Cross-platform Git repository synchronizer focused on safe automation, operational traceability, and release-ready workflows.
 
-## What It Will Do
+## At a glance
 
-- Keep local repositories updated with their remote default branch (`main`/`master`).
-- Sync safely in a background daemon.
-- Offer full control through a CLI.
-- Provide a lightweight TUI dashboard.
-- Provide a lightweight setup TUI (`syncsetup`) for install/uninstall flows.
-- Support GitHub and Azure DevOps PAT authentication.
-- Support multiple provider sources/accounts at the same time.
-- Avoid all destructive behavior and skip dirty repositories.
-- Enforce logging and traceability from the first implementation phase.
+- Safe sync automation for local repositories
+- Linux + Windows support
+- Multi-source account support (GitHub + Azure DevOps)
+- Full CLI + operations TUI + setup TUI
+- Traceable reason codes and incident-ready diagnostics
 
-## Build Order
+## Architecture snapshot
 
-1. Core sync and git safety engine
-2. Provider integrations
-3. Daemon
-4. CLI
-5. TUI
-6. Installer/service registration
-7. Self-update
-8. Hardening, tests, docs
+```text
+                +---------------------------+
+                |        syncsetup          |
+                |   install / repair TUI    |
+                +-------------+-------------+
+                              |
+                              v
++-----------+       +-------------------+       +-------------------+
+|  syncctl  +------->      syncd        +-------> local git repos   |
+|   CLI     |       | daemon scheduler  |       | + provider remotes |
++-----+-----+       +---------+---------+       +-------------------+
+      |                         |
+      |                         v
+      |               +-------------------+
+      +---------------> SQLite state DB   |
+                      | events / runs /   |
+                      | repo status       |
+                      +---------+---------+
+                                |
+                                v
+                      +-------------------+
+                      |      synctui      |
+                      | runtime dashboard |
+                      +-------------------+
+```
 
-## Operations and Incident Docs
+## Why This Project
 
-- `docs/OPERATIONS.md` covers service modes, safety expectations, and reason-code troubleshooting.
-- `docs/INCIDENT_RESPONSE.md` provides incident triage and recovery procedures.
-- `docs/SLOS.md` defines operator-facing reliability objectives and error budgets.
-- `docs/INSTALL.md` documents fresh-machine bootstrap installation and service registration flows.
-- `docs/QUICKSTART.md` provides first-run onboarding (source login, repo registration, first sync).
+`git-project-sync` keeps local repositories aligned with their remote default branch (`main`/`master`) while enforcing strict safety guardrails:
 
-## Release Workflow
+- never mutate dirty repositories,
+- never use destructive git automation paths,
+- always emit traceable reason codes for skipped/failed actions.
 
-- Use the `Release` GitHub Actions workflow (`workflow_dispatch`) to create a release from a specified `version` and `target_ref`.
-- The workflow validates version format, creates/pushes the release tag, builds artifacts, and publishes the GitHub Release.
+It includes runtime and setup interfaces:
+
+- `syncctl` (CLI control plane),
+- `synctui` (operations dashboard),
+- `syncsetup` (installer/repair TUI),
+- `syncd` (background daemon).
+
+## Project Stats
+
+| Metric | Value |
+| --- | ---: |
+| Supported operating systems | 2 (Linux, Windows) |
+| Provider types | 2 (GitHub, Azure DevOps) |
+| Primary binaries | 4 (`syncctl`, `syncd`, `synctui`, `syncsetup`) |
+| Acceptance criteria tracked | 24 |
+| Backlog epics | 8 |
+| Release artifact targets | 8 (4 binaries x 2 OSes) |
+
+## Getting started in 2 minutes
+
+1. Install using `docs/INSTALL.md`.
+2. Run first-time onboarding from `docs/QUICKSTART.md`.
+3. Validate health with `syncctl doctor`.
+
+## Quick Start
+
+Install and onboard:
+
+1. Follow `docs/INSTALL.md`.
+2. Follow `docs/QUICKSTART.md`.
+
+Minimal first-run command flow:
+
+```bash
+syncctl source add github gh-personal --account <account>
+syncctl auth login gh-personal --token <pat>
+syncctl repo add /path/to/repo --source-id gh-personal
+syncctl sync all --dry-run
+syncctl sync all
+syncctl doctor
+```
+
+Open dashboards:
+
+```bash
+synctui
+syncsetup
+```
+
+## Documentation Map
+
+- Start: `docs/index.md`
+- Install and onboarding: `docs/INSTALL.md`, `docs/QUICKSTART.md`, `docs/USER_GUIDE.md`
+- Operations and support: `docs/OPERATIONS.md`, `docs/TROUBLESHOOTING.md`, `docs/INCIDENT_RESPONSE.md`, `docs/SLOS.md`
+- Engineering references: `docs/ARCHITECTURE.md`, `docs/CLI_SPEC.md`, `docs/CONFIG_SCHEMA.md`, `docs/TEST_STRATEGY.md`
+- Security and release: `docs/SECURITY_MODEL.md`, `docs/PAT_PERMISSIONS.md`, `docs/RELEASE_PROCESS.md`, `docs/RELEASE_CHECKLIST.md`
+
+## Release Process
+
+Use the `Release` GitHub Actions workflow (`workflow_dispatch`) to do a one-click release:
+
+- provide `version` and `target_ref`,
+- workflow validates the version, creates/pushes the tag, builds artifacts, generates checksums/SBOM/manifest, and publishes the GitHub Release.
+
+Details: `docs/RELEASE_PROCESS.md`.
+
+## Reliability focus
+
+- SLOs and error budgets: `docs/SLOS.md`
+- Acceptance closure and verification mapping: `docs/ACCEPTANCE_TESTS.md`
+- RC and rollback gates: `docs/RELEASE_CHECKLIST.md`
+
+## Built with AI Agent Workflow
+
+This repository is structured for autonomous implementation with coding agents.
+
+- Agent entrypoint: `AGENTS.md`
+- Planning and sprint execution: `ai/`

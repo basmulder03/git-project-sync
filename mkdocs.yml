@@ -6,17 +6,22 @@ theme:
 
 nav:
   - Home: index.md
+  - User Guide: USER_GUIDE.md
+  - Troubleshooting: TROUBLESHOOTING.md
   - Requirements: REQUIREMENTS.md
   - Architecture: ARCHITECTURE.md
   - Config Schema: CONFIG_SCHEMA.md
   - CLI Spec: CLI_SPEC.md
+  - Security Model: SECURITY_MODEL.md
   - PAT Permissions: PAT_PERMISSIONS.md
   - Install: INSTALL.md
   - Quickstart: QUICKSTART.md
+  - Contributing: CONTRIBUTING.md
   - Test Strategy: TEST_STRATEGY.md
   - Acceptance Tests: ACCEPTANCE_TESTS.md
   - Operations: OPERATIONS.md
   - Incident Response: INCIDENT_RESPONSE.md
   - SLOs: SLOS.md
+  - Release Process: RELEASE_PROCESS.md
   - Release Checklist: RELEASE_CHECKLIST.md
   - Implementation Plan: IMPLEMENTATION_PLAN.md

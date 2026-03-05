@@ -31,4 +31,5 @@ This project is intended to be built with AI coding agents. Start with `AGENTS.m
 
 - `docs/OPERATIONS.md` covers service modes, safety expectations, and reason-code troubleshooting.
 - `docs/INCIDENT_RESPONSE.md` provides incident triage and recovery procedures.
+- `docs/SLOS.md` defines operator-facing reliability objectives and error budgets.
 - `docs/INSTALL.md` documents fresh-machine bootstrap installation and service registration flows.

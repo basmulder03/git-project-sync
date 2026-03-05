@@ -29,6 +29,12 @@
 - Stale branch cleanup only deletes branches already merged and without unique commits.
 - Event and trace history should be used for auditability of skipped/failed actions.
 
+## SLO Targets
+
+- Service objectives and error budgets are defined in `docs/SLOS.md`.
+- Operators should treat sustained freshness, success-rate, or restart-recovery drift as incident triggers.
+- Severity defaults and response timelines are defined in `docs/INCIDENT_RESPONSE.md`.
+
 ## Crash-Safe Recovery
 
 - In-flight repo run metadata is persisted in the local state database.

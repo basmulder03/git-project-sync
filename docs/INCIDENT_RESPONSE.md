@@ -84,6 +84,26 @@ Procedure:
 3. Reduce pressure by tuning daemon concurrency and retry settings.
 4. Re-run `syncctl doctor` and monitor event trends for 1-2 cycles.
 
+## Severity Matrix and Response Timelines
+
+| Severity | Typical Conditions | Initial Response Target | Escalation Target |
+| --- | --- | --- | --- |
+| `sev-1` | Service-wide outage, repeated crash loops without recovery, or safety guarantees at risk | 15 minutes | 30 minutes |
+| `sev-2` | Multi-source sync degradation, restart storm with rising backlog, or active SLO breach risk | 30 minutes | 60 minutes |
+| `sev-3` | Localized source/repo failures, persistent lock contention, degraded but operating service | 4 hours | Next business window |
+| `sev-4` | Low-impact anomalies, intermittent warnings, or non-critical operator friction | 1 business day | Backlog grooming |
+
+### Reason-Code to Severity Defaults
+
+| Reason Code / Class | Default Severity | Notes |
+| --- | --- | --- |
+| `repo_conflicts`, `repo_staged_changes`, `repo_unstaged_changes`, `repo_untracked_files` | `sev-4` | Safety-preserving skips; user action usually required |
+| `repo_locked` | `sev-3` | Raise to `sev-2` if sustained across many repos or accompanied by restart storm |
+| `provider_rate_limited`, `network_error`, `timeout` | `sev-3` | Raise to `sev-2` when widespread and affecting freshness SLO |
+| `retry_budget_exceeded`, `permanent_error` | `sev-2` | Can become `sev-1` if global and prolonged |
+| `update_failed`, `update_rollback` | `sev-2` | Raise to `sev-1` if rollback fails or binary health is degraded |
+| `install_*` failures in production rollout | `sev-3` | Raise based on blast radius (fleet-wide => `sev-2`) |
+
 ## Post-Incident Checklist
 
 - Capture trace IDs and top reason codes from the incident window.

@@ -31,23 +31,7 @@ func NewWindowsTaskSchedulerInstaller(binaryPath, configPath string) *WindowsTas
 			}
 			return nil
 		},
-		isAdmin: func() bool {
-			if runtime.GOOS != "windows" {
-				return false
-			}
-			cmd := exec.Command(
-				"powershell",
-				"-NoProfile",
-				"-NonInteractive",
-				"-Command",
-				"([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)",
-			)
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				return false
-			}
-			return strings.EqualFold(strings.TrimSpace(string(output)), "True")
-		},
+		isAdmin:  defaultIsAdmin,
 		lookPath: exec.LookPath,
 		stat:     os.Stat,
 		goos:     runtime.GOOS,

@@ -1,0 +1,93 @@
+package main
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/spf13/cobra"
+
+	"github.com/basmulder03/git-project-sync/internal/core/config"
+)
+
+func newConfigCommand(configPath *string) *cobra.Command {
+	cmd := &cobra.Command{Use: "config", Short: "Manage configuration"}
+
+	cmd.AddCommand(
+		&cobra.Command{
+			Use:   "path",
+			Short: "Show config file path",
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				cmd.Println(*configPath)
+				return nil
+			},
+		},
+		&cobra.Command{
+			Use:   "init",
+			Short: "Create default config when missing",
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				if _, err := os.Stat(*configPath); err == nil {
+					cmd.Printf("config already exists: %s\n", *configPath)
+					return nil
+				} else if !os.IsNotExist(err) {
+					return err
+				}
+				if err := config.Save(*configPath, config.Default()); err != nil {
+					return err
+				}
+				cmd.Printf("config created: %s\n", *configPath)
+				return nil
+			},
+		},
+		&cobra.Command{
+			Use:   "show",
+			Short: "Show resolved config summary",
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				cfg, err := config.Load(*configPath)
+				if err != nil {
+					return err
+				}
+				cmd.Printf("schema_version: %d\n", cfg.SchemaVersion)
+				cmd.Printf("workspace_root: %s\n", cfg.Workspace.Root)
+				cmd.Printf("state_db_path: %s\n", cfg.State.DBPath)
+				cmd.Printf("sources: %d\n", len(cfg.Sources))
+				cmd.Printf("repos: %d\n", len(cfg.Repos))
+				return nil
+			},
+		},
+		&cobra.Command{
+			Use:   "validate",
+			Short: "Validate current config",
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				if _, err := config.Load(*configPath); err != nil {
+					return err
+				}
+				cmd.Printf("config valid: %s\n", *configPath)
+				return nil
+			},
+		},
+		&cobra.Command{
+			Use:   "get <key>",
+			Short: "Get a supported config value",
+			Args:  cobra.ExactArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				cfg, err := config.Load(*configPath)
+				if err != nil {
+					return err
+				}
+				switch args[0] {
+				case "workspace.root":
+					cmd.Println(cfg.Workspace.Root)
+				case "state.db_path":
+					cmd.Println(cfg.State.DBPath)
+				case "daemon.interval_seconds":
+					cmd.Println(cfg.Daemon.IntervalSeconds)
+				default:
+					return fmt.Errorf("unsupported key %q", args[0])
+				}
+				return nil
+			},
+		},
+	)
+
+	return cmd
+}

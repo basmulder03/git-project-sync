@@ -29,7 +29,7 @@ func newRootCommand() *cobra.Command {
 	root.SilenceErrors = true
 	root.CompletionOptions.DisableDefaultCmd = true
 
-	root.PersistentFlags().StringVar(&configPath, "config", "configs/config.example.yaml", "Path to config file")
+	root.PersistentFlags().StringVar(&configPath, "config", defaultConfigPath(), "Path to config file")
 
 	root.Version = version
 	root.SetVersionTemplate("syncctl {{.Version}}\n")
@@ -41,7 +41,7 @@ func newRootCommand() *cobra.Command {
 		newWorkspaceCommand(&configPath),
 		newSyncCommand(&configPath),
 		newStubCommand("daemon", "Control the daemon"),
-		newStubCommand("config", "Manage configuration"),
+		newConfigCommand(&configPath),
 		newAuthCommand(&configPath),
 		newCacheCommand(&configPath),
 		newStatsCommand(&configPath),

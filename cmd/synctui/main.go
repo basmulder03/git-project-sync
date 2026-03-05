@@ -27,7 +27,7 @@ func main() {
 
 func run() int {
 	fs := flag.NewFlagSet("synctui", flag.ContinueOnError)
-	configPath := fs.String("config", "configs/config.example.yaml", "Path to config file")
+	configPath := fs.String("config", defaultConfigPath(), "Path to config file")
 	showVersion := fs.Bool("version", false, "Show version and exit")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {

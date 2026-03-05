@@ -4,6 +4,7 @@
 [![Docs](https://github.com/basmulder03/git-project-sync/actions/workflows/docs.yml/badge.svg)](https://github.com/basmulder03/git-project-sync/actions/workflows/docs.yml)
 [![Release](https://github.com/basmulder03/git-project-sync/actions/workflows/release.yml/badge.svg)](https://github.com/basmulder03/git-project-sync/actions/workflows/release.yml)
 [![Go Version](https://img.shields.io/badge/go-1.26-00ADD8?logo=go)](https://go.dev/)
+[![Docs Site](https://img.shields.io/badge/docs-gh--pages-2ea44f)](https://basmulder03.github.io/git-project-sync/)
 
 Cross-platform Git repository synchronizer focused on safe automation, operational traceability, and release-ready workflows.
 

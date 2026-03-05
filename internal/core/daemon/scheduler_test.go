@@ -3,10 +3,12 @@ package daemon
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"reflect"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -279,6 +281,96 @@ func TestSchedulerRespectsPerSourceConcurrencyLimit(t *testing.T) {
 
 	assertMax("gh")
 	assertMax("az")
+}
+
+func TestFairOrderLargeWorkspaceAvoidsStarvationAcrossSources(t *testing.T) {
+	t.Parallel()
+
+	sourceCounts := map[string]int{
+		"gh-a": 90,
+		"gh-b": 60,
+		"az-a": 45,
+		"az-b": 30,
+	}
+
+	tasks := make([]RepoTask, 0, 225)
+	orderedSources := make([]string, 0, len(sourceCounts))
+	for sourceID, count := range sourceCounts {
+		orderedSources = append(orderedSources, sourceID)
+		for i := 0; i < count; i++ {
+			tasks = append(tasks, RepoTask{Source: config.SourceConfig{ID: sourceID}, Repo: config.RepoConfig{Path: fmt.Sprintf("%s/repo-%d", sourceID, i)}})
+		}
+	}
+	sort.Strings(orderedSources)
+
+	ordered := fairOrderTasks(tasks)
+	if len(ordered) != len(tasks) {
+		t.Fatalf("ordered task count = %d, want %d", len(ordered), len(tasks))
+	}
+
+	seenBySource := map[string]int{}
+	firstAppearance := map[string]int{}
+	for i, task := range ordered {
+		sourceID := task.Source.ID
+		seenBySource[sourceID]++
+		if _, exists := firstAppearance[sourceID]; !exists {
+			firstAppearance[sourceID] = i
+		}
+	}
+
+	for sourceID, want := range sourceCounts {
+		if got := seenBySource[sourceID]; got != want {
+			t.Fatalf("source %s task count = %d, want %d", sourceID, got, want)
+		}
+	}
+
+	maxFirstAppearance := 0
+	for _, index := range firstAppearance {
+		if index > maxFirstAppearance {
+			maxFirstAppearance = index
+		}
+	}
+	if maxFirstAppearance >= len(sourceCounts) {
+		t.Fatalf("expected each source to appear in first round, first appearances=%v", firstAppearance)
+	}
+}
+
+func TestSchedulerScaleRunCycleCompletionDistribution(t *testing.T) {
+	t.Parallel()
+
+	countsBySource := map[string]int{
+		"gh-a": 80,
+		"gh-b": 60,
+		"az-a": 50,
+		"az-b": 40,
+	}
+	tasks := make([]RepoTask, 0, 230)
+	for sourceID, count := range countsBySource {
+		for i := 0; i < count; i++ {
+			tasks = append(tasks, RepoTask{Source: config.SourceConfig{ID: sourceID}, Repo: config.RepoConfig{Path: fmt.Sprintf("%s/repo-%d", sourceID, i)}})
+		}
+	}
+
+	var mu sync.Mutex
+	completed := map[string]int{}
+	run := func(_ context.Context, _ string, source config.SourceConfig, _ config.RepoConfig, _ bool) (coresync.RepoJobResult, error) {
+		mu.Lock()
+		completed[source.ID]++
+		mu.Unlock()
+		return coresync.RepoJobResult{}, nil
+	}
+
+	s := NewScheduler(testDaemonConfig(), slog.New(slog.NewJSONHandler(io.Discard, nil)), NewRepoLockManager(), run, nil)
+	s.cfg.MaxParallelRepos = 12
+	s.cfg.MaxParallelPerSource = 3
+
+	s.RunCycle(context.Background(), "trace-scale-distribution", tasks, false)
+
+	for sourceID, want := range countsBySource {
+		if got := completed[sourceID]; got != want {
+			t.Fatalf("completed count for %s = %d, want %d", sourceID, got, want)
+		}
+	}
 }
 
 func testDaemonConfig() config.DaemonConfig {

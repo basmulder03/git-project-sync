@@ -119,3 +119,9 @@
 23. Incident runbook coverage
     - Incident procedures exist for auth failures, lock contention, and update rollback
     - Troubleshooting guidance maps observed reason codes to concrete operator actions
+
+24. Scheduler fairness at scale
+    - Given a large multi-source workspace (high repository count)
+    - When one full scheduler cycle runs
+    - Then each source receives execution opportunities without starvation
+    - And completion counts match configured repository distribution

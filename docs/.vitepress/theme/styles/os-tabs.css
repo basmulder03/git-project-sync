@@ -1,0 +1,39 @@
+.os-tabs {
+  margin: 1rem 0 1.25rem;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--vp-c-bg-soft);
+}
+
+.os-tabs-controls {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.55rem;
+  border-bottom: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg-alt);
+}
+
+.os-tab {
+  border: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-2);
+  border-radius: 999px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.os-tab.active {
+  background: var(--vp-c-brand-1);
+  border-color: var(--vp-c-brand-1);
+  color: white;
+}
+
+.os-tabs-panel {
+  padding: 1rem;
+}
+
+.os-tabs-panel > :first-child {
+  margin-top: 0;
+}

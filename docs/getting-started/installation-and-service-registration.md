@@ -2,34 +2,80 @@
 
 This guide covers bootstrap install plus service registration for Linux and Windows.
 
-For first-run onboarding after install, follow `docs/getting-started/first-run-onboarding.md`.
+For first-run onboarding after install, follow `getting-started/first-run-onboarding.md`.
 
 ## Mode Comparison
 
 - `user` mode:
-  - No elevation required.
-  - Best for per-user repositories and credentials.
+  - no elevation required,
+  - best for per-user repositories and credentials.
 - `system` mode:
-  - Requires root/Administrator privileges.
-  - Suitable for machine-wide scheduled operation.
+  - requires root/Administrator privileges,
+  - suitable for machine-wide scheduled operation.
 
-## Linux
+## Install Directly from GitHub `main`
 
-### TUI installer (recommended)
+Use these one-liners to execute the latest install scripts from the `main` branch.
 
-`syncsetup` provides a small interactive installer TUI with the same visual style as `synctui`.
+### Bootstrap install (fresh machine)
 
-Launch:
+::: code-group
+```bash [Linux user]
+curl -fsSL https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/bootstrap/install.sh | bash -s -- --user
+```
 
-```bash
+```bash [Linux system]
+curl -fsSL https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/bootstrap/install.sh | sudo bash -s -- --system
+```
+
+```powershell [Windows user]
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=Join-Path $env:TEMP 'gps-bootstrap-install.ps1'; iwr 'https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/bootstrap/install.ps1' -OutFile $p; & $p -Mode user; Remove-Item $p -Force"
+```
+
+```powershell [Windows system]
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=Join-Path $env:TEMP 'gps-bootstrap-install.ps1'; iwr 'https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/bootstrap/install.ps1' -OutFile $p; & $p -Mode system; Remove-Item $p -Force"
+```
+:::
+
+### Uninstall (from GitHub `main`)
+
+::: code-group
+```bash [Linux user]
+curl -fsSL https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/uninstall.sh | bash -s -- --user
+```
+
+```bash [Linux system]
+curl -fsSL https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/uninstall.sh | sudo bash -s -- --system
+```
+
+```powershell [Windows user]
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=Join-Path $env:TEMP 'gps-uninstall.ps1'; iwr 'https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/uninstall.ps1' -OutFile $p; & $p -Mode user; Remove-Item $p -Force"
+```
+
+```powershell [Windows system]
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=Join-Path $env:TEMP 'gps-uninstall.ps1'; iwr 'https://raw.githubusercontent.com/basmulder03/git-project-sync/main/scripts/uninstall.ps1' -OutFile $p; & $p -Mode system; Remove-Item $p -Force"
+```
+:::
+
+## TUI Installer (Recommended)
+
+Launch the setup TUI:
+
+::: code-group
+```bash [Linux]
 syncsetup
 ```
 
-Key actions:
+```powershell [Windows]
+syncsetup.exe
+```
+:::
+
+The same keys are available in both OS modes:
 
 - `m` toggle mode (`user`/`system`)
-- `b` bootstrap + install/update (downloads and updates when target is newer)
-- `r` repair/reinstall (forces binary re-download + registration)
+- `b` bootstrap + install/update
+- `r` repair/reinstall
 - `i` install/register only
 - `u` uninstall/unregister only
 - `y` confirm a pending downgrade
@@ -40,145 +86,94 @@ Version behavior:
 - Automatically updates when target version is newer.
 - Warns and requires explicit confirmation (`y`) when target version is lower than installed.
 
-Two operation modes are supported:
-
-- `--user`: registers a user-level systemd service (no root required)
-- `--system`: registers a system-wide service (root required)
+## Local Repository Script Usage
 
 ### Bootstrap install (fresh machine, no preinstalled binaries)
 
-```bash
+::: code-group
+```bash [Linux user]
 ./scripts/bootstrap/install.sh --user
 ```
 
-or:
-
-```bash
+```bash [Linux system]
 sudo ./scripts/bootstrap/install.sh --system
 ```
 
-Optional flags:
-
-- `--version <tag>` to pin a release (default: `latest`)
-- `--repo <owner/name>` to use a fork (default: `basmulder03/git-project-sync`)
-
-The bootstrap script downloads `syncd` and `syncctl`, installs them to:
-
-- user mode: `~/.local/bin`
-- system mode: `/usr/local/bin`
-
-then calls `scripts/install.sh` to register and start the service.
-The script also prints immediate next-step commands for source login and first sync.
-
-### Service registration only
-
-```bash
-./scripts/install.sh --user
-```
-
-or:
-
-```bash
-sudo ./scripts/install.sh --system
-```
-
-Environment overrides:
-
-- `BIN_PATH` (default: `~/.local/bin/syncd` for user mode, `/usr/local/bin/syncd` for system mode)
-- `CONFIG_PATH` (default: `~/.config/git-project-sync/config.yaml` for user mode, `/etc/git-project-sync/config.yaml` for system mode)
-
-### Uninstall
-
-```bash
-./scripts/uninstall.sh --user
-```
-
-or:
-
-```bash
-sudo ./scripts/uninstall.sh --system
-```
-
-### Service files
-
-- User mode: `~/.config/systemd/user/git-project-sync.service`
-- System mode: `/etc/systemd/system/git-project-sync.service`
-
-## Windows
-
-### TUI installer (recommended)
-
-Launch `syncsetup.exe` (double-click or from terminal). The same keys are available:
-
-- `m` toggle mode (`user`/`system`)
-- `b` bootstrap + install/update
-- `r` repair/reinstall
-- `i` install/register only
-- `u` uninstall/unregister only
-- `y` confirm a pending downgrade
-
-Task Scheduler is the default v1 registration mode.
-
-### Bootstrap install (fresh machine, no preinstalled binaries)
-
-```powershell
+```powershell [Windows user]
 ./scripts/bootstrap/install.ps1 -Mode user
 ```
 
-or (elevated shell):
-
-```powershell
+```powershell [Windows system]
 ./scripts/bootstrap/install.ps1 -Mode system
 ```
-
-Optional parameters:
-
-- `-Version <tag>` to pin a release (default: `latest`)
-- `-Repo <owner/name>` to use a fork (default: `basmulder03/git-project-sync`)
-
-The bootstrap script downloads `syncd.exe` and `syncctl.exe`, installs them to:
-
-- user mode: `%LOCALAPPDATA%\git-project-sync\bin`
-- system mode: `%ProgramFiles%\git-project-sync`
-
-then calls `scripts/install.ps1` to register and validate the scheduled task.
-The script also prints immediate next-step commands for source login and first sync.
+:::
 
 ### Service registration only
 
-```powershell
+::: code-group
+```bash [Linux user]
+./scripts/install.sh --user
+```
+
+```bash [Linux system]
+sudo ./scripts/install.sh --system
+```
+
+```powershell [Windows user]
 ./scripts/install.ps1 -Mode user
 ```
 
-or (elevated shell):
-
-```powershell
+```powershell [Windows system]
 ./scripts/install.ps1 -Mode system
 ```
+:::
+
+### Uninstall (local scripts)
+
+::: code-group
+```bash [Linux user]
+./scripts/uninstall.sh --user
+```
+
+```bash [Linux system]
+sudo ./scripts/uninstall.sh --system
+```
+
+```powershell [Windows user]
+./scripts/uninstall.ps1 -Mode user
+```
+
+```powershell [Windows system]
+./scripts/uninstall.ps1 -Mode system
+```
+:::
+
+Optional bootstrap parameters (both OS script families):
+
+- pin version: `--version` (Linux), `-Version` (Windows)
+- use fork repository: `--repo` (Linux), `-Repo` (Windows)
 
 Environment overrides:
 
-- `BIN_PATH` (default: `%LOCALAPPDATA%\git-project-sync\bin\syncd.exe` for user mode, `%ProgramFiles%\git-project-sync\syncd.exe` for system mode)
-- `CONFIG_PATH` (default: `%APPDATA%\git-project-sync\config.yaml` for user mode, `%ProgramData%\git-project-sync\config.yaml` for system mode)
+- Linux:
+  - `BIN_PATH` default: `~/.local/bin/syncd` (user), `/usr/local/bin/syncd` (system)
+  - `CONFIG_PATH` default: `~/.config/git-project-sync/config.yaml` (user), `/etc/git-project-sync/config.yaml` (system)
+- Windows:
+  - `BIN_PATH` default: `%LOCALAPPDATA%\git-project-sync\bin\syncd.exe` (user), `%ProgramFiles%\git-project-sync\syncd.exe` (system)
+  - `CONFIG_PATH` default: `%APPDATA%\git-project-sync\config.yaml` (user), `%ProgramData%\git-project-sync\config.yaml` (system)
+
+Service files:
+
+- Linux user mode: `~/.config/systemd/user/git-project-sync.service`
+- Linux system mode: `/etc/systemd/system/git-project-sync.service`
+- Windows mode: Task Scheduler task `GitProjectSync`
 
 ## Offline/manual fallback
 
 If bootstrap download is not possible, place `syncd` (and optionally `syncctl`) manually on disk, then run `scripts/install.sh` or `scripts/install.ps1` with `BIN_PATH` and `CONFIG_PATH` overrides.
 
-### Uninstall
-
-```powershell
-./scripts/uninstall.ps1 -Mode user
-```
-
-or (elevated shell):
-
-```powershell
-./scripts/uninstall.ps1 -Mode system
-```
-
 ## Notes
 
 - Install/uninstall flows are designed to be idempotent.
-- System mode checks for root privileges and fails fast when insufficient.
+- System mode checks for root/administrator privileges and fails fast when insufficient.
 - Windows flow uses Task Scheduler and validates registration after install.

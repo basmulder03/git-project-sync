@@ -13,7 +13,7 @@ function Invoke-Schtasks {
 
   & schtasks.exe @Arguments
   if ($LASTEXITCODE -ne 0) {
-    throw "schtasks failed with exit code $LASTEXITCODE: $($Arguments -join ' ')"
+    throw "schtasks failed with exit code ${LASTEXITCODE}: $($Arguments -join ' ')"
   }
 }
 

@@ -57,35 +57,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=Join-Path $env:TEMP '
 ```
 :::
 
-## TUI Installer (Recommended)
-
-Launch the setup TUI:
-
-::: code-group
-```bash [Linux]
-syncsetup
-```
-
-```powershell [Windows]
-syncsetup.exe
-```
-:::
-
-The same keys are available in both OS modes:
-
-- `m` toggle mode (`user`/`system`)
-- `b` bootstrap + install/update
-- `r` repair/reinstall
-- `i` install/register only
-- `u` uninstall/unregister only
-- `y` confirm a pending downgrade
-
-Version behavior:
-
-- Detects existing installation and compares installed `syncd --version` with target release.
-- Automatically updates when target version is newer.
-- Warns and requires explicit confirmation (`y`) when target version is lower than installed.
-
 ## Local Repository Script Usage
 
 ### Bootstrap install (fresh machine, no preinstalled binaries)

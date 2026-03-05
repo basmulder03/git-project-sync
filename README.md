@@ -19,12 +19,6 @@ Cross-platform Git repository synchronizer focused on safe automation, operation
 ## Architecture snapshot
 
 ```text
-                +---------------------------+
-                |        syncsetup          |
-                |   install / repair TUI    |
-                +-------------+-------------+
-                              |
-                              v
 +-----------+       +-------------------+       +-------------------+
 |  syncctl  +------->      syncd        +-------> local git repos   |
 |   CLI     |       | daemon scheduler  |       | + provider remotes |
@@ -56,7 +50,6 @@ It includes runtime and setup interfaces:
 
 - `syncctl` (CLI control plane),
 - `synctui` (operations dashboard),
-- `syncsetup` (installer/repair TUI),
 - `syncd` (background daemon).
 
 ## Getting started in 2 minutes
@@ -87,7 +80,6 @@ Open dashboards:
 
 ```bash
 synctui
-syncsetup
 ```
 
 ## Release Process

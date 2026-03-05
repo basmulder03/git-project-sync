@@ -84,10 +84,9 @@ If something fails, inspect one trace:
 syncctl trace show <trace-id>
 ```
 
-## 7) Optional: use the TUI views
+## 7) Optional: use the TUI view
 
 - Runtime dashboard: `synctui`
-- Installer/repair dashboard: `syncsetup`
 
 ## Notes
 

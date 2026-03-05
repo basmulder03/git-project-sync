@@ -41,7 +41,6 @@ syncctl sync all
 ## TUI Usage
 
 - `synctui`: runtime dashboard for status, repos, cache, logs, and triage.
-- `syncsetup`: setup/repair dashboard for install, update, downgrade confirmation, and reinstall.
 
 ## State and Recovery
 

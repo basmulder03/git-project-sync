@@ -46,13 +46,20 @@ $syncctlPath = Join-Path $binDir "syncctl.exe"
 Invoke-WebRequest -Uri "$baseUrl/syncd_windows_amd64.exe" -OutFile $syncdPath
 Invoke-WebRequest -Uri "$baseUrl/syncctl_windows_amd64.exe" -OutFile $syncctlPath
 
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$repoRoot = Resolve-Path (Join-Path $scriptDir "..\..")
-
 $env:BIN_PATH = $syncdPath
 $env:CONFIG_PATH = $configPath
 
-& (Join-Path $repoRoot "scripts\install.ps1") -Mode $Mode
+$installScriptPath = Join-Path $env:TEMP "gps-install.ps1"
+$installScriptUri = "https://raw.githubusercontent.com/$Repo/main/scripts/install.ps1"
+
+try {
+  Invoke-WebRequest -Uri $installScriptUri -OutFile $installScriptPath
+  & $installScriptPath -Mode $Mode
+} finally {
+  if (Test-Path -LiteralPath $installScriptPath) {
+    Remove-Item -LiteralPath $installScriptPath -Force
+  }
+}
 
 Write-Host "Bootstrap install complete"
 Write-Host "syncd: $syncdPath"

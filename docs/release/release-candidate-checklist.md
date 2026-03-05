@@ -26,7 +26,7 @@ Use this checklist before promoting a tag to a production release.
 - [ ] Release workflow security checks passed:
   - [ ] `govulncheck ./...`
   - [ ] `gitleaks` secret scan
-- [ ] All expected platform artifacts were built (`syncctl`, `syncd`, `synctui`, `syncsetup` for Linux/Windows amd64).
+- [ ] All expected platform artifacts were built (`syncctl`, `syncd`, `synctui` for Linux/Windows amd64).
 - [ ] `dist/checksums.txt` exists and includes every distributed artifact.
 - [ ] SBOM artifacts were generated and attached:
   - [ ] `dist/sbom.spdx.json`

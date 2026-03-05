@@ -168,7 +168,6 @@ jobs:
               GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-X main.version=$VERSION" -o "dist/syncctl_${os}_${arch}${ext}" ./cmd/syncctl
               GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-X main.version=$VERSION" -o "dist/syncd_${os}_${arch}${ext}" ./cmd/syncd
               GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-X main.version=$VERSION" -o "dist/synctui_${os}_${arch}${ext}" ./cmd/synctui
-              GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-X main.version=$VERSION" -o "dist/syncsetup_${os}_${arch}${ext}" ./cmd/syncsetup
             done
           done
 

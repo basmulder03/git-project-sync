@@ -7,6 +7,7 @@ Use this checklist before promoting a tag to a production release.
 - [ ] Acceptance mapping reviewed in `docs/ACCEPTANCE_TESTS.md` and all required automated/manual items are accounted for.
 - [ ] Candidate version is explicitly marked as RC (`vX.Y.Z-rcN`) before final promotion tag.
 - [ ] Release owner confirms go/no-go decision and records timestamp + approver.
+- [ ] Manual release workflow inputs are prepared (`version`, `target_ref`, `prerelease`, RC gate approvals).
 
 ## Pre-Tag Gate (CI on main/PR)
 
@@ -17,6 +18,9 @@ Use this checklist before promoting a tag to a production release.
   - [ ] `gitleaks` secret scan returned no findings.
 
 ## Tag/Release Gate (release workflow)
+
+- [ ] Triggered via Actions button (`Release` workflow, `workflow_dispatch`) with desired version.
+- [ ] Workflow created and pushed the expected annotated tag for the selected ref.
 
 - [ ] Release workflow passed on the candidate tag.
 - [ ] Release workflow security checks passed:

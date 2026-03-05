@@ -34,3 +34,8 @@ This project is intended to be built with AI coding agents. Start with `AGENTS.m
 - `docs/SLOS.md` defines operator-facing reliability objectives and error budgets.
 - `docs/INSTALL.md` documents fresh-machine bootstrap installation and service registration flows.
 - `docs/QUICKSTART.md` provides first-run onboarding (source login, repo registration, first sync).
+
+## Release Workflow
+
+- Use the `Release` GitHub Actions workflow (`workflow_dispatch`) to create a release from a specified `version` and `target_ref`.
+- The workflow validates version format, creates/pushes the release tag, builds artifacts, and publishes the GitHub Release.

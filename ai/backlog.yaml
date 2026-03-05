@@ -126,3 +126,7 @@ epics:
       - id: E8-T5
         title: Implement non-sensitive config/DB persistence separation
         acceptance_ref: "ACCEPTANCE_TESTS.md#22"
+      - id: E8-T6
+        title: Automate documentation site build/deploy from docs-only changes
+      - id: E8-T7
+        title: Add recurring README and operator docs refresh checklist

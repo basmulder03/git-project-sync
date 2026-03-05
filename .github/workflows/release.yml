@@ -6,6 +6,20 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
+      version:
+        description: "Release version/tag (for example: v1.0.0 or v1.0.0-rc1)"
+        required: true
+        type: string
+      target_ref:
+        description: "Git ref to tag for manual release (branch/commit)"
+        required: true
+        default: "main"
+        type: string
+      prerelease:
+        description: "Mark GitHub Release as pre-release"
+        required: false
+        default: false
+        type: boolean
       rc_gate_approved:
         description: "Release candidate gate reviewed and approved"
         required: true
@@ -27,6 +41,48 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.target_ref || github.ref }}
+
+      - name: Resolve and validate release version
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME:-}"
+          fi
+
+          if [[ -z "$VERSION" ]]; then
+            echo "release version is required"
+            exit 1
+          fi
+
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]; then
+            echo "invalid version format: $VERSION"
+            echo "expected: v<major>.<minor>.<patch>[-rcN]"
+            exit 1
+          fi
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            if [[ "${{ inputs.prerelease }}" == "true" ]]; then
+              PRERELEASE="true"
+            elif [[ "$VERSION" == *-rc* ]]; then
+              PRERELEASE="true"
+            else
+              PRERELEASE="false"
+            fi
+          else
+            if [[ "$VERSION" == *-rc* ]]; then
+              PRERELEASE="true"
+            else
+              PRERELEASE="false"
+            fi
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -46,6 +102,25 @@ jobs:
             echo "rollback_plan_reviewed must be true"
             exit 1
           fi
+
+      - name: Create and push release tag (manual dispatch)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.meta.outputs.version }}"
+
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "tag already exists locally: $VERSION"
+            exit 1
+          fi
+          if git ls-remote --tags origin "refs/tags/$VERSION" | grep -q "$VERSION"; then
+            echo "tag already exists on origin: $VERSION"
+            exit 1
+          fi
+
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
 
       - name: Verify acceptance/release gate docs
         shell: bash
@@ -75,7 +150,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME:-dev}"
+          VERSION="${{ steps.meta.outputs.version }}"
           mkdir -p dist
 
           for os in linux windows; do
@@ -113,7 +188,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME:-dev}"
+          VERSION="${{ steps.meta.outputs.version }}"
           DATE_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           BASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}"
 
@@ -144,6 +219,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.meta.outputs.version }}
+          prerelease: ${{ steps.meta.outputs.prerelease }}
           files: |
             dist/*
           generate_release_notes: true

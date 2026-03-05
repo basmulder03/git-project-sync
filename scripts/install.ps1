@@ -5,6 +5,18 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Invoke-Schtasks {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string[]]$Arguments
+  )
+
+  & schtasks.exe @Arguments
+  if ($LASTEXITCODE -ne 0) {
+    throw "schtasks failed with exit code $LASTEXITCODE: $($Arguments -join ' ')"
+  }
+}
+
 function Add-ToPath {
   param(
     [Parameter(Mandatory = $true)]
@@ -93,11 +105,11 @@ $pathScope = if ($Mode -eq "system") { "Machine" } else { "User" }
 Add-ToPath -Directory (Split-Path -Parent $binPath) -Scope $pathScope
 
 if ($Mode -eq "system") {
-  schtasks /Create /F /SC MINUTE /MO 5 /TN $taskName /TR $taskCommand /RL HIGHEST /RU SYSTEM | Out-Null
+  Invoke-Schtasks -Arguments @("/Create", "/F", "/SC", "MINUTE", "/MO", "5", "/TN", $taskName, "/TR", $taskCommand, "/RL", "HIGHEST", "/RU", "SYSTEM")
 } else {
-  schtasks /Create /F /SC MINUTE /MO 5 /TN $taskName /TR $taskCommand /RL LIMITED | Out-Null
+  Invoke-Schtasks -Arguments @("/Create", "/F", "/SC", "MINUTE", "/MO", "5", "/TN", $taskName, "/TR", $taskCommand, "/RL", "LIMITED")
 }
 
-schtasks /Query /TN $taskName | Out-Null
+Invoke-Schtasks -Arguments @("/Query", "/TN", $taskName)
 Write-Host "Installed scheduled task '$taskName' in $Mode mode"
 Write-Host "Added $(Split-Path -Parent $binPath) to $pathScope PATH scope"

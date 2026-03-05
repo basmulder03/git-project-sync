@@ -42,9 +42,11 @@ if ($Version -eq "latest") {
 
 $syncdPath = Join-Path $binDir "syncd.exe"
 $syncctlPath = Join-Path $binDir "syncctl.exe"
+$synctuiPath = Join-Path $binDir "synctui.exe"
 
 Invoke-WebRequest -Uri "$baseUrl/syncd_windows_amd64.exe" -OutFile $syncdPath
 Invoke-WebRequest -Uri "$baseUrl/syncctl_windows_amd64.exe" -OutFile $syncctlPath
+Invoke-WebRequest -Uri "$baseUrl/synctui_windows_amd64.exe" -OutFile $synctuiPath
 
 $env:BIN_PATH = $syncdPath
 $env:CONFIG_PATH = $configPath
@@ -64,6 +66,7 @@ try {
 Write-Host "Bootstrap install complete"
 Write-Host "syncd: $syncdPath"
 Write-Host "syncctl: $syncctlPath"
+Write-Host "synctui: $synctuiPath"
 Write-Host "config: $configPath"
 Write-Host ""
 Write-Host "Next steps:"

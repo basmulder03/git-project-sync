@@ -37,6 +37,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=Join-Path $env:TEMP '
 ```
 :::
 
+Bootstrap installs these binaries:
+
+- `syncd` (daemon service target)
+- `syncctl` (CLI)
+- `synctui` (runtime dashboard)
+
+Only `syncd` is registered with systemd/Task Scheduler. `synctui` remains an on-demand interactive tool.
+
 ### Uninstall (from GitHub `main`)
 
 ::: code-group

@@ -99,12 +99,15 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 SYNC_D_FILE="$TMP_DIR/syncd_linux_${ARCH}"
 SYNC_CTL_FILE="$TMP_DIR/syncctl_linux_${ARCH}"
+SYNC_TUI_FILE="$TMP_DIR/synctui_linux_${ARCH}"
 
 download "$BASE_URL/syncd_linux_${ARCH}" "$SYNC_D_FILE"
 download "$BASE_URL/syncctl_linux_${ARCH}" "$SYNC_CTL_FILE"
+download "$BASE_URL/synctui_linux_${ARCH}" "$SYNC_TUI_FILE"
 
 install -m 0755 "$SYNC_D_FILE" "$BIN_DIR/syncd"
 install -m 0755 "$SYNC_CTL_FILE" "$BIN_DIR/syncctl"
+install -m 0755 "$SYNC_TUI_FILE" "$BIN_DIR/synctui"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -114,6 +117,7 @@ BIN_PATH="$BIN_DIR/syncd" CONFIG_PATH="$CONFIG_PATH" "$REPO_ROOT/scripts/install
 echo "bootstrap install complete"
 echo "syncd: $BIN_DIR/syncd"
 echo "syncctl: $BIN_DIR/syncctl"
+echo "synctui: $BIN_DIR/synctui"
 echo "config: $CONFIG_PATH"
 echo
 echo "Next steps:"

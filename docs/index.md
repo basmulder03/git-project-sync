@@ -5,25 +5,25 @@ Welcome to the documentation hub for `git-project-sync`.
 Use these guides by role:
 
 - **Getting started**
-  - `INSTALL.md`
-  - `QUICKSTART.md`
-  - `USER_GUIDE.md`
-  - `TROUBLESHOOTING.md`
+  - `getting-started/installation-and-service-registration.md`
+  - `getting-started/first-run-onboarding.md`
+  - `user/day-to-day-usage-guide.md`
+  - `support/common-failures-and-remediation.md`
 - **Operating the service**
-  - `OPERATIONS.md`
-  - `INCIDENT_RESPONSE.md`
-  - `SLOS.md`
+  - `operations/service-operations-guide.md`
+  - `operations/incident-response-playbook.md`
+  - `operations/reliability-slos-and-error-budgets.md`
 - **Engineering and release**
-  - `ARCHITECTURE.md`
-  - `CLI_SPEC.md`
-  - `RELEASE_PROCESS.md`
-  - `TEST_STRATEGY.md`
-  - `ACCEPTANCE_TESTS.md`
-  - `RELEASE_CHECKLIST.md`
-  - `CONTRIBUTING.md`
+  - `engineering/system-architecture.md`
+  - `reference/cli-command-specification.md`
+  - `release/release-process-and-automation.md`
+  - `engineering/test-strategy-and-coverage.md`
+  - `engineering/acceptance-test-matrix.md`
+  - `release/release-candidate-checklist.md`
+  - `project/contributing-guide.md`
 
 Security and authentication references:
 
-- `PAT_PERMISSIONS.md`
-- `CONFIG_SCHEMA.md`
-- `SECURITY_MODEL.md`
+- `reference/pat-permission-requirements.md`
+- `reference/configuration-schema.md`
+- `security/security-model-and-controls.md`

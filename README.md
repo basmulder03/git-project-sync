@@ -104,10 +104,10 @@ syncsetup
 ## Documentation Map
 
 - Start: `docs/index.md`
-- Install and onboarding: `docs/INSTALL.md`, `docs/QUICKSTART.md`, `docs/USER_GUIDE.md`
-- Operations and support: `docs/OPERATIONS.md`, `docs/TROUBLESHOOTING.md`, `docs/INCIDENT_RESPONSE.md`, `docs/SLOS.md`
-- Engineering references: `docs/ARCHITECTURE.md`, `docs/CLI_SPEC.md`, `docs/CONFIG_SCHEMA.md`, `docs/TEST_STRATEGY.md`
-- Security and release: `docs/SECURITY_MODEL.md`, `docs/PAT_PERMISSIONS.md`, `docs/RELEASE_PROCESS.md`, `docs/RELEASE_CHECKLIST.md`
+- Install and onboarding: `docs/getting-started/installation-and-service-registration.md`, `docs/getting-started/first-run-onboarding.md`, `docs/user/day-to-day-usage-guide.md`
+- Operations and support: `docs/operations/service-operations-guide.md`, `docs/support/common-failures-and-remediation.md`, `docs/operations/incident-response-playbook.md`, `docs/operations/reliability-slos-and-error-budgets.md`
+- Engineering references: `docs/engineering/system-architecture.md`, `docs/reference/cli-command-specification.md`, `docs/reference/configuration-schema.md`, `docs/engineering/test-strategy-and-coverage.md`
+- Security and release: `docs/security/security-model-and-controls.md`, `docs/reference/pat-permission-requirements.md`, `docs/release/release-process-and-automation.md`, `docs/release/release-candidate-checklist.md`
 
 ## Release Process
 
@@ -116,13 +116,13 @@ Use the `Release` GitHub Actions workflow (`workflow_dispatch`) to do a one-clic
 - provide `version` and `target_ref`,
 - workflow validates the version, creates/pushes the tag, builds artifacts, generates checksums/SBOM/manifest, and publishes the GitHub Release.
 
-Details: `docs/RELEASE_PROCESS.md`.
+Details: `docs/release/release-process-and-automation.md`.
 
 ## Reliability focus
 
-- SLOs and error budgets: `docs/SLOS.md`
-- Acceptance closure and verification mapping: `docs/ACCEPTANCE_TESTS.md`
-- RC and rollback gates: `docs/RELEASE_CHECKLIST.md`
+- SLOs and error budgets: `docs/operations/reliability-slos-and-error-budgets.md`
+- Acceptance closure and verification mapping: `docs/engineering/acceptance-test-matrix.md`
+- RC and rollback gates: `docs/release/release-candidate-checklist.md`
 
 ## Built with AI Agent Workflow
 

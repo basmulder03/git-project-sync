@@ -6,13 +6,17 @@ import (
 	"time"
 )
 
-func RenderReposView(b *strings.Builder, repos []RepoRow) {
+func RenderReposView(b *strings.Builder, repos []RepoRow, filter string) {
 	if len(repos) == 0 {
-		fmt.Fprintf(b, "No repository states yet.\n")
+		if strings.TrimSpace(filter) == "" || filter == "all" {
+			fmt.Fprintf(b, "No repository states yet.\n")
+		} else {
+			fmt.Fprintf(b, "No repository states match filter=%s.\n", filter)
+		}
 		return
 	}
 
-	fmt.Fprintf(b, "Repo states:\n")
+	fmt.Fprintf(b, "Repo states (filter=%s):\n", blankIf(filter, "all"))
 	for _, repo := range repos {
 		syncAt := "never"
 		if !repo.LastSyncAt.IsZero() {

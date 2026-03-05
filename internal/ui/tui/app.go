@@ -75,7 +75,10 @@ func (a *App) Run(ctx context.Context) error {
 					continue
 				}
 
-				if a.dashboard.HandleKey(key) {
+				if changed, message := a.dashboard.HandleKey(key, status); changed {
+					if message != "" {
+						a.lastMessage = message
+					}
 					a.render(status)
 				}
 			}

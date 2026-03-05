@@ -33,7 +33,7 @@ func TestWindowsInstallScriptsContainTaskRegistrationFlow(t *testing.T) {
 		t.Fatalf("read uninstall.ps1: %v", err)
 	}
 
-	for _, want := range []string{"Invoke-WebRequest", "releases/latest/download", "scripts\\install.ps1"} {
+	for _, want := range []string{"Invoke-WebRequest", "releases/latest/download", "scripts\\install.ps1", "Next steps:", "docs/QUICKSTART.md", "$syncctlPath sync all --dry-run"} {
 		if !strings.Contains(string(bootstrapContent), want) {
 			t.Fatalf("bootstrap.ps1 missing %q", want)
 		}

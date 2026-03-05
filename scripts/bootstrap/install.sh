@@ -114,3 +114,14 @@ BIN_PATH="$BIN_DIR/syncd" CONFIG_PATH="$CONFIG_PATH" "$REPO_ROOT/scripts/install
 echo "bootstrap install complete"
 echo "syncd: $BIN_DIR/syncd"
 echo "syncctl: $BIN_DIR/syncctl"
+echo "config: $CONFIG_PATH"
+echo
+echo "Next steps:"
+echo "1) Validate install: $BIN_DIR/syncctl --version"
+echo "2) Add a source: $BIN_DIR/syncctl source add github <source-id> --account <account>"
+echo "3) Login PAT: $BIN_DIR/syncctl auth login <source-id> --token <pat>"
+echo "4) Register repos: $BIN_DIR/syncctl repo add <path> --source-id <source-id>"
+echo "5) Dry-run first sync: $BIN_DIR/syncctl sync all --dry-run"
+echo "6) Monitor health: $BIN_DIR/syncctl doctor && $BIN_DIR/syncctl daemon status"
+echo
+echo "See docs/QUICKSTART.md for guided onboarding."

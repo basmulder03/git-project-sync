@@ -2,6 +2,8 @@
 
 This guide covers bootstrap install plus service registration for Linux and Windows.
 
+For first-run onboarding after install, follow `docs/QUICKSTART.md`.
+
 ## Mode Comparison
 
 - `user` mode:
@@ -66,6 +68,7 @@ The bootstrap script downloads `syncd` and `syncctl`, installs them to:
 - system mode: `/usr/local/bin`
 
 then calls `scripts/install.sh` to register and start the service.
+The script also prints immediate next-step commands for source login and first sync.
 
 ### Service registration only
 
@@ -139,6 +142,7 @@ The bootstrap script downloads `syncd.exe` and `syncctl.exe`, installs them to:
 - system mode: `%ProgramFiles%\git-project-sync`
 
 then calls `scripts/install.ps1` to register and validate the scheduled task.
+The script also prints immediate next-step commands for source login and first sync.
 
 ### Service registration only
 

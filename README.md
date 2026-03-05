@@ -33,3 +33,4 @@ This project is intended to be built with AI coding agents. Start with `AGENTS.m
 - `docs/INCIDENT_RESPONSE.md` provides incident triage and recovery procedures.
 - `docs/SLOS.md` defines operator-facing reliability objectives and error budgets.
 - `docs/INSTALL.md` documents fresh-machine bootstrap installation and service registration flows.
+- `docs/QUICKSTART.md` provides first-run onboarding (source login, repo registration, first sync).

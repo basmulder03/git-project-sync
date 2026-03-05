@@ -44,7 +44,7 @@ func TestLinuxInstallScriptsContainServiceRegistrationFlow(t *testing.T) {
 		t.Fatalf("read uninstall script: %v", err)
 	}
 
-	for _, want := range []string{"releases/latest/download", "scripts/install.sh", "syncd_linux_${ARCH}"} {
+	for _, want := range []string{"releases/latest/download", "scripts/install.sh", "syncd_linux_${ARCH}", "Next steps:", "docs/QUICKSTART.md", "syncctl sync all --dry-run"} {
 		if !strings.Contains(string(bootstrapContent), want) {
 			t.Fatalf("bootstrap script missing %q", want)
 		}

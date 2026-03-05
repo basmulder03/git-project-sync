@@ -126,9 +126,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "## Verification Mapping" docs/ACCEPTANCE_TESTS.md
-          grep -q "## Release Candidate Gate" docs/RELEASE_CHECKLIST.md
-          grep -q "## Rollback Decision Checklist" docs/RELEASE_CHECKLIST.md
+          grep -q "## Verification Mapping" docs/engineering/acceptance-test-matrix.md
+          grep -q "## Release Candidate Gate" docs/release/release-candidate-checklist.md
+          grep -q "## Rollback Decision Checklist" docs/release/release-candidate-checklist.md
 
       - name: Run tests
         run: go test ./...

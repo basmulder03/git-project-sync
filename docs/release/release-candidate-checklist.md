@@ -4,7 +4,7 @@ Use this checklist before promoting a tag to a production release.
 
 ## Release Candidate Gate (v1.0)
 
-- [ ] Acceptance mapping reviewed in `docs/ACCEPTANCE_TESTS.md` and all required automated/manual items are accounted for.
+- [ ] Acceptance mapping reviewed in `docs/engineering/acceptance-test-matrix.md` and all required automated/manual items are accounted for.
 - [ ] Candidate version is explicitly marked as RC (`vX.Y.Z-rcN`) before final promotion tag.
 - [ ] Release owner confirms go/no-go decision and records timestamp + approver.
 - [ ] Manual release workflow inputs are prepared (`version`, `target_ref`, `prerelease`, RC gate approvals).

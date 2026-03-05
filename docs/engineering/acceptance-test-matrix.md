@@ -157,4 +157,4 @@ Each acceptance item is mapped to a primary automated/manual verification path f
 | 23 | Manual runbook review in `docs/INCIDENT_RESPONSE.md` and `docs/OPERATIONS.md` | manual |
 | 24 | `go test ./internal/core/daemon/... ./tests/integration/...` (scale fairness tests) | automated |
 
-Release candidate closure requires all automated checks green and all manual checks signed in `docs/RELEASE_CHECKLIST.md`.
+Release candidate closure requires all automated checks green and all manual checks signed in `docs/release/release-candidate-checklist.md`.

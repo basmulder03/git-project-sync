@@ -25,6 +25,17 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        run: $(go env GOPATH)/bin/govulncheck ./...
+
+      - name: Run gitleaks secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build artifacts
         shell: bash
         run: |
@@ -52,6 +63,16 @@ jobs:
           set -euo pipefail
           cd dist
           sha256sum * > checksums.txt
+
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Generate SBOM
+        shell: bash
+        run: |
+          set -euo pipefail
+          syft dir:dist -o spdx-json=dist/sbom.spdx.json
+          syft dir:dist -o cyclonedx-json=dist/sbom.cdx.json
 
       - name: Build manifest
         shell: bash

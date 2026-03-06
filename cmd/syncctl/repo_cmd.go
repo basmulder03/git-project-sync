@@ -11,11 +11,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/basmulder03/git-project-sync/internal/app/commands"
 	"github.com/basmulder03/git-project-sync/internal/core/config"
 	coregit "github.com/basmulder03/git-project-sync/internal/core/git"
 	"github.com/basmulder03/git-project-sync/internal/core/logging"
 	coresync "github.com/basmulder03/git-project-sync/internal/core/sync"
-	"github.com/basmulder03/git-project-sync/internal/core/workspace"
 )
 
 var runGitClone = func(repoURL, destination string) error {
@@ -128,7 +128,7 @@ func newRepoCloneCommand(configPath *string) *cobra.Command {
 			}
 
 			repoName := filepath.Base(repoSlug)
-			destination, err := cloneDestination(cfg, source, repoName, into)
+			destination, err := commands.ResolveCloneDestination(cfg, source, repoName, into)
 			if err != nil {
 				return err
 			}
@@ -139,7 +139,7 @@ func newRepoCloneCommand(configPath *string) *cobra.Command {
 				return err
 			}
 
-			repoURL := cloneURL(source, repoSlug)
+			repoURL := commands.BuildCloneURL(source, repoSlug)
 			if err := runGitClone(repoURL, destination); err != nil {
 				return err
 			}
@@ -173,50 +173,6 @@ func newRepoCloneCommand(configPath *string) *cobra.Command {
 	cmd.Flags().StringVar(&into, "into", "", "Destination mode (supported: managed)")
 	cmd.Flags().StringVar(&remote, "remote", "origin", "Remote name")
 	return cmd
-}
-
-func cloneDestination(cfg config.Config, source config.SourceConfig, repoName, into string) (string, error) {
-	if strings.TrimSpace(into) == "" {
-		return filepath.Clean(repoName), nil
-	}
-	if strings.TrimSpace(into) != "managed" {
-		return "", fmt.Errorf("invalid --into value %q (supported: managed)", into)
-	}
-
-	resolver, err := workspace.NewLayoutResolver(cfg.Workspace.Root)
-	if err != nil {
-		return "", err
-	}
-
-	expectedPath, err := resolver.ExpectedRepoPath(source, config.RepoConfig{Path: repoName, SourceID: source.ID})
-	if err != nil {
-		return "", err
-	}
-	return expectedPath, nil
-}
-
-func cloneURL(source config.SourceConfig, repoSlug string) string {
-	host := strings.TrimSpace(source.Host)
-	if host == "" {
-		host = defaultHost(source.Provider)
-	}
-	provider := strings.ToLower(strings.TrimSpace(source.Provider))
-	if provider == "azure" || provider == "azuredevops" {
-		org := strings.TrimSpace(source.Organization)
-		if org == "" {
-			org = strings.TrimSpace(source.Account)
-		}
-		return fmt.Sprintf("https://%s/%s/%s/_git/%s", host, source.Account, org, repoSlug)
-	}
-
-	owner := strings.TrimSpace(source.Organization)
-	if owner == "" {
-		owner = strings.TrimSpace(source.Account)
-	}
-	if strings.Contains(repoSlug, "/") {
-		return fmt.Sprintf("https://%s/%s.git", host, repoSlug)
-	}
-	return fmt.Sprintf("https://%s/%s/%s.git", host, owner, repoSlug)
 }
 
 func newRepoRemoveCommand(configPath *string) *cobra.Command {

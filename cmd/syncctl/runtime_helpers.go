@@ -1,10 +1,29 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"os"
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
 )
+
+func loadOrInitConfig(configPath string) (config.Config, error) {
+	cfg, err := config.Load(configPath)
+	if err == nil {
+		return cfg, nil
+	}
+
+	if !errors.Is(err, os.ErrNotExist) {
+		return config.Config{}, err
+	}
+
+	defaultCfg := config.Default()
+	if saveErr := config.Save(configPath, defaultCfg); saveErr != nil {
+		return config.Config{}, saveErr
+	}
+	return defaultCfg, nil
+}
 
 func loadSourceByID(configPath, sourceID string) (config.Config, config.SourceConfig, error) {
 	cfg, err := config.Load(configPath)

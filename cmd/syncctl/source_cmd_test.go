@@ -53,6 +53,21 @@ func TestDefaultHost(t *testing.T) {
 	}
 }
 
+func TestSourceAddCreatesConfigWhenMissing(t *testing.T) {
+	t.Parallel()
+
+	configPath := filepath.Join(t.TempDir(), "new-config.yaml")
+
+	output, err := executeSyncctl("--config", configPath, "source", "add", "github", "gh-personal", "--account", "jane-doe")
+	if err != nil {
+		t.Fatalf("source add failed: %v, output=%s", err, output)
+	}
+
+	if _, err := config.Load(configPath); err != nil {
+		t.Fatalf("expected config to be created and valid: %v", err)
+	}
+}
+
 func executeSyncctl(args ...string) (string, error) {
 	cmd := newRootCommand()
 	buffer := &bytes.Buffer{}

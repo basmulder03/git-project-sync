@@ -49,7 +49,7 @@ func newSourceAddCommand(configPath *string) *cobra.Command {
 				host = defaultHost(provider)
 			}
 
-			cfg, err := config.Load(*configPath)
+			cfg, err := loadOrInitConfig(*configPath)
 			if err != nil {
 				return err
 			}

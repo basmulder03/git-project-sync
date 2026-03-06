@@ -11,6 +11,12 @@ func defaultConfigPath() string {
 		if appData := os.Getenv("APPDATA"); appData != "" {
 			return filepath.Join(appData, "git-project-sync", "config.yaml")
 		}
+		if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
+			return filepath.Join(localAppData, "git-project-sync", "config.yaml")
+		}
+		if userProfile := os.Getenv("USERPROFILE"); userProfile != "" {
+			return filepath.Join(userProfile, "AppData", "Roaming", "git-project-sync", "config.yaml")
+		}
 	}
 
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
@@ -19,7 +25,10 @@ func defaultConfigPath() string {
 
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
-		return "configs/config.example.yaml"
+		return filepath.Join(os.TempDir(), "git-project-sync", "config.yaml")
+	}
+	if runtime.GOOS == "windows" {
+		return filepath.Join(home, "AppData", "Roaming", "git-project-sync", "config.yaml")
 	}
 	return filepath.Join(home, ".config", "git-project-sync", "config.yaml")
 }

@@ -40,6 +40,7 @@ func newRootCommand() *cobra.Command {
 		newRepoCommand(&configPath),
 		newWorkspaceCommand(&configPath),
 		newSyncCommand(&configPath),
+		newDiscoverCommand(&configPath),
 		newDaemonCommand(&configPath),
 		newConfigCommand(&configPath),
 		newAuthCommand(&configPath),

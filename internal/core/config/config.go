@@ -135,7 +135,7 @@ func Default() Config {
 			CreateMissingPaths: true,
 		},
 		State: StateConfig{
-			DBPath:            "state/sync.db",
+			DBPath:            DefaultDBPath(),
 			PersistEventsDays: 30,
 		},
 		Daemon: DaemonConfig{
@@ -199,6 +199,11 @@ func Load(path string) (Config, error) {
 
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
+	}
+
+	// Run configuration migrations after loading and validation
+	if err := RunMigrations(&cfg); err != nil {
+		return Config{}, fmt.Errorf("run migrations: %w", err)
 	}
 
 	return cfg, nil

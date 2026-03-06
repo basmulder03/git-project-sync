@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
+	"github.com/basmulder03/git-project-sync/internal/core/auth"
 	"github.com/basmulder03/git-project-sync/internal/core/config"
 	"github.com/basmulder03/git-project-sync/internal/core/daemon"
 	coregit "github.com/basmulder03/git-project-sync/internal/core/git"
@@ -75,27 +77,49 @@ func run() int {
 	locks := daemon.NewRepoLockManager()
 	scheduler := daemon.NewScheduler(cfg.Daemon, logger, locks, engine.RunRepo, serviceAPI)
 
-	resolved, err := workspace.ResolveRunRepos(cfg)
+	// Initialize token store for API authentication
+	secretsPath := filepath.Join(filepath.Dir(*configPath), "secrets", "tokens.enc")
+	tokenStore, err := auth.NewTokenStore(auth.Options{
+		ServiceName:    "git-project-sync",
+		FallbackPath:   secretsPath,
+		FallbackKeyEnv: "GIT_PROJECT_SYNC_FALLBACK_KEY",
+	})
 	if err != nil {
-		logger.Error("failed to resolve repositories", "error", err)
-		return 1
-	}
-	for _, skipped := range resolved.Skipped {
-		logger.Info("repo sync skipped", "repo_path", skipped, "reason_code", "source_missing", "reason", "unable to resolve source for discovered repository")
+		logger.Warn("failed to initialize token store, discovery will be skipped", "error", err)
+		tokenStore = nil // Continue without token store
 	}
 
-	tasks := make([]daemon.RepoTask, 0, len(resolved.Repos))
-	sourcesByID := enabledSourcesByID(cfg.Sources)
-	for _, repo := range resolved.Repos {
-		if !repo.Enabled {
-			continue
+	// Initialize discovery-clone orchestrator
+	var discoveryOrchestrator *daemon.DiscoveryCloneOrchestrator
+	if tokenStore != nil {
+		discoveryOrchestrator = daemon.NewDiscoveryCloneOrchestrator(cfg, logger, tokenStore, store)
+	}
+
+	// Helper function to build sync tasks from discovered repositories
+	buildTasks := func() []daemon.RepoTask {
+		resolved, err := workspace.ResolveRunRepos(cfg)
+		if err != nil {
+			logger.Error("failed to resolve repositories", "error", err)
+			return nil
 		}
-		source, ok := sourcesByID[repo.SourceID]
-		if !ok {
-			logger.Info("repo sync skipped", "repo_path", repo.Path, "reason_code", "source_missing", "reason", "configured source for repository is missing or disabled")
-			continue
+		for _, skipped := range resolved.Skipped {
+			logger.Info("repo sync skipped", "repo_path", skipped, "reason_code", "source_missing", "reason", "unable to resolve source for discovered repository")
 		}
-		tasks = append(tasks, daemon.RepoTask{Source: source, Repo: repo})
+
+		tasks := make([]daemon.RepoTask, 0, len(resolved.Repos))
+		sourcesByID := enabledSourcesByID(cfg.Sources)
+		for _, repo := range resolved.Repos {
+			if !repo.Enabled {
+				continue
+			}
+			source, ok := sourcesByID[repo.SourceID]
+			if !ok {
+				logger.Info("repo sync skipped", "repo_path", repo.Path, "reason_code", "source_missing", "reason", "configured source for repository is missing or disabled")
+				continue
+			}
+			tasks = append(tasks, daemon.RepoTask{Source: source, Repo: repo})
+		}
+		return tasks
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -103,18 +127,79 @@ func run() int {
 
 	if *once {
 		traceID := fmt.Sprintf("run-%d", time.Now().UTC().UnixNano())
+
+		// Run discovery and auto-clone if enabled
+		if discoveryOrchestrator != nil {
+			if err := discoveryOrchestrator.Run(ctx, traceID); err != nil {
+				logger.Warn("discovery phase failed", "error", err, "trace_id", traceID)
+			}
+		}
+
+		// Build tasks after discovery completes (may include newly cloned repos)
+		tasks := buildTasks()
+		if tasks == nil {
+			return 1
+		}
+
 		scheduler.RunCycle(ctx, traceID, tasks, false)
 		logger.Info("syncd run completed", "trace_id", traceID, "repo_count", len(tasks))
 		return 0
 	}
 
-	if err := scheduler.RunPeriodic(ctx, tasks, false); err != nil && !errors.Is(err, context.Canceled) {
-		logger.Error("scheduler exited with error", "error", err)
-		return 1
+	// Periodic mode: run discovery+clone, then enter periodic sync loop
+	if discoveryOrchestrator != nil {
+		traceID := fmt.Sprintf("discovery-%d", time.Now().UTC().UnixNano())
+		if err := discoveryOrchestrator.Run(ctx, traceID); err != nil {
+			logger.Warn("initial discovery phase failed", "error", err, "trace_id", traceID)
+		}
 	}
 
-	logger.Info("syncd stopped")
-	return 0
+	// Run periodic sync with discovery at configured intervals
+	lastDiscovery := time.Now()
+	discoveryInterval := time.Duration(cfg.Daemon.DiscoveryIntervalSeconds) * time.Second
+
+	for {
+		// Build task list (may include newly discovered repos)
+		tasks := buildTasks()
+		if tasks == nil {
+			return 1
+		}
+
+		// Run one sync cycle
+		traceID := fmt.Sprintf("run-%d", time.Now().UTC().UnixNano())
+		scheduler.RunCycle(ctx, traceID, tasks, false)
+
+		// Calculate wait time until next sync
+		syncInterval := time.Duration(cfg.Daemon.IntervalSeconds) * time.Second
+		if syncInterval <= 0 {
+			syncInterval = 5 * time.Minute
+		}
+		jitter := time.Duration(cfg.Daemon.JitterSeconds) * time.Second
+		if jitter > 0 {
+			jitter = time.Duration(time.Now().UnixNano()%(int64(jitter)+1)) * time.Nanosecond
+		}
+		waitFor := syncInterval + jitter
+
+		logger.Info("scheduler sleeping", "duration_ms", waitFor.Milliseconds())
+
+		// Sleep until next cycle or context cancellation
+		select {
+		case <-ctx.Done():
+			logger.Info("syncd stopped")
+			return 0
+		case <-time.After(waitFor):
+		}
+
+		// Check if it's time to run discovery again
+		if discoveryOrchestrator != nil && discoveryInterval > 0 && time.Since(lastDiscovery) >= discoveryInterval {
+			traceID := fmt.Sprintf("discovery-%d", time.Now().UTC().UnixNano())
+			logger.Info("running periodic discovery", "trace_id", traceID, "interval_seconds", cfg.Daemon.DiscoveryIntervalSeconds)
+			if err := discoveryOrchestrator.Run(ctx, traceID); err != nil {
+				logger.Warn("periodic discovery phase failed", "error", err, "trace_id", traceID)
+			}
+			lastDiscovery = time.Now()
+		}
+	}
 }
 
 func enabledSourcesByID(sources []config.SourceConfig) map[string]config.SourceConfig {

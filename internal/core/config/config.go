@@ -39,12 +39,13 @@ type StateConfig struct {
 }
 
 type DaemonConfig struct {
-	IntervalSeconds         int         `yaml:"interval_seconds"`
-	JitterSeconds           int         `yaml:"jitter_seconds"`
-	MaxParallelRepos        int         `yaml:"max_parallel_repos"`
-	MaxParallelPerSource    int         `yaml:"max_parallel_per_source"`
-	OperationTimeoutSeconds int         `yaml:"operation_timeout_seconds"`
-	Retry                   RetryConfig `yaml:"retry"`
+	IntervalSeconds          int         `yaml:"interval_seconds"`
+	DiscoveryIntervalSeconds int         `yaml:"discovery_interval_seconds"` // How often to run discovery+clone (0 = only at startup)
+	JitterSeconds            int         `yaml:"jitter_seconds"`
+	MaxParallelRepos         int         `yaml:"max_parallel_repos"`
+	MaxParallelPerSource     int         `yaml:"max_parallel_per_source"`
+	OperationTimeoutSeconds  int         `yaml:"operation_timeout_seconds"`
+	Retry                    RetryConfig `yaml:"retry"`
 }
 
 type RetryConfig struct {
@@ -138,11 +139,12 @@ func Default() Config {
 			PersistEventsDays: 30,
 		},
 		Daemon: DaemonConfig{
-			IntervalSeconds:         300,
-			JitterSeconds:           30,
-			MaxParallelRepos:        4,
-			MaxParallelPerSource:    2,
-			OperationTimeoutSeconds: 120,
+			IntervalSeconds:          300,
+			DiscoveryIntervalSeconds: 3600, // Run discovery every hour (vs sync every 5 minutes)
+			JitterSeconds:            30,
+			MaxParallelRepos:         4,
+			MaxParallelPerSource:     2,
+			OperationTimeoutSeconds:  120,
 			Retry: RetryConfig{
 				MaxAttempts:        3,
 				BaseBackoffSeconds: 2,

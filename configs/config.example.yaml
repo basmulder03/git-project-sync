@@ -7,7 +7,8 @@ state:
     db_path: /path/to/state.db
     persist_events_days: 30
 daemon:
-    interval_seconds: 300
+    interval_seconds: 300                # Run repo sync every 5 minutes
+    discovery_interval_seconds: 3600     # Run discovery+clone every hour (less frequent to reduce API calls)
     jitter_seconds: 30
     max_parallel_repos: 4
     max_parallel_per_source: 2

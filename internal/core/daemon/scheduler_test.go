@@ -373,6 +373,67 @@ func TestSchedulerScaleRunCycleCompletionDistribution(t *testing.T) {
 	}
 }
 
+func TestSchedulerRunPeriodic(t *testing.T) {
+	t.Parallel()
+
+	var cycles atomic.Int32
+	run := func(_ context.Context, _ string, _ config.SourceConfig, _ config.RepoConfig, _ bool) (coresync.RepoJobResult, error) {
+		cycles.Add(1)
+		return coresync.RepoJobResult{}, nil
+	}
+
+	s := NewScheduler(testDaemonConfig(), slog.New(slog.NewJSONHandler(io.Discard, nil)), NewRepoLockManager(), run, nil)
+	s.sleepCtx = func(_ context.Context, _ time.Duration) error { return nil }
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Run periodic in background
+	go func() {
+		_ = s.RunPeriodic(ctx, []RepoTask{{Repo: config.RepoConfig{Path: "/repos/test"}}}, false)
+	}()
+
+	// Let it run a few cycles
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	// Should have run at least once
+	if got := cycles.Load(); got < 1 {
+		t.Fatalf("periodic scheduler should have run at least once, got %d cycles", got)
+	}
+}
+
+func TestSchedulerRunPeriodicWithRealSleep(t *testing.T) {
+	t.Parallel()
+
+	var cycles atomic.Int32
+	run := func(_ context.Context, _ string, _ config.SourceConfig, _ config.RepoConfig, _ bool) (coresync.RepoJobResult, error) {
+		cycles.Add(1)
+		return coresync.RepoJobResult{}, nil
+	}
+
+	cfg := testDaemonConfig()
+	cfg.IntervalSeconds = 1 // 1 second interval
+	cfg.JitterSeconds = 0   // No jitter for predictable timing
+
+	s := NewScheduler(cfg, slog.New(slog.NewJSONHandler(io.Discard, nil)), NewRepoLockManager(), run, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2500*time.Millisecond)
+	defer cancel()
+
+	// Run periodic - should complete 2-3 cycles in 2.5 seconds
+	err := s.RunPeriodic(ctx, []RepoTask{{Repo: config.RepoConfig{Path: "/repos/test"}}}, false)
+
+	// Should return context error
+	if err != context.DeadlineExceeded {
+		t.Logf("expected deadline exceeded error, got: %v", err)
+	}
+
+	// Should have completed at least 2 cycles
+	if got := cycles.Load(); got < 2 {
+		t.Fatalf("expected at least 2 cycles in 2.5 seconds, got %d", got)
+	}
+}
+
 func testDaemonConfig() config.DaemonConfig {
 	return config.DaemonConfig{
 		IntervalSeconds:         5,

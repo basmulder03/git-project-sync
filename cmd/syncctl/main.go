@@ -40,7 +40,7 @@ func newRootCommand() *cobra.Command {
 		newRepoCommand(&configPath),
 		newWorkspaceCommand(&configPath),
 		newSyncCommand(&configPath),
-		newStubCommand("daemon", "Control the daemon"),
+		newDaemonCommand(&configPath),
 		newConfigCommand(&configPath),
 		newAuthCommand(&configPath),
 		newCacheCommand(&configPath),
@@ -48,8 +48,9 @@ func newRootCommand() *cobra.Command {
 		newEventsCommand(&configPath),
 		newTraceCommand(&configPath),
 		newStateCommand(&configPath),
-		newStubCommand("install", "Install and register services"),
-		newStubCommand("service", "Service registration controls"),
+		newInstallCommand(&configPath),
+		newUninstallCommand(&configPath),
+		newServiceCommand(&configPath),
 		newUpdateCommand(&configPath),
 	)
 

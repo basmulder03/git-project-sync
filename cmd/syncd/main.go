@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -128,7 +129,7 @@ func run() int {
 	if *once {
 		traceID := fmt.Sprintf("run-%d", time.Now().UTC().UnixNano())
 
-		// Run discovery and auto-clone if enabled
+		// Run discovery and auto-clone if enabled (blocking in once mode)
 		if discoveryOrchestrator != nil {
 			if err := discoveryOrchestrator.Run(ctx, traceID); err != nil {
 				logger.Warn("discovery phase failed", "error", err, "trace_id", traceID)
@@ -146,18 +147,54 @@ func run() int {
 		return 0
 	}
 
-	// Periodic mode: run discovery+clone, then enter periodic sync loop
-	if discoveryOrchestrator != nil {
-		traceID := fmt.Sprintf("discovery-%d", time.Now().UTC().UnixNano())
-		if err := discoveryOrchestrator.Run(ctx, traceID); err != nil {
-			logger.Warn("initial discovery phase failed", "error", err, "trace_id", traceID)
-		}
-	}
-
-	// Run periodic sync with discovery at configured intervals
-	lastDiscovery := time.Now()
+	// Periodic mode: run discovery asynchronously in background
+	var discoveryMu sync.Mutex
+	discoveryRunning := false
+	lastDiscovery := time.Time{} // Will trigger immediate discovery on first check
 	discoveryInterval := time.Duration(cfg.Daemon.DiscoveryIntervalSeconds) * time.Second
 
+	// Helper to start discovery in background if it's time
+	tryStartDiscovery := func() {
+		if discoveryOrchestrator == nil {
+			return
+		}
+		if discoveryInterval <= 0 && !lastDiscovery.IsZero() {
+			return // Discovery disabled after first run
+		}
+
+		discoveryMu.Lock()
+		shouldRun := !discoveryRunning && (lastDiscovery.IsZero() || time.Since(lastDiscovery) >= discoveryInterval)
+		if shouldRun {
+			discoveryRunning = true
+		}
+		discoveryMu.Unlock()
+
+		if !shouldRun {
+			return
+		}
+
+		// Launch discovery in background goroutine
+		go func() {
+			traceID := fmt.Sprintf("discovery-%d", time.Now().UTC().UnixNano())
+			logger.Info("starting background discovery", "trace_id", traceID, "interval_seconds", cfg.Daemon.DiscoveryIntervalSeconds)
+
+			if err := discoveryOrchestrator.Run(ctx, traceID); err != nil {
+				logger.Warn("background discovery failed", "error", err, "trace_id", traceID)
+			} else {
+				logger.Info("background discovery completed", "trace_id", traceID)
+			}
+
+			discoveryMu.Lock()
+			discoveryRunning = false
+			lastDiscovery = time.Now()
+			discoveryMu.Unlock()
+		}()
+	}
+
+	// Start initial discovery in background
+	tryStartDiscovery()
+
+	// Run periodic sync loop (non-blocking, discovery runs in parallel)
 	for {
 		// Build task list (may include newly discovered repos)
 		tasks := buildTasks()
@@ -190,15 +227,8 @@ func run() int {
 		case <-time.After(waitFor):
 		}
 
-		// Check if it's time to run discovery again
-		if discoveryOrchestrator != nil && discoveryInterval > 0 && time.Since(lastDiscovery) >= discoveryInterval {
-			traceID := fmt.Sprintf("discovery-%d", time.Now().UTC().UnixNano())
-			logger.Info("running periodic discovery", "trace_id", traceID, "interval_seconds", cfg.Daemon.DiscoveryIntervalSeconds)
-			if err := discoveryOrchestrator.Run(ctx, traceID); err != nil {
-				logger.Warn("periodic discovery phase failed", "error", err, "trace_id", traceID)
-			}
-			lastDiscovery = time.Now()
-		}
+		// Check if it's time to run discovery again (non-blocking)
+		tryStartDiscovery()
 	}
 }
 

@@ -92,13 +92,3 @@ func classifyExitCode(err error) int {
 	}
 	return 1
 }
-
-func newStubCommand(use, short string) *cobra.Command {
-	return &cobra.Command{
-		Use:   use,
-		Short: short,
-		Run: func(cmd *cobra.Command, _ []string) {
-			cmd.Printf("%s command group is not implemented yet\n", use)
-		},
-	}
-}

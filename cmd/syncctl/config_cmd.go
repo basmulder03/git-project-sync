@@ -1,12 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"os"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
+	"github.com/basmulder03/git-project-sync/internal/app/commands"
 	"github.com/basmulder03/git-project-sync/internal/core/config"
 )
 
@@ -75,16 +74,12 @@ func newConfigCommand(configPath *string) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				switch args[0] {
-				case "workspace.root":
-					cmd.Println(cfg.Workspace.Root)
-				case "state.db_path":
-					cmd.Println(cfg.State.DBPath)
-				case "daemon.interval_seconds":
-					cmd.Println(cfg.Daemon.IntervalSeconds)
-				default:
-					return fmt.Errorf("unsupported key %q", args[0])
+
+				value, err := commands.GetConfigValue(cfg, args[0])
+				if err != nil {
+					return err
 				}
+				cmd.Println(value)
 				return nil
 			},
 		},
@@ -98,7 +93,7 @@ func newConfigCommand(configPath *string) *cobra.Command {
 					return err
 				}
 
-				if err := setConfigValue(&cfg, args[0], args[1]); err != nil {
+				if err := commands.SetConfigValue(&cfg, args[0], args[1]); err != nil {
 					return err
 				}
 				if err := config.Save(*configPath, cfg); err != nil {
@@ -112,34 +107,4 @@ func newConfigCommand(configPath *string) *cobra.Command {
 	)
 
 	return cmd
-}
-
-func setConfigValue(cfg *config.Config, key, value string) error {
-	switch key {
-	case "workspace.root":
-		cfg.Workspace.Root = value
-	case "state.db_path":
-		cfg.State.DBPath = value
-	case "daemon.interval_seconds":
-		v, err := strconv.Atoi(value)
-		if err != nil {
-			return fmt.Errorf("invalid integer for %s: %w", key, err)
-		}
-		cfg.Daemon.IntervalSeconds = v
-	case "cache.provider_ttl_seconds":
-		v, err := strconv.Atoi(value)
-		if err != nil {
-			return fmt.Errorf("invalid integer for %s: %w", key, err)
-		}
-		cfg.Cache.ProviderTTLSeconds = v
-	case "cache.branch_ttl_seconds":
-		v, err := strconv.Atoi(value)
-		if err != nil {
-			return fmt.Errorf("invalid integer for %s: %w", key, err)
-		}
-		cfg.Cache.BranchTTLSeconds = v
-	default:
-		return fmt.Errorf("unsupported key %q", key)
-	}
-	return nil
 }

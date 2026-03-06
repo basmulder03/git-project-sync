@@ -27,7 +27,7 @@ func main() {
 func run() int {
 	fs := flag.NewFlagSet("syncd", flag.ContinueOnError)
 	configPath := fs.String("config", "configs/config.example.yaml", "Path to config file")
-	once := fs.Bool("once", false, "Run one sync cycle and exit (stub)")
+	once := fs.Bool("once", false, "Run one sync cycle and exit")
 	showVersion := fs.Bool("version", false, "Show version and exit")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {

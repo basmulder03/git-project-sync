@@ -130,10 +130,17 @@ sync_active_binary "$SYNC_D_FILE" "$ACTIVE_SYNC_D" "syncd"
 sync_active_binary "$SYNC_CTL_FILE" "$ACTIVE_SYNC_CTL" "syncctl"
 sync_active_binary "$SYNC_TUI_FILE" "$ACTIVE_SYNC_TUI" "synctui"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+INSTALL_SCRIPT_FILE="$TMP_DIR/install.sh"
+if [[ "$VERSION" == "latest" ]]; then
+  INSTALL_REF="main"
+else
+  INSTALL_REF="$VERSION"
+fi
 
-BIN_PATH="$BIN_DIR/syncd" CONFIG_PATH="$CONFIG_PATH" "$REPO_ROOT/scripts/install.sh" "--$MODE"
+download "https://raw.githubusercontent.com/${REPO}/${INSTALL_REF}/scripts/install.sh" "$INSTALL_SCRIPT_FILE"
+chmod +x "$INSTALL_SCRIPT_FILE"
+
+BIN_PATH="$BIN_DIR/syncd" CONFIG_PATH="$CONFIG_PATH" "$INSTALL_SCRIPT_FILE" "--$MODE"
 
 echo "bootstrap install complete"
 echo "syncd: $BIN_DIR/syncd"

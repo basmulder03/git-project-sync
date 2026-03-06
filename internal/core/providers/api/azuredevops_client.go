@@ -193,7 +193,7 @@ func (c *AzureDevOpsClient) listReposInProject(ctx context.Context, projectName 
 			Owner:         c.source.Account + "/" + ar.Project.Name,
 			Name:          ar.Name,
 			FullName:      fmt.Sprintf("%s/%s/%s", c.source.Account, ar.Project.Name, ar.Name),
-			CloneURL:      c.buildAuthenticatedCloneURL(ar.RemoteURL),
+			CloneURL:      c.cleanCloneURL(ar.RemoteURL),
 			DefaultBranch: c.normalizeDefaultBranch(ar.DefaultBranch),
 			IsArchived:    false, // Azure doesn't have archive concept
 			IsDisabled:    ar.IsDisabled,
@@ -261,7 +261,7 @@ func (c *AzureDevOpsClient) GetRepositoryMetadata(ctx context.Context, owner, re
 		Owner:         c.source.Account + "/" + ar.Project.Name,
 		Name:          ar.Name,
 		FullName:      fmt.Sprintf("%s/%s/%s", c.source.Account, ar.Project.Name, ar.Name),
-		CloneURL:      c.buildAuthenticatedCloneURL(ar.RemoteURL),
+		CloneURL:      c.cleanCloneURL(ar.RemoteURL),
 		DefaultBranch: c.normalizeDefaultBranch(ar.DefaultBranch),
 		IsArchived:    false,
 		IsDisabled:    ar.IsDisabled,
@@ -272,18 +272,23 @@ func (c *AzureDevOpsClient) GetRepositoryMetadata(ctx context.Context, owner, re
 	}, nil
 }
 
-// buildAuthenticatedCloneURL constructs a clone URL with embedded token
-func (c *AzureDevOpsClient) buildAuthenticatedCloneURL(cloneURL string) string {
-	// Azure DevOps clone URLs are in format:
-	// https://dev.azure.com/account/project/_git/repo
-	// We need to insert token as: https://PAT@dev.azure.com/...
-	// Remove any trailing slash from the URL
+// cleanCloneURL removes any username@ prefix from Azure DevOps URLs
+// Azure DevOps API returns URLs like: https://org@dev.azure.com/org/project/_git/repo
+// We need clean URLs like: https://dev.azure.com/org/project/_git/repo
+// Git credential manager will handle authentication without embedded credentials
+func (c *AzureDevOpsClient) cleanCloneURL(cloneURL string) string {
+	// Remove any trailing slash
 	cloneURL = strings.TrimSuffix(cloneURL, "/")
 
+	// Remove username@ prefix if present (e.g., https://org@dev.azure.com/...)
 	if strings.HasPrefix(cloneURL, "https://") {
-		// Use empty username with PAT as password (format: https://PAT@host/...)
-		return strings.Replace(cloneURL, "https://", "https://"+c.token+"@", 1)
+		// Find the @ symbol that separates username from hostname
+		if idx := strings.Index(cloneURL, "@"); idx > 8 { // 8 = len("https://")
+			// Remove everything between "https://" and "@"
+			cloneURL = "https://" + cloneURL[idx+1:]
+		}
 	}
+
 	return cloneURL
 }
 

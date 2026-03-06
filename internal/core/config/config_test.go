@@ -154,3 +154,56 @@ func TestValidateRejectsInvalidGovernanceWindowDay(t *testing.T) {
 		t.Fatal("expected governance day validation error")
 	}
 }
+
+func TestLoadRepoDefaultsEnabledWhenFlagMissing(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := `schema_version: 1
+repos:
+  - path: /repos/example
+    source_id: gh
+`
+
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if len(cfg.Repos) != 1 {
+		t.Fatalf("expected one repo, got %d", len(cfg.Repos))
+	}
+	if !cfg.Repos[0].Enabled {
+		t.Fatal("expected repo.enabled default true when flag missing")
+	}
+}
+
+func TestLoadRepoPreservesExplicitDisabledFlag(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := `schema_version: 1
+repos:
+  - path: /repos/example
+    source_id: gh
+    enabled: false
+`
+
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if len(cfg.Repos) != 1 {
+		t.Fatalf("expected one repo, got %d", len(cfg.Repos))
+	}
+	if cfg.Repos[0].Enabled {
+		t.Fatal("expected repo.enabled false when explicitly configured")
+	}
+}

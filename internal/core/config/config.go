@@ -107,6 +107,22 @@ type RepoConfig struct {
 	SkipIfDirty                bool   `yaml:"skip_if_dirty"`
 }
 
+func (r *RepoConfig) UnmarshalYAML(value *yaml.Node) error {
+	type rawRepoConfig RepoConfig
+	aux := rawRepoConfig{
+		Enabled:                    true,
+		Remote:                     "origin",
+		Provider:                   "auto",
+		CleanupMergedLocalBranches: true,
+		SkipIfDirty:                true,
+	}
+	if err := value.Decode(&aux); err != nil {
+		return err
+	}
+	*r = RepoConfig(aux)
+	return nil
+}
+
 func Default() Config {
 	return Config{
 		SchemaVersion: CurrentSchemaVersion,

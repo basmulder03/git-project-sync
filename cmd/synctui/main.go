@@ -19,6 +19,7 @@ import (
 	"github.com/basmulder03/git-project-sync/internal/core/logging"
 	"github.com/basmulder03/git-project-sync/internal/core/state"
 	coresync "github.com/basmulder03/git-project-sync/internal/core/sync"
+	"github.com/basmulder03/git-project-sync/internal/core/workspace"
 	"github.com/basmulder03/git-project-sync/internal/ui/tui"
 )
 
@@ -133,6 +134,15 @@ func (e *actionExecutor) Execute(ctx context.Context, request tui.ActionRequest)
 }
 
 func (e *actionExecutor) syncAll(ctx context.Context) (string, error) {
+	resolved := workspace.DiscoveryResult{Repos: e.cfg.Repos}
+	if len(e.cfg.Repos) == 0 {
+		var err error
+		resolved, err = workspace.ResolveRunRepos(e.cfg)
+		if err != nil {
+			return "", err
+		}
+	}
+
 	byID := make(map[string]config.SourceConfig, len(e.cfg.Sources))
 	for _, source := range e.cfg.Sources {
 		if !source.Enabled {
@@ -143,7 +153,7 @@ func (e *actionExecutor) syncAll(ctx context.Context) (string, error) {
 
 	runs := 0
 	errorsCount := 0
-	for _, repo := range e.cfg.Repos {
+	for _, repo := range resolved.Repos {
 		if !repo.Enabled {
 			continue
 		}

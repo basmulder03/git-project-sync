@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
+	"github.com/basmulder03/git-project-sync/internal/core/workspace"
 )
 
 func newSyncCommand(configPath *string) *cobra.Command {
@@ -24,8 +25,19 @@ func newSyncCommand(configPath *string) *cobra.Command {
 				return err
 			}
 
+			resolved := workspace.DiscoveryResult{Repos: cfg.Repos}
+			if len(cfg.Repos) == 0 {
+				resolved, err = workspace.ResolveRunRepos(cfg)
+				if err != nil {
+					return err
+				}
+				for _, skipped := range resolved.Skipped {
+					cmd.Printf("skipped\tpath=%s\treason=source_not_resolved\n", skipped)
+				}
+			}
+
 			runCount := 0
-			for _, repo := range cfg.Repos {
+			for _, repo := range resolved.Repos {
 				if !repo.Enabled {
 					continue
 				}

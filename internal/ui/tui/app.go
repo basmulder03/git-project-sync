@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 )
 
@@ -17,6 +16,7 @@ type App struct {
 	provider        StatusProvider
 	executor        ActionExecutor
 	dashboard       *Dashboard
+	palette         *CommandPalette
 	in              io.Reader
 	out             io.Writer
 	refreshInterval time.Duration
@@ -27,6 +27,7 @@ func NewApp(provider StatusProvider, in io.Reader, out io.Writer) *App {
 	return &App{
 		provider:        provider,
 		dashboard:       NewDashboard(),
+		palette:         NewCommandPalette(),
 		in:              in,
 		out:             out,
 		refreshInterval: 2 * time.Second,
@@ -59,9 +60,23 @@ func (a *App) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case key := <-keys:
-			switch strings.ToLower(strings.TrimSpace(key)) {
+			if a.palette.Active() {
+				command, consumed, execute := a.palette.HandleKey(key)
+				if consumed {
+					if execute {
+						a.runAction(ctx, ActionRequest{Type: ActionRunCommand, Command: command})
+					}
+					a.render(status)
+					continue
+				}
+			}
+
+			switch key {
 			case "q":
 				return nil
+			case "/":
+				a.palette.Open()
+				a.render(status)
 			case "r":
 				status, err = a.provider.DashboardStatus(ctx)
 				if err != nil {
@@ -69,7 +84,7 @@ func (a *App) Run(ctx context.Context) error {
 				}
 				a.render(status)
 			default:
-				if request, ok := KeyToAction(strings.ToLower(strings.TrimSpace(key)), status); ok {
+				if request, ok := KeyToAction(key, status); ok {
 					a.runAction(ctx, request)
 					a.render(status)
 					continue
@@ -94,6 +109,9 @@ func (a *App) Run(ctx context.Context) error {
 
 func (a *App) render(status DashboardStatus) {
 	view := a.dashboard.Render(status)
+	if a.palette.Active() {
+		view += a.palette.Render()
+	}
 	if a.lastMessage != "" {
 		view += "\nAction: " + a.lastMessage + "\n"
 	}
@@ -130,6 +148,12 @@ func (a *App) readKeys(ctx context.Context, out chan<- string) {
 		}
 
 		key := string(r)
+		if r == '\n' || r == '\r' {
+			key = "enter"
+		}
+		if r == 127 || r == 8 {
+			key = "backspace"
+		}
 		if r == 27 {
 			if seq, _ := reader.Peek(2); len(seq) == 2 && seq[0] == '[' {
 				_, _ = reader.Discard(2)
@@ -139,6 +163,8 @@ func (a *App) readKeys(ctx context.Context, out chan<- string) {
 				case 'C':
 					key = "right"
 				}
+			} else {
+				key = "esc"
 			}
 		}
 

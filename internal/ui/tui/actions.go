@@ -8,12 +8,14 @@ const (
 	ActionSyncAll        ActionType = "sync_all"
 	ActionCacheRefresh   ActionType = "cache_refresh"
 	ActionTraceDrilldown ActionType = "trace_drilldown"
+	ActionRunCommand     ActionType = "run_command"
 )
 
 type ActionRequest struct {
 	Type     ActionType
 	RepoPath string
 	TraceID  string
+	Command  string
 }
 
 type ActionExecutor interface {

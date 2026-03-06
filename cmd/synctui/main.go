@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -123,6 +125,8 @@ func (e *actionExecutor) Execute(ctx context.Context, request tui.ActionRequest)
 			return "", err
 		}
 		return fmt.Sprintf("trace %s has %d event(s) (CLI equivalent: syncctl trace show %s)", request.TraceID, len(events), request.TraceID), nil
+	case tui.ActionRunCommand:
+		return e.runCommand(ctx, request.Command)
 	default:
 		return "unknown action", nil
 	}
@@ -155,6 +159,135 @@ func (e *actionExecutor) syncAll(ctx context.Context) (string, error) {
 	}
 
 	return fmt.Sprintf("sync all finished: repos=%d errors=%d (CLI equivalent: syncctl sync all)", runs, errorsCount), nil
+}
+
+func (e *actionExecutor) runCommand(ctx context.Context, raw string) (string, error) {
+	parts := strings.Fields(strings.TrimSpace(raw))
+	if len(parts) == 0 {
+		return "", fmt.Errorf("command is required")
+	}
+
+	switch parts[0] {
+	case "sync":
+		if len(parts) == 2 && parts[1] == "all" {
+			return e.syncAll(ctx)
+		}
+	case "cache":
+		if len(parts) >= 2 {
+			target := commands.CacheTargetAll
+			if len(parts) >= 3 {
+				target = commands.CacheTarget(parts[2])
+			}
+			svc := commands.NewCacheService(e.api)
+			switch parts[1] {
+			case "refresh":
+				if err := svc.Refresh(ctx, target); err != nil {
+					return "", err
+				}
+				return fmt.Sprintf("cache refresh completed (target=%s)", target), nil
+			case "clear":
+				if err := svc.Clear(ctx, target); err != nil {
+					return "", err
+				}
+				return fmt.Sprintf("cache clear completed (target=%s)", target), nil
+			}
+		}
+	case "stats":
+		if len(parts) == 2 && parts[1] == "show" {
+			repoStates, err := e.api.RepoStatuses(1000)
+			if err != nil {
+				return "", err
+			}
+			runs, err := e.api.InFlightRuns(1000)
+			if err != nil {
+				return "", err
+			}
+			events, err := e.api.ListEvents(1000)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("stats: repos=%d in_flight=%d events=%d", len(repoStates), len(runs), len(events)), nil
+		}
+	case "events":
+		if len(parts) >= 2 && parts[1] == "list" {
+			limit := 20
+			if len(parts) == 3 {
+				parsed, err := strconv.Atoi(parts[2])
+				if err != nil {
+					return "", fmt.Errorf("invalid events limit: %w", err)
+				}
+				limit = parsed
+			}
+			events, err := e.api.ListEvents(limit)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("events listed: count=%d", len(events)), nil
+		}
+	case "trace":
+		if len(parts) == 3 && parts[1] == "show" && parts[2] == "latest" {
+			events, err := e.api.ListEvents(1)
+			if err != nil {
+				return "", err
+			}
+			if len(events) == 0 || strings.TrimSpace(events[0].TraceID) == "" {
+				return "no latest trace found", nil
+			}
+			traceEvents, err := e.api.Trace(events[0].TraceID, 200)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("trace %s has %d event(s)", events[0].TraceID, len(traceEvents)), nil
+		}
+	case "repo":
+		if len(parts) == 2 && parts[1] == "list" {
+			return fmt.Sprintf("repos configured: %d", len(e.cfg.Repos)), nil
+		}
+	case "source":
+		if len(parts) == 2 && parts[1] == "list" {
+			return fmt.Sprintf("sources configured: %d", len(e.cfg.Sources)), nil
+		}
+	case "config":
+		if len(parts) == 2 && parts[1] == "show" {
+			return fmt.Sprintf("config schema=%d repos=%d sources=%d", e.cfg.SchemaVersion, len(e.cfg.Repos), len(e.cfg.Sources)), nil
+		}
+	case "workspace":
+		if len(parts) == 2 && parts[1] == "show" {
+			return fmt.Sprintf("workspace root=%s layout=%s", e.cfg.Workspace.Root, e.cfg.Workspace.Layout), nil
+		}
+	case "daemon":
+		if len(parts) == 2 && parts[1] == "status" {
+			events, err := e.api.ListEvents(50)
+			if err != nil {
+				return "", err
+			}
+			health := "healthy"
+			now := time.Now().UTC()
+			for _, event := range events {
+				if strings.EqualFold(event.Level, "error") && now.Sub(event.CreatedAt) < 15*time.Minute {
+					health = "degraded"
+					break
+				}
+			}
+			return fmt.Sprintf("daemon status: %s", health), nil
+		}
+	case "state":
+		if len(parts) == 2 && parts[1] == "check" {
+			store, err := state.NewSQLiteStore(e.cfg.State.DBPath)
+			if err != nil {
+				return "", err
+			}
+			defer func() {
+				_ = store.Close()
+			}()
+			if err := store.IntegrityCheck(); err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("state integrity ok (%s)", e.cfg.State.DBPath), nil
+		}
+	}
+
+	return "", fmt.Errorf("unsupported command %q", raw)
 }
 
 func (p *statusProvider) DashboardStatus(ctx context.Context) (tui.DashboardStatus, error) {

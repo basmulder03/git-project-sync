@@ -259,7 +259,7 @@ Common causes:
 
 ### Token Requirements
 
-See [PAT Permission Requirements](pat-permission-requirements.md) for required scopes.
+See [PAT Permission Requirements](../reference/pat-permission-requirements.md) for required scopes.
 
 **Minimum scopes for discovery**:
 - **GitHub**: `repo` (full control of private repositories)
@@ -282,4 +282,4 @@ See [PAT Permission Requirements](pat-permission-requirements.md) for required s
 
 ## Configuration Reference
 
-See [Configuration Schema](configuration-schema.md) for full details on all auto-discovery settings.
+See [Configuration Schema](../reference/configuration-schema.md) for full details on all auto-discovery settings.

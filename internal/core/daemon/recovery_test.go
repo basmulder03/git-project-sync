@@ -107,3 +107,69 @@ func TestRecovererHandlesRestartStormRecovery(t *testing.T) {
 		t.Fatalf("expected reused run id to be allowed after process restart: started=%t err=%v", started, err)
 	}
 }
+
+func TestRecovererCompleteRun(t *testing.T) {
+	t.Parallel()
+
+	store, err := state.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	recoverer := NewRecoverer(store)
+
+	// Start a run
+	started, err := recoverer.BeginRun("run-complete-1", "trace-complete", "/repos/test", "source-1")
+	if err != nil || !started {
+		t.Fatalf("begin run failed: started=%t err=%v", started, err)
+	}
+
+	// Complete the run successfully
+	err = recoverer.CompleteRun("run-complete-1", "success", "completed successfully")
+	if err != nil {
+		t.Fatalf("complete run failed: %v", err)
+	}
+
+	// Verify run is no longer in-flight
+	inFlight, err := store.ListInFlightRunStates(10)
+	if err != nil {
+		t.Fatalf("list in-flight runs: %v", err)
+	}
+	if len(inFlight) != 0 {
+		t.Fatalf("expected no in-flight runs after completion, got %d", len(inFlight))
+	}
+}
+
+func TestRecovererCompleteRunWithError(t *testing.T) {
+	t.Parallel()
+
+	store, err := state.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	recoverer := NewRecoverer(store)
+
+	// Start a run
+	started, err := recoverer.BeginRun("run-error-1", "trace-error", "/repos/test", "source-1")
+	if err != nil || !started {
+		t.Fatalf("begin run failed: started=%t err=%v", started, err)
+	}
+
+	// Complete the run with error status
+	err = recoverer.CompleteRun("run-error-1", "error", "sync failed due to network issue")
+	if err != nil {
+		t.Fatalf("complete run failed: %v", err)
+	}
+
+	// Verify run is no longer in-flight
+	inFlight, err := store.ListInFlightRunStates(10)
+	if err != nil {
+		t.Fatalf("list in-flight runs: %v", err)
+	}
+	if len(inFlight) != 0 {
+		t.Fatalf("expected no in-flight runs after completion, got %d", len(inFlight))
+	}
+}

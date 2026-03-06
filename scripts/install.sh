@@ -2,27 +2,15 @@
 set -euo pipefail
 
 MODE="user"
-if [[ "${1:-}" == "--system" ]]; then
-  MODE="system"
-elif [[ "${1:-}" == "--user" || -z "${1:-}" ]]; then
+if [[ "${1:-}" == "--user" || -z "${1:-}" ]]; then
   MODE="user"
 else
-  echo "Usage: $0 [--user|--system]"
+  echo "Usage: $0 [--user]"
   exit 2
 fi
 
-if [[ "$MODE" == "system" && "$(id -u)" -ne 0 ]]; then
-  echo "system install requires root"
-  exit 1
-fi
-
-if [[ "$MODE" == "user" ]]; then
-  BIN_PATH="${BIN_PATH:-$HOME/.local/bin/syncd}"
-  CONFIG_PATH="${CONFIG_PATH:-$HOME/.config/git-project-sync/config.yaml}"
-else
-  BIN_PATH="${BIN_PATH:-/usr/local/bin/syncd}"
-  CONFIG_PATH="${CONFIG_PATH:-/etc/git-project-sync/config.yaml}"
-fi
+BIN_PATH="${BIN_PATH:-$HOME/.local/bin/syncd}"
+CONFIG_PATH="${CONFIG_PATH:-$HOME/.config/git-project-sync/config.yaml}"
 
 if [[ ! -x "$BIN_PATH" ]]; then
   echo "syncd binary not found or not executable at $BIN_PATH"
@@ -39,13 +27,8 @@ sources: []
 EOF
 fi
 
-if [[ "$MODE" == "user" ]]; then
-  SERVICE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-  SYSTEMCTL=(systemctl --user)
-else
-  SERVICE_DIR="/etc/systemd/system"
-  SYSTEMCTL=(systemctl)
-fi
+SERVICE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+SYSTEMCTL=(systemctl --user)
 
 mkdir -p "$SERVICE_DIR"
 SERVICE_FILE="$SERVICE_DIR/git-project-sync.service"

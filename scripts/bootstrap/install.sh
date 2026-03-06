@@ -11,10 +11,6 @@ while [[ $# -gt 0 ]]; do
       MODE="user"
       shift
       ;;
-    --system)
-      MODE="system"
-      shift
-      ;;
     --version)
       VERSION="${2:-}"
       if [[ -z "$VERSION" ]]; then
@@ -32,7 +28,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     *)
-      echo "Usage: $0 [--user|--system] [--version <tag>] [--repo <owner/name>]"
+      echo "Usage: $0 [--user] [--version <tag>] [--repo <owner/name>]"
       exit 2
       ;;
   esac
@@ -54,11 +50,6 @@ case "$ARCH_RAW" in
     ;;
 esac
 
-if [[ "$MODE" == "system" && "$(id -u)" -ne 0 ]]; then
-  echo "system bootstrap install requires root"
-  exit 1
-fi
-
 if command -v curl >/dev/null 2>&1; then
   DOWNLOADER="curl"
 elif command -v wget >/dev/null 2>&1; then
@@ -78,13 +69,8 @@ download() {
   fi
 }
 
-if [[ "$MODE" == "system" ]]; then
-  BIN_DIR="/usr/local/bin"
-  CONFIG_PATH="/etc/git-project-sync/config.yaml"
-else
-  BIN_DIR="${HOME}/.local/bin"
-  CONFIG_PATH="${HOME}/.config/git-project-sync/config.yaml"
-fi
+BIN_DIR="${HOME}/.local/bin"
+CONFIG_PATH="${HOME}/.config/git-project-sync/config.yaml"
 
 mkdir -p "$BIN_DIR"
 

@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("user", "system")]
+  [ValidateSet("user")]
   [string]$Mode = "user"
 )
 
@@ -57,26 +57,15 @@ function Add-ToPath {
   }
 }
 
-if ($Mode -eq "system") {
-  $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-  if (-not $isAdmin) {
-    throw "System install requires Administrator privileges"
-  }
-}
-
 $taskName = "GitProjectSync"
 if ($env:BIN_PATH) {
   $binPath = $env:BIN_PATH
-} elseif ($Mode -eq "system") {
-  $binPath = "$env:ProgramFiles\git-project-sync\syncd.exe"
 } else {
   $binPath = "$env:LOCALAPPDATA\git-project-sync\bin\syncd.exe"
 }
 
 if ($env:CONFIG_PATH) {
   $configPath = $env:CONFIG_PATH
-} elseif ($Mode -eq "system") {
-  $configPath = "$env:ProgramData\git-project-sync\config.yaml"
 } else {
   $configPath = "$env:APPDATA\git-project-sync\config.yaml"
 }
@@ -99,22 +88,12 @@ sources: []
 "@ | Set-Content -Path $configPath -NoNewline
 }
 
-$launcherPath = Join-Path $configDir "run-syncd.cmd"
-@"
-@echo off
-"$binPath" --config "$configPath"
-"@ | Set-Content -Path $launcherPath -NoNewline
+$taskCommand = "`"$binPath`" --config `"$configPath`""
 
-$taskCommand = "`"$launcherPath`""
-
-$pathScope = if ($Mode -eq "system") { "Machine" } else { "User" }
+$pathScope = "User"
 Add-ToPath -Directory (Split-Path -Parent $binPath) -Scope $pathScope
 
-if ($Mode -eq "system") {
-  Invoke-Schtasks -Arguments @("/Create", "/F", "/SC", "MINUTE", "/MO", "5", "/TN", $taskName, "/TR", $taskCommand, "/RL", "HIGHEST", "/RU", "SYSTEM")
-} else {
-  Invoke-Schtasks -Arguments @("/Create", "/F", "/SC", "MINUTE", "/MO", "5", "/TN", $taskName, "/TR", $taskCommand, "/RL", "LIMITED")
-}
+Invoke-Schtasks -Arguments @("/Create", "/F", "/SC", "MINUTE", "/MO", "5", "/TN", $taskName, "/TR", $taskCommand, "/RL", "LIMITED")
 
 Invoke-Schtasks -Arguments @("/Query", "/TN", $taskName)
 Write-Host "Installed scheduled task '$taskName' in $Mode mode"

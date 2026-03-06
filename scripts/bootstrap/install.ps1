@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("user", "system")]
+  [ValidateSet("user")]
   [string]$Mode = "user",
   [string]$Version = "latest",
   [string]$Repo = "basmulder03/git-project-sync"
@@ -15,20 +15,8 @@ if ($env:PROCESSOR_ARCHITECTURE -notin @("AMD64", "x86_64")) {
   throw "Unsupported architecture: $env:PROCESSOR_ARCHITECTURE"
 }
 
-if ($Mode -eq "system") {
-  $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-  if (-not $isAdmin) {
-    throw "System bootstrap install requires Administrator privileges"
-  }
-}
-
-if ($Mode -eq "system") {
-  $binDir = "$env:ProgramFiles\git-project-sync"
-  $configPath = "$env:ProgramData\git-project-sync\config.yaml"
-} else {
-  $binDir = "$env:LOCALAPPDATA\git-project-sync\bin"
-  $configPath = "$env:APPDATA\git-project-sync\config.yaml"
-}
+$binDir = "$env:LOCALAPPDATA\git-project-sync\bin"
+$configPath = "$env:APPDATA\git-project-sync\config.yaml"
 
 if (-not (Test-Path -LiteralPath $binDir)) {
   New-Item -ItemType Directory -Path $binDir -Force | Out-Null

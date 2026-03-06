@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -12,7 +15,17 @@ import (
 	coregit "github.com/basmulder03/git-project-sync/internal/core/git"
 	"github.com/basmulder03/git-project-sync/internal/core/logging"
 	coresync "github.com/basmulder03/git-project-sync/internal/core/sync"
+	"github.com/basmulder03/git-project-sync/internal/core/workspace"
 )
+
+var runGitClone = func(repoURL, destination string) error {
+	cmd := exec.Command("git", "clone", repoURL, destination)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git clone failed: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
 
 func newRepoCommand(configPath *string) *cobra.Command {
 	repoCmd := &cobra.Command{
@@ -26,7 +39,7 @@ func newRepoCommand(configPath *string) *cobra.Command {
 		newRepoListCommand(configPath),
 		newRepoShowCommand(configPath),
 		newRepoSyncCommand(configPath),
-		newRepoCloneStubCommand(),
+		newRepoCloneCommand(configPath),
 	)
 
 	return repoCmd
@@ -81,15 +94,129 @@ func newRepoAddCommand(configPath *string) *cobra.Command {
 	return cmd
 }
 
-func newRepoCloneStubCommand() *cobra.Command {
-	return &cobra.Command{
+func newRepoCloneCommand(configPath *string) *cobra.Command {
+	var into string
+	var remote string
+
+	cmd := &cobra.Command{
 		Use:   "clone <source-id> <repo-slug>",
-		Short: "Clone repository (not implemented yet)",
+		Short: "Clone repository and register it",
 		Args:  cobra.ExactArgs(2),
-		Run: func(cmd *cobra.Command, _ []string) {
-			cmd.Println("repo clone is not implemented yet")
+		RunE: func(cmd *cobra.Command, args []string) error {
+			sourceID := strings.TrimSpace(args[0])
+			repoSlug := strings.Trim(strings.TrimSpace(args[1]), "/")
+			if repoSlug == "" {
+				return fmt.Errorf("repo slug must not be empty")
+			}
+
+			cfg, err := config.Load(*configPath)
+			if err != nil {
+				return err
+			}
+
+			var source config.SourceConfig
+			found := false
+			for _, candidate := range cfg.Sources {
+				if candidate.ID == sourceID {
+					source = candidate
+					found = true
+					break
+				}
+			}
+			if !found {
+				return fmt.Errorf("source %q not found", sourceID)
+			}
+
+			repoName := filepath.Base(repoSlug)
+			destination, err := cloneDestination(cfg, source, repoName, into)
+			if err != nil {
+				return err
+			}
+
+			if _, err := os.Stat(destination); err == nil {
+				return fmt.Errorf("destination already exists: %s", destination)
+			} else if !os.IsNotExist(err) {
+				return err
+			}
+
+			repoURL := cloneURL(source, repoSlug)
+			if err := runGitClone(repoURL, destination); err != nil {
+				return err
+			}
+
+			for _, repo := range cfg.Repos {
+				if repo.Path == destination {
+					cmd.Printf("cloned %s into %s\n", repoSlug, destination)
+					cmd.Printf("repo already configured: %s\n", destination)
+					return nil
+				}
+			}
+
+			cfg.Repos = append(cfg.Repos, config.RepoConfig{
+				Path:                       destination,
+				SourceID:                   source.ID,
+				Remote:                     remote,
+				Enabled:                    true,
+				Provider:                   "auto",
+				CleanupMergedLocalBranches: true,
+				SkipIfDirty:                true,
+			})
+			if err := config.Save(*configPath, cfg); err != nil {
+				return err
+			}
+
+			cmd.Printf("cloned %s into %s\n", repoSlug, destination)
+			cmd.Printf("added repo %s\n", destination)
+			return nil
 		},
 	}
+	cmd.Flags().StringVar(&into, "into", "", "Destination mode (supported: managed)")
+	cmd.Flags().StringVar(&remote, "remote", "origin", "Remote name")
+	return cmd
+}
+
+func cloneDestination(cfg config.Config, source config.SourceConfig, repoName, into string) (string, error) {
+	if strings.TrimSpace(into) == "" {
+		return filepath.Clean(repoName), nil
+	}
+	if strings.TrimSpace(into) != "managed" {
+		return "", fmt.Errorf("invalid --into value %q (supported: managed)", into)
+	}
+
+	resolver, err := workspace.NewLayoutResolver(cfg.Workspace.Root)
+	if err != nil {
+		return "", err
+	}
+
+	expectedPath, err := resolver.ExpectedRepoPath(source, config.RepoConfig{Path: repoName, SourceID: source.ID})
+	if err != nil {
+		return "", err
+	}
+	return expectedPath, nil
+}
+
+func cloneURL(source config.SourceConfig, repoSlug string) string {
+	host := strings.TrimSpace(source.Host)
+	if host == "" {
+		host = defaultHost(source.Provider)
+	}
+	provider := strings.ToLower(strings.TrimSpace(source.Provider))
+	if provider == "azure" || provider == "azuredevops" {
+		org := strings.TrimSpace(source.Organization)
+		if org == "" {
+			org = strings.TrimSpace(source.Account)
+		}
+		return fmt.Sprintf("https://%s/%s/%s/_git/%s", host, source.Account, org, repoSlug)
+	}
+
+	owner := strings.TrimSpace(source.Organization)
+	if owner == "" {
+		owner = strings.TrimSpace(source.Account)
+	}
+	if strings.Contains(repoSlug, "/") {
+		return fmt.Sprintf("https://%s/%s.git", host, repoSlug)
+	}
+	return fmt.Sprintf("https://%s/%s/%s.git", host, owner, repoSlug)
 }
 
 func newRepoRemoveCommand(configPath *string) *cobra.Command {

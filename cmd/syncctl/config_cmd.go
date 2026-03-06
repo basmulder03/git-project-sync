@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -87,7 +88,58 @@ func newConfigCommand(configPath *string) *cobra.Command {
 				return nil
 			},
 		},
+		&cobra.Command{
+			Use:   "set <key> <value>",
+			Short: "Set a supported config value",
+			Args:  cobra.ExactArgs(2),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				cfg, err := config.Load(*configPath)
+				if err != nil {
+					return err
+				}
+
+				if err := setConfigValue(&cfg, args[0], args[1]); err != nil {
+					return err
+				}
+				if err := config.Save(*configPath, cfg); err != nil {
+					return err
+				}
+
+				cmd.Printf("updated %s\n", args[0])
+				return nil
+			},
+		},
 	)
 
 	return cmd
+}
+
+func setConfigValue(cfg *config.Config, key, value string) error {
+	switch key {
+	case "workspace.root":
+		cfg.Workspace.Root = value
+	case "state.db_path":
+		cfg.State.DBPath = value
+	case "daemon.interval_seconds":
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer for %s: %w", key, err)
+		}
+		cfg.Daemon.IntervalSeconds = v
+	case "cache.provider_ttl_seconds":
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer for %s: %w", key, err)
+		}
+		cfg.Cache.ProviderTTLSeconds = v
+	case "cache.branch_ttl_seconds":
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer for %s: %w", key, err)
+		}
+		cfg.Cache.BranchTTLSeconds = v
+	default:
+		return fmt.Errorf("unsupported key %q", key)
+	}
+	return nil
 }

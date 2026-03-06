@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -88,5 +89,46 @@ func TestSyncAllNoEnabledRepos(t *testing.T) {
 	}
 	if !strings.Contains(out, "no enabled repos configured") {
 		t.Fatalf("unexpected sync all output: %s", out)
+	}
+}
+
+func TestRepoCloneRegistersRepo(t *testing.T) {
+	prevClone := runGitClone
+	runGitClone = func(repoURL, destination string) error {
+		return os.MkdirAll(destination, 0o755)
+	}
+	t.Cleanup(func() {
+		runGitClone = prevClone
+	})
+
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := config.Default()
+	cfg.Workspace.Root = filepath.Join(t.TempDir(), "workspace")
+	cfg.Sources = []config.SourceConfig{{
+		ID:           "gh-work",
+		Provider:     "github",
+		Account:      "jane",
+		Organization: "acme",
+		Host:         "github.com",
+		Enabled:      true,
+	}}
+	if err := config.Save(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	out, err := executeSyncctl("--config", configPath, "repo", "clone", "gh-work", "acme/project", "--into", "managed")
+	if err != nil {
+		t.Fatalf("repo clone failed: %v output=%s", err, out)
+	}
+	if !strings.Contains(out, "cloned acme/project") {
+		t.Fatalf("unexpected clone output: %s", out)
+	}
+
+	listOut, err := executeSyncctl("--config", configPath, "repo", "list")
+	if err != nil {
+		t.Fatalf("repo list failed: %v output=%s", err, listOut)
+	}
+	if !strings.Contains(listOut, "project") {
+		t.Fatalf("expected cloned repo in list output: %s", listOut)
 	}
 }

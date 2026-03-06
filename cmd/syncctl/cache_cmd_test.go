@@ -12,7 +12,9 @@ func TestCacheShowRefreshClear(t *testing.T) {
 	t.Parallel()
 
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
-	if err := config.Save(configPath, config.Default()); err != nil {
+	cfg := config.Default()
+	cfg.State.DBPath = filepath.Join(t.TempDir(), "sync.db")
+	if err := config.Save(configPath, cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
 
@@ -38,5 +40,16 @@ func TestCacheShowRefreshClear(t *testing.T) {
 	}
 	if !strings.Contains(clearOut, "cleared cache target") {
 		t.Fatalf("unexpected cache clear output: %s", clearOut)
+	}
+
+	showOut, err = executeSyncctl("--config", configPath, "cache", "show")
+	if err != nil {
+		t.Fatalf("cache show after ops failed: %v output=%s", err, showOut)
+	}
+	if strings.Contains(showOut, "providers last_refresh: -") {
+		t.Fatalf("expected providers refresh timestamp after refresh, output=%s", showOut)
+	}
+	if strings.Contains(showOut, "providers last_clear: -") {
+		t.Fatalf("expected providers clear timestamp after clear, output=%s", showOut)
 	}
 }

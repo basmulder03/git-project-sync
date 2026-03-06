@@ -174,9 +174,14 @@ func Default() Config {
 	}
 }
 
-// boolPtr returns a pointer to a bool value
-func boolPtr(b bool) *bool {
+// BoolPtr returns a pointer to a bool value (exported for use in tests and other packages)
+func BoolPtr(b bool) *bool {
 	return &b
+}
+
+// boolPtr is an internal alias for BoolPtr
+func boolPtr(b bool) *bool {
+	return BoolPtr(b)
 }
 
 func Load(path string) (Config, error) {

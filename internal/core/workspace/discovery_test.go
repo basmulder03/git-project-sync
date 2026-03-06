@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
+	"github.com/basmulder03/git-project-sync/internal/core/providers/api"
 )
 
 func TestResolveRunReposUsesConfiguredReposWhenPresent(t *testing.T) {
@@ -130,4 +131,140 @@ func TestIsIgnorableWalkError(t *testing.T) {
 	if !isIgnorableWalkError(wrapped) {
 		t.Fatal("expected wrapped permission error to be ignorable")
 	}
+}
+
+func TestIdentifyReposToClone(t *testing.T) {
+	cfg := config.Config{
+		Workspace: config.WorkspaceConfig{
+			Root: "/workspace",
+		},
+	}
+
+	remoteRepos := []api.RemoteRepository{
+		{
+			Provider: "github",
+			Owner:    "testuser",
+			Name:     "repo1",
+			SourceID: "source1",
+		},
+		{
+			Provider: "github",
+			Owner:    "testuser",
+			Name:     "repo2",
+			SourceID: "source1",
+		},
+		{
+			Provider: "github",
+			Owner:    "testuser",
+			Name:     "repo3",
+			SourceID: "source1",
+		},
+	}
+
+	localRepos := []config.RepoConfig{
+		{
+			Path:     "/workspace/github/testuser/repo1",
+			SourceID: "source1",
+		},
+	}
+
+	reposToClone := IdentifyReposToClone(cfg, remoteRepos, localRepos)
+
+	// Should identify repo2 and repo3 as needing to be cloned
+	if len(reposToClone) != 2 {
+		t.Errorf("expected 2 repos to clone, got %d", len(reposToClone))
+	}
+
+	// Verify it's the right repos
+	found := make(map[string]bool)
+	for _, repo := range reposToClone {
+		found[repo.Name] = true
+	}
+
+	if !found["repo2"] || !found["repo3"] {
+		t.Errorf("wrong repos identified for cloning: %+v", reposToClone)
+	}
+}
+
+func TestBuildListOptions(t *testing.T) {
+	tests := []struct {
+		name            string
+		cfg             config.Config
+		sourceID        string
+		wantIncArchived bool
+		wantMaxSizeKB   int64
+	}{
+		{
+			name: "default policy settings",
+			cfg: config.Config{
+				Governance: config.GovernanceConfig{
+					DefaultPolicy: config.SyncPolicyConfig{
+						AutoCloneEnabled:         boolPtr(true),
+						AutoCloneMaxSizeMB:       1024,
+						AutoCloneIncludeArchived: false,
+					},
+				},
+			},
+			sourceID:        "test-source",
+			wantIncArchived: false,
+			wantMaxSizeKB:   1024 * 1024,
+		},
+		{
+			name: "source-specific override",
+			cfg: config.Config{
+				Governance: config.GovernanceConfig{
+					DefaultPolicy: config.SyncPolicyConfig{
+						AutoCloneEnabled:         boolPtr(true),
+						AutoCloneMaxSizeMB:       2048,
+						AutoCloneIncludeArchived: false,
+					},
+					SourcePolicies: map[string]config.SyncPolicyConfig{
+						"test-source": {
+							AutoCloneMaxSizeMB: 512,
+						},
+					},
+				},
+			},
+			sourceID:        "test-source",
+			wantIncArchived: false,
+			wantMaxSizeKB:   512 * 1024,
+		},
+		{
+			name: "auto-clone disabled for source",
+			cfg: config.Config{
+				Governance: config.GovernanceConfig{
+					DefaultPolicy: config.SyncPolicyConfig{
+						AutoCloneEnabled:         boolPtr(true),
+						AutoCloneMaxSizeMB:       2048,
+						AutoCloneIncludeArchived: false,
+					},
+					SourcePolicies: map[string]config.SyncPolicyConfig{
+						"test-source": {
+							AutoCloneEnabled: boolPtr(false),
+						},
+					},
+				},
+			},
+			sourceID:        "test-source",
+			wantIncArchived: false,
+			wantMaxSizeKB:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := buildListOptions(tt.cfg, tt.sourceID)
+
+			if opts.IncludeArchived != tt.wantIncArchived {
+				t.Errorf("IncludeArchived = %v, want %v", opts.IncludeArchived, tt.wantIncArchived)
+			}
+			if opts.MaxSizeKB != tt.wantMaxSizeKB {
+				t.Errorf("MaxSizeKB = %d, want %d", opts.MaxSizeKB, tt.wantMaxSizeKB)
+			}
+		})
+	}
+}
+
+func boolPtr(b bool) *bool {
+	return &b
 }

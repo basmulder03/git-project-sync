@@ -75,16 +75,13 @@ func run() int {
 	locks := daemon.NewRepoLockManager()
 	scheduler := daemon.NewScheduler(cfg.Daemon, logger, locks, engine.RunRepo, serviceAPI)
 
-	resolved := workspace.DiscoveryResult{Repos: cfg.Repos}
-	if len(cfg.Repos) == 0 {
-		resolved, err = workspace.ResolveRunRepos(cfg)
-		if err != nil {
-			logger.Error("failed to resolve repositories", "error", err)
-			return 1
-		}
-		for _, skipped := range resolved.Skipped {
-			logger.Info("repo sync skipped", "repo_path", skipped, "reason_code", "source_missing", "reason", "unable to resolve source for discovered repository")
-		}
+	resolved, err := workspace.ResolveRunRepos(cfg)
+	if err != nil {
+		logger.Error("failed to resolve repositories", "error", err)
+		return 1
+	}
+	for _, skipped := range resolved.Skipped {
+		logger.Info("repo sync skipped", "repo_path", skipped, "reason_code", "source_missing", "reason", "unable to resolve source for discovered repository")
 	}
 
 	tasks := make([]daemon.RepoTask, 0, len(resolved.Repos))

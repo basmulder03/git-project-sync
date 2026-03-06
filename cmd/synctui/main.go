@@ -134,13 +134,9 @@ func (e *actionExecutor) Execute(ctx context.Context, request tui.ActionRequest)
 }
 
 func (e *actionExecutor) syncAll(ctx context.Context) (string, error) {
-	resolved := workspace.DiscoveryResult{Repos: e.cfg.Repos}
-	if len(e.cfg.Repos) == 0 {
-		var err error
-		resolved, err = workspace.ResolveRunRepos(e.cfg)
-		if err != nil {
-			return "", err
-		}
+	resolved, err := workspace.ResolveRunRepos(e.cfg)
+	if err != nil {
+		return "", err
 	}
 
 	byID := make(map[string]config.SourceConfig, len(e.cfg.Sources))
@@ -251,7 +247,11 @@ func (e *actionExecutor) runCommand(ctx context.Context, raw string) (string, er
 		}
 	case "repo":
 		if len(parts) == 2 && parts[1] == "list" {
-			return fmt.Sprintf("repos configured: %d", len(e.cfg.Repos)), nil
+			resolved, err := workspace.ResolveRunRepos(e.cfg)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("repos configured: %d", len(resolved.Repos)), nil
 		}
 	case "source":
 		if len(parts) == 2 && parts[1] == "list" {

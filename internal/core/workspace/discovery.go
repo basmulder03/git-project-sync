@@ -16,17 +16,28 @@ type DiscoveryResult struct {
 }
 
 func ResolveRunRepos(cfg config.Config) (DiscoveryResult, error) {
-	if len(cfg.Repos) > 0 {
-		return DiscoveryResult{Repos: cfg.Repos}, nil
+	result := DiscoveryResult{Repos: append([]config.RepoConfig(nil), cfg.Repos...)}
+
+	workspaceRoot := strings.TrimSpace(cfg.Workspace.Root)
+	if workspaceRoot == "" {
+		return result, nil
 	}
 
-	paths, err := discoverGitRepos(cfg.Workspace.Root)
+	paths, err := discoverGitRepos(workspaceRoot)
 	if err != nil {
 		return DiscoveryResult{}, err
 	}
 
-	result := DiscoveryResult{Repos: make([]config.RepoConfig, 0, len(paths))}
+	configuredByPath := map[string]struct{}{}
+	for _, repo := range cfg.Repos {
+		configuredByPath[filepath.Clean(repo.Path)] = struct{}{}
+	}
+
 	for _, repoPath := range paths {
+		if _, exists := configuredByPath[filepath.Clean(repoPath)]; exists {
+			continue
+		}
+
 		sourceID, ok := inferSourceID(cfg, repoPath)
 		if !ok {
 			result.Skipped = append(result.Skipped, fmt.Sprintf("%s (source not resolved)", repoPath))

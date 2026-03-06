@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -130,5 +131,39 @@ func TestRepoCloneRegistersRepo(t *testing.T) {
 	}
 	if !strings.Contains(listOut, "project") {
 		t.Fatalf("expected cloned repo in list output: %s", listOut)
+	}
+}
+
+func TestSyncAllDiscoversReposWhenConfigListEmpty(t *testing.T) {
+	t.Parallel()
+
+	workspaceRoot := t.TempDir()
+	repoPath := filepath.Join(workspaceRoot, "github", "acme", "repo-a")
+	if err := os.MkdirAll(repoPath, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	if out, err := exec.Command("git", "init", repoPath).CombinedOutput(); err != nil {
+		t.Fatalf("git init failed: %v (%s)", err, string(out))
+	}
+
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := config.Default()
+	cfg.Workspace.Root = workspaceRoot
+	cfg.Sources = []config.SourceConfig{{
+		ID:       "gh-acme",
+		Provider: "github",
+		Account:  "acme",
+		Enabled:  true,
+	}}
+	if err := config.Save(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	out, err := executeSyncctl("--config", configPath, "sync", "all", "--dry-run")
+	if err != nil {
+		t.Fatalf("sync all failed: %v output=%s", err, out)
+	}
+	if strings.Contains(out, "no enabled repos configured") {
+		t.Fatalf("expected discovered repo to be included, output=%s", out)
 	}
 }

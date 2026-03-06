@@ -25,15 +25,12 @@ func newSyncCommand(configPath *string) *cobra.Command {
 				return err
 			}
 
-			resolved := workspace.DiscoveryResult{Repos: cfg.Repos}
-			if len(cfg.Repos) == 0 {
-				resolved, err = workspace.ResolveRunRepos(cfg)
-				if err != nil {
-					return err
-				}
-				for _, skipped := range resolved.Skipped {
-					cmd.Printf("skipped\tpath=%s\treason=source_not_resolved\n", skipped)
-				}
+			resolved, err := workspace.ResolveRunRepos(cfg)
+			if err != nil {
+				return err
+			}
+			for _, skipped := range resolved.Skipped {
+				cmd.Printf("skipped\tpath=%s\treason=source_not_resolved\n", skipped)
 			}
 
 			runCount := 0

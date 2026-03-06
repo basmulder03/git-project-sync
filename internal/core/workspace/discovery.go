@@ -1,8 +1,10 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -68,6 +70,9 @@ func discoverGitRepos(root string) ([]string, error) {
 	reposByPath := map[string]struct{}{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
+			if isIgnorableWalkError(walkErr) {
+				return nil
+			}
 			return walkErr
 		}
 		if !d.IsDir() {
@@ -91,6 +96,10 @@ func discoverGitRepos(root string) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+func isIgnorableWalkError(err error) bool {
+	return errors.Is(err, fs.ErrPermission) || errors.Is(err, os.ErrPermission)
 }
 
 func inferSourceID(cfg config.Config, repoPath string) (string, bool) {

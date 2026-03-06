@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -116,5 +117,17 @@ func TestResolveRunReposMergesConfiguredAndDiscoveredWithoutDuplicates(t *testin
 	}
 	if !byPath[filepath.Clean(discoveredPath)].Enabled {
 		t.Fatal("expected discovered repo to default to enabled")
+	}
+}
+
+func TestIsIgnorableWalkError(t *testing.T) {
+	t.Parallel()
+
+	if !isIgnorableWalkError(os.ErrPermission) {
+		t.Fatal("expected os.ErrPermission to be ignorable")
+	}
+	wrapped := fmt.Errorf("open D:/System Volume Information: %w", os.ErrPermission)
+	if !isIgnorableWalkError(wrapped) {
+		t.Fatal("expected wrapped permission error to be ignorable")
 	}
 }

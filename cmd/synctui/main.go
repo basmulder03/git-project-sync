@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/basmulder03/git-project-sync/internal/app/commands"
 	"github.com/basmulder03/git-project-sync/internal/core/config"
 	"github.com/basmulder03/git-project-sync/internal/core/daemon"
 	coregit "github.com/basmulder03/git-project-sync/internal/core/git"
@@ -108,6 +109,10 @@ func (e *actionExecutor) Execute(ctx context.Context, request tui.ActionRequest)
 	case tui.ActionSyncAll:
 		return e.syncAll(ctx)
 	case tui.ActionCacheRefresh:
+		cacheSvc := commands.NewCacheService(e.api)
+		if err := cacheSvc.Refresh(ctx, commands.CacheTargetAll); err != nil {
+			return "", err
+		}
 		return "cache refresh completed (CLI equivalent: syncctl cache refresh all)", nil
 	case tui.ActionTraceDrilldown:
 		if request.TraceID == "" {

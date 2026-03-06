@@ -75,10 +75,13 @@ type GovernanceConfig struct {
 }
 
 type SyncPolicyConfig struct {
-	IncludeRepoPatterns   []string           `yaml:"include_repo_patterns"`
-	ExcludeRepoPatterns   []string           `yaml:"exclude_repo_patterns"`
-	ProtectedRepoPatterns []string           `yaml:"protected_repo_patterns"`
-	AllowedSyncWindows    []SyncWindowConfig `yaml:"allowed_sync_windows"`
+	IncludeRepoPatterns      []string           `yaml:"include_repo_patterns"`
+	ExcludeRepoPatterns      []string           `yaml:"exclude_repo_patterns"`
+	ProtectedRepoPatterns    []string           `yaml:"protected_repo_patterns"`
+	AllowedSyncWindows       []SyncWindowConfig `yaml:"allowed_sync_windows"`
+	AutoCloneEnabled         *bool              `yaml:"auto_clone_enabled"`          // pointer to allow nil = inherit
+	AutoCloneMaxSizeMB       int                `yaml:"auto_clone_max_size_mb"`      // 0 = unlimited
+	AutoCloneIncludeArchived bool               `yaml:"auto_clone_include_archived"` // default false
 }
 
 type SyncWindowConfig struct {
@@ -159,11 +162,21 @@ func Default() Config {
 			BranchTTLSeconds:   120,
 		},
 		Governance: GovernanceConfig{
+			DefaultPolicy: SyncPolicyConfig{
+				AutoCloneEnabled:         boolPtr(true),
+				AutoCloneMaxSizeMB:       2048, // 2GB default max
+				AutoCloneIncludeArchived: false,
+			},
 			SourcePolicies: map[string]SyncPolicyConfig{},
 		},
 		Sources: []SourceConfig{},
 		Repos:   []RepoConfig{},
 	}
+}
+
+// boolPtr returns a pointer to a bool value
+func boolPtr(b bool) *bool {
+	return &b
 }
 
 func Load(path string) (Config, error) {

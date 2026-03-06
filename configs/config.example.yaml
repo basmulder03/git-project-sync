@@ -32,7 +32,16 @@ governance:
         exclude_repo_patterns: []
         protected_repo_patterns: []
         allowed_sync_windows: []
+        # Auto-clone configuration
+        auto_clone_enabled: true             # Enable auto-discovery and cloning of remote repos
+        auto_clone_max_size_mb: 2048         # Skip repos larger than this (0 = unlimited, default 2GB)
+        auto_clone_include_archived: false   # Whether to clone archived repos (default: false)
     source_policies: {}
+    # Example source-specific policy override:
+    # source_policies:
+    #   my-github-source:
+    #     auto_clone_enabled: false          # Disable auto-clone for this specific source
+    #     auto_clone_max_size_mb: 1024       # Override max size for this source
 sources:
     - id: bas-mulder
       provider: github

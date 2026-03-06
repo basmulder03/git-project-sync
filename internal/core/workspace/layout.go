@@ -60,3 +60,24 @@ func sanitizeSegment(value string) string {
 	v = strings.Trim(v, ".-")
 	return v
 }
+
+// Layout provides path resolution for repositories
+type Layout struct {
+	root string
+}
+
+// NewLayout creates a new layout resolver from workspace config
+func NewLayout(workspace config.WorkspaceConfig) *Layout {
+	return &Layout{
+		root: filepath.Clean(workspace.Root),
+	}
+}
+
+// RepoPath calculates the target path for a repository based on workspace layout
+func (l *Layout) RepoPath(provider, owner, name string) string {
+	provider = normalizeProvider(provider)
+	owner = sanitizeSegment(owner)
+	name = sanitizeSegment(name)
+
+	return filepath.Join(l.root, provider, owner, name)
+}

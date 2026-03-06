@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -10,11 +11,21 @@ import (
 	"strings"
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
+	"github.com/basmulder03/git-project-sync/internal/core/providers/api"
 )
 
 type DiscoveryResult struct {
-	Repos   []config.RepoConfig
-	Skipped []string
+	Repos        []config.RepoConfig
+	Skipped      []string
+	RemoteRepos  []api.RemoteRepository // All repos from provider APIs
+	ReposToClone []api.RemoteRepository // Repos that pass governance and don't exist locally
+}
+
+// SkippedRemoteRepo represents a remote repository that was skipped during discovery
+type SkippedRemoteRepo struct {
+	Repo       api.RemoteRepository
+	ReasonCode string
+	Message    string
 }
 
 func ResolveRunRepos(cfg config.Config) (DiscoveryResult, error) {
@@ -152,4 +163,109 @@ func inferSourceID(cfg config.Config, repoPath string) (string, bool) {
 		return "", false
 	}
 	return matches[0], true
+}
+
+// DiscoverRemoteRepos queries provider APIs to discover all accessible repositories
+func DiscoverRemoteRepos(ctx context.Context, cfg config.Config, clientFactory *api.ClientFactory, getToken func(sourceID string) (string, error)) ([]api.RemoteRepository, error) {
+	var allRepos []api.RemoteRepository
+
+	for _, source := range cfg.Sources {
+		if !source.Enabled {
+			continue
+		}
+
+		// Get token for this source
+		token, err := getToken(source.ID)
+		if err != nil {
+			// Skip sources without valid tokens
+			continue
+		}
+
+		// Create API client for this source
+		client, err := clientFactory.CreateClient(source, token)
+		if err != nil {
+			continue
+		}
+
+		// Build list options from config
+		opts := buildListOptions(cfg, source.ID)
+
+		// Query provider API for repos
+		repos, err := client.ListRepositories(ctx, opts)
+		if err != nil {
+			// Log error but continue with other sources
+			continue
+		}
+
+		allRepos = append(allRepos, repos...)
+	}
+
+	return allRepos, nil
+}
+
+// buildListOptions constructs API list options from config governance settings
+func buildListOptions(cfg config.Config, sourceID string) api.ListOptions {
+	policy := cfg.Governance.DefaultPolicy
+
+	// Check for source-specific override
+	if sourcePolicy, ok := cfg.Governance.SourcePolicies[sourceID]; ok {
+		// Apply source-specific overrides
+		if sourcePolicy.AutoCloneEnabled != nil && !*sourcePolicy.AutoCloneEnabled {
+			// If auto-clone is disabled for this source, return restrictive options
+			return api.ListOptions{
+				IncludeArchived: false,
+				IncludeForks:    false,
+				MaxSizeKB:       0,
+			}
+		}
+		if sourcePolicy.AutoCloneMaxSizeMB > 0 {
+			policy.AutoCloneMaxSizeMB = sourcePolicy.AutoCloneMaxSizeMB
+		}
+		if sourcePolicy.AutoCloneIncludeArchived {
+			policy.AutoCloneIncludeArchived = sourcePolicy.AutoCloneIncludeArchived
+		}
+	}
+
+	// Build options from policy
+	maxSizeKB := int64(0)
+	if policy.AutoCloneMaxSizeMB > 0 {
+		maxSizeKB = int64(policy.AutoCloneMaxSizeMB) * 1024
+	}
+
+	return api.ListOptions{
+		IncludeArchived: policy.AutoCloneIncludeArchived,
+		IncludeForks:    false, // Default to false for forks
+		MaxSizeKB:       maxSizeKB,
+	}
+}
+
+// IdentifyReposToClone compares remote repos with local repos to identify missing ones
+func IdentifyReposToClone(cfg config.Config, remoteRepos []api.RemoteRepository, localRepos []config.RepoConfig) []api.RemoteRepository {
+	// Build map of existing local repo paths
+	localPaths := make(map[string]struct{})
+	for _, repo := range localRepos {
+		localPaths[filepath.Clean(repo.Path)] = struct{}{}
+	}
+
+	layout := NewLayout(cfg.Workspace)
+	var reposToClone []api.RemoteRepository
+
+	for _, remote := range remoteRepos {
+		// Calculate where this repo would be cloned
+		targetPath := layout.RepoPath(remote.Provider, remote.Owner, remote.Name)
+
+		// Check if it already exists locally
+		if _, exists := localPaths[filepath.Clean(targetPath)]; exists {
+			continue
+		}
+
+		// Check if the directory already exists (even if not in config)
+		if _, err := os.Stat(targetPath); err == nil {
+			continue
+		}
+
+		reposToClone = append(reposToClone, remote)
+	}
+
+	return reposToClone
 }

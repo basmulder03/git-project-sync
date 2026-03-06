@@ -76,8 +76,22 @@ func NewLayout(workspace config.WorkspaceConfig) *Layout {
 // RepoPath calculates the target path for a repository based on workspace layout
 func (l *Layout) RepoPath(provider, owner, name string) string {
 	provider = normalizeProvider(provider)
-	owner = sanitizeSegment(owner)
 	name = sanitizeSegment(name)
 
+	// For Azure DevOps, owner is in format "account/project" and should create nested directories
+	if provider == "azuredevops" && strings.Contains(owner, "/") {
+		parts := strings.Split(owner, "/")
+		// Sanitize each part separately to preserve directory structure
+		for i := range parts {
+			parts[i] = sanitizeSegment(parts[i])
+		}
+		// Build path: root/azuredevops/account/project/repo
+		pathParts := append([]string{l.root, provider}, parts...)
+		pathParts = append(pathParts, name)
+		return filepath.Join(pathParts...)
+	}
+
+	// For other providers (GitHub), use flat structure with sanitized owner
+	owner = sanitizeSegment(owner)
 	return filepath.Join(l.root, provider, owner, name)
 }

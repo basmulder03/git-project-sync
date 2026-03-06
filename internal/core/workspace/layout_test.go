@@ -72,3 +72,33 @@ func TestValidatorDetectsAndFixesDrift(t *testing.T) {
 		t.Fatalf("repo path after fix = %q, want %q", cfg.Repos[0].Path, drifts[0].ExpectedPath)
 	}
 }
+
+func TestRepoPathForAzureDevOps(t *testing.T) {
+	t.Parallel()
+
+	layout := NewLayout(config.WorkspaceConfig{
+		Root:   "/workspace",
+		Layout: "flat",
+	})
+
+	// Test Azure DevOps with account/project format
+	path := layout.RepoPath("azuredevops", "rr-wfm/Platform", "RR.ApiGateway")
+	want := filepath.Join("/workspace", "azuredevops", "rr-wfm", "platform", "rr.apigateway")
+	if path != want {
+		t.Errorf("Azure DevOps path = %q, want %q", path, want)
+	}
+
+	// Test GitHub (should use flat structure)
+	path = layout.RepoPath("github", "myorg", "myrepo")
+	want = filepath.Join("/workspace", "github", "myorg", "myrepo")
+	if path != want {
+		t.Errorf("GitHub path = %q, want %q", path, want)
+	}
+
+	// Test Azure DevOps with single-part owner (edge case)
+	path = layout.RepoPath("azuredevops", "account-only", "repo")
+	want = filepath.Join("/workspace", "azuredevops", "account-only", "repo")
+	if path != want {
+		t.Errorf("Azure DevOps single-part owner path = %q, want %q", path, want)
+	}
+}

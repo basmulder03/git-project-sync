@@ -276,8 +276,12 @@ func (c *AzureDevOpsClient) GetRepositoryMetadata(ctx context.Context, owner, re
 func (c *AzureDevOpsClient) buildAuthenticatedCloneURL(cloneURL string) string {
 	// Azure DevOps clone URLs are in format:
 	// https://dev.azure.com/account/project/_git/repo
-	// We need to insert token as: https://token@dev.azure.com/...
+	// We need to insert token as: https://PAT@dev.azure.com/...
+	// Remove any trailing slash from the URL
+	cloneURL = strings.TrimSuffix(cloneURL, "/")
+
 	if strings.HasPrefix(cloneURL, "https://") {
+		// Use empty username with PAT as password (format: https://PAT@host/...)
 		return strings.Replace(cloneURL, "https://", "https://"+c.token+"@", 1)
 	}
 	return cloneURL

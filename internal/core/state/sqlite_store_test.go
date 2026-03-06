@@ -266,3 +266,278 @@ func TestSQLiteStoreBackupRestoreAndIntegrityRecovery(t *testing.T) {
 		t.Fatal("expected restored repo state to exist")
 	}
 }
+
+func TestSQLiteStoreDiscoveredRepoRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "state.db")
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	input := DiscoveredRepo{
+		Provider:      "github",
+		SourceID:      "gh-source-1",
+		FullName:      "owner/repo",
+		CloneURL:      "https://github.com/owner/repo.git",
+		DefaultBranch: "main",
+		IsArchived:    false,
+		SizeKB:        1024,
+		DiscoveredAt:  time.Now().UTC().Truncate(time.Second),
+	}
+
+	if err := store.UpsertDiscoveredRepo(input); err != nil {
+		t.Fatalf("upsert discovered repo: %v", err)
+	}
+
+	got, found, err := store.GetDiscoveredRepo(input.SourceID, input.FullName)
+	if err != nil {
+		t.Fatalf("get discovered repo: %v", err)
+	}
+	if !found {
+		t.Fatal("expected discovered repo to exist")
+	}
+
+	if got.Provider != input.Provider {
+		t.Fatalf("provider = %q, want %q", got.Provider, input.Provider)
+	}
+	if got.FullName != input.FullName {
+		t.Fatalf("full_name = %q, want %q", got.FullName, input.FullName)
+	}
+	if got.CloneURL != input.CloneURL {
+		t.Fatalf("clone_url = %q, want %q", got.CloneURL, input.CloneURL)
+	}
+	if got.IsArchived != input.IsArchived {
+		t.Fatalf("is_archived = %v, want %v", got.IsArchived, input.IsArchived)
+	}
+	if got.SizeKB != input.SizeKB {
+		t.Fatalf("size_kb = %d, want %d", got.SizeKB, input.SizeKB)
+	}
+}
+
+func TestSQLiteStoreListDiscoveredRepos(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "state.db")
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	now := time.Now().UTC()
+	_ = store.UpsertDiscoveredRepo(DiscoveredRepo{
+		Provider: "github", SourceID: "gh-1", FullName: "owner/repo1",
+		CloneURL: "https://github.com/owner/repo1.git", DefaultBranch: "main",
+		SizeKB: 100, DiscoveredAt: now,
+	})
+	_ = store.UpsertDiscoveredRepo(DiscoveredRepo{
+		Provider: "github", SourceID: "gh-1", FullName: "owner/repo2",
+		CloneURL: "https://github.com/owner/repo2.git", DefaultBranch: "main",
+		SizeKB: 200, DiscoveredAt: now.Add(time.Second),
+	})
+	_ = store.UpsertDiscoveredRepo(DiscoveredRepo{
+		Provider: "azuredevops", SourceID: "ado-1", FullName: "org/project/repo3",
+		CloneURL: "https://dev.azure.com/org/project/_git/repo3", DefaultBranch: "main",
+		SizeKB: 300, DiscoveredAt: now.Add(2 * time.Second),
+	})
+
+	allRepos, err := store.ListDiscoveredRepos("", 10)
+	if err != nil {
+		t.Fatalf("list all discovered repos: %v", err)
+	}
+	if len(allRepos) != 3 {
+		t.Fatalf("all repos len = %d, want 3", len(allRepos))
+	}
+
+	ghRepos, err := store.ListDiscoveredRepos("gh-1", 10)
+	if err != nil {
+		t.Fatalf("list github repos: %v", err)
+	}
+	if len(ghRepos) != 2 {
+		t.Fatalf("github repos len = %d, want 2", len(ghRepos))
+	}
+	if ghRepos[0].FullName != "owner/repo2" {
+		t.Fatalf("newest repo = %q, want owner/repo2", ghRepos[0].FullName)
+	}
+}
+
+func TestSQLiteStoreDeleteDiscoveredReposBySource(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "state.db")
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	now := time.Now().UTC()
+	_ = store.UpsertDiscoveredRepo(DiscoveredRepo{
+		Provider: "github", SourceID: "gh-1", FullName: "owner/repo1",
+		CloneURL: "https://github.com/owner/repo1.git", DefaultBranch: "main", DiscoveredAt: now,
+	})
+	_ = store.UpsertDiscoveredRepo(DiscoveredRepo{
+		Provider: "github", SourceID: "gh-2", FullName: "owner/repo2",
+		CloneURL: "https://github.com/owner/repo2.git", DefaultBranch: "main", DiscoveredAt: now,
+	})
+
+	if err := store.DeleteDiscoveredReposBySource("gh-1"); err != nil {
+		t.Fatalf("delete discovered repos by source: %v", err)
+	}
+
+	repos, err := store.ListDiscoveredRepos("gh-1", 10)
+	if err != nil {
+		t.Fatalf("list repos after delete: %v", err)
+	}
+	if len(repos) != 0 {
+		t.Fatalf("expected no repos for gh-1 after delete, got %d", len(repos))
+	}
+
+	repos, err = store.ListDiscoveredRepos("gh-2", 10)
+	if err != nil {
+		t.Fatalf("list repos for gh-2: %v", err)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("expected 1 repo for gh-2, got %d", len(repos))
+	}
+}
+
+func TestSQLiteStoreCloneOperationLifecycle(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "state.db")
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	op := &CloneOperation{
+		TraceID:      "trace-1",
+		SourceID:     "gh-1",
+		RepoFullName: "owner/repo",
+		TargetPath:   "/workspace/github/owner/repo",
+		Status:       "started",
+	}
+
+	if err := store.RecordCloneOperation(op); err != nil {
+		t.Fatalf("record clone operation: %v", err)
+	}
+
+	if op.ID == 0 {
+		t.Fatal("expected ID to be set after insert")
+	}
+
+	got, found, err := store.GetCloneOperation(op.ID)
+	if err != nil {
+		t.Fatalf("get clone operation: %v", err)
+	}
+	if !found {
+		t.Fatal("expected clone operation to exist")
+	}
+	if got.Status != "started" {
+		t.Fatalf("status = %q, want started", got.Status)
+	}
+
+	completedAt := time.Now().UTC()
+	if err := store.UpdateCloneOperation(op.ID, "completed", "", completedAt, 0); err != nil {
+		t.Fatalf("update clone operation: %v", err)
+	}
+
+	updated, found, err := store.GetCloneOperation(op.ID)
+	if err != nil {
+		t.Fatalf("get updated clone operation: %v", err)
+	}
+	if !found {
+		t.Fatal("expected updated clone operation to exist")
+	}
+	if updated.Status != "completed" {
+		t.Fatalf("updated status = %q, want completed", updated.Status)
+	}
+	if updated.CompletedAt.IsZero() {
+		t.Fatal("expected completed_at to be set")
+	}
+}
+
+func TestSQLiteStoreListCloneOperations(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "state.db")
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	_ = store.RecordCloneOperation(&CloneOperation{
+		TraceID: "trace-1", SourceID: "gh-1", RepoFullName: "owner/repo1",
+		TargetPath: "/workspace/github/owner/repo1", Status: "completed",
+	})
+	_ = store.RecordCloneOperation(&CloneOperation{
+		TraceID: "trace-2", SourceID: "gh-1", RepoFullName: "owner/repo2",
+		TargetPath: "/workspace/github/owner/repo2", Status: "failed",
+		ErrorMessage: "network error",
+	})
+
+	ops, err := store.ListCloneOperations(10)
+	if err != nil {
+		t.Fatalf("list clone operations: %v", err)
+	}
+	if len(ops) != 2 {
+		t.Fatalf("ops len = %d, want 2", len(ops))
+	}
+
+	if ops[0].RepoFullName != "owner/repo2" {
+		t.Fatalf("newest op = %q, want owner/repo2", ops[0].RepoFullName)
+	}
+}
+
+func TestSQLiteStoreListCloneOperationsByTrace(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "state.db")
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	_ = store.RecordCloneOperation(&CloneOperation{
+		TraceID: "trace-a", SourceID: "gh-1", RepoFullName: "owner/repo1",
+		TargetPath: "/workspace/github/owner/repo1", Status: "completed",
+	})
+	_ = store.RecordCloneOperation(&CloneOperation{
+		TraceID: "trace-b", SourceID: "gh-1", RepoFullName: "owner/repo2",
+		TargetPath: "/workspace/github/owner/repo2", Status: "started",
+	})
+	_ = store.RecordCloneOperation(&CloneOperation{
+		TraceID: "trace-a", SourceID: "gh-1", RepoFullName: "owner/repo3",
+		TargetPath: "/workspace/github/owner/repo3", Status: "started",
+	})
+
+	ops, err := store.ListCloneOperationsByTrace("trace-a", 10)
+	if err != nil {
+		t.Fatalf("list clone operations by trace: %v", err)
+	}
+	if len(ops) != 2 {
+		t.Fatalf("ops len = %d, want 2", len(ops))
+	}
+	if ops[0].TraceID != "trace-a" || ops[1].TraceID != "trace-a" {
+		t.Fatalf("all ops should match trace-a: %+v", ops)
+	}
+}

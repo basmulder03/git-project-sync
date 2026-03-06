@@ -2,7 +2,7 @@ package state
 
 import "time"
 
-const CurrentSchemaVersion = 2
+const CurrentSchemaVersion = 3
 
 type Store interface {
 	EnsureSchema() error
@@ -15,6 +15,15 @@ type Store interface {
 	AppendEvent(Event) error
 	ListEvents(limit int) ([]Event, error)
 	ListEventsByTrace(traceID string, limit int) ([]Event, error)
+	UpsertDiscoveredRepo(DiscoveredRepo) error
+	GetDiscoveredRepo(sourceID, fullName string) (DiscoveredRepo, bool, error)
+	ListDiscoveredRepos(sourceID string, limit int) ([]DiscoveredRepo, error)
+	DeleteDiscoveredReposBySource(sourceID string) error
+	RecordCloneOperation(*CloneOperation) error
+	UpdateCloneOperation(id int64, status, errorMessage string, completedAt time.Time, retryCount int) error
+	GetCloneOperation(id int64) (CloneOperation, bool, error)
+	ListCloneOperations(limit int) ([]CloneOperation, error)
+	ListCloneOperationsByTrace(traceID string, limit int) ([]CloneOperation, error)
 	Close() error
 }
 
@@ -47,4 +56,28 @@ type RunState struct {
 	StartedAt   time.Time
 	HeartbeatAt time.Time
 	CompletedAt time.Time
+}
+
+type DiscoveredRepo struct {
+	Provider      string
+	SourceID      string
+	FullName      string
+	CloneURL      string
+	DefaultBranch string
+	IsArchived    bool
+	SizeKB        int64
+	DiscoveredAt  time.Time
+}
+
+type CloneOperation struct {
+	ID           int64
+	TraceID      string
+	SourceID     string
+	RepoFullName string
+	TargetPath   string
+	Status       string
+	StartedAt    time.Time
+	CompletedAt  time.Time
+	ErrorMessage string
+	RetryCount   int
 }

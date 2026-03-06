@@ -56,7 +56,8 @@ It includes runtime and setup interfaces:
 
 1. Install: [Installation and Service Registration](https://basmulder03.github.io/git-project-sync/getting-started/installation-and-service-registration)
 2. Onboard: [First-Run Onboarding](https://basmulder03.github.io/git-project-sync/getting-started/first-run-onboarding)
-3. Validate health with `syncctl doctor`.
+3. Local dev from source: [Local Development Flow](https://basmulder03.github.io/git-project-sync/getting-started/local-development-flow)
+4. Validate health with `syncctl doctor`.
 
 ## Quick Start
 

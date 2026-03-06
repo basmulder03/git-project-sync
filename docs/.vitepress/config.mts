@@ -26,6 +26,7 @@ export default defineConfig({
         items: [
           { text: 'Installation and Service Registration', link: '/getting-started/installation-and-service-registration' },
           { text: 'First-Run Onboarding', link: '/getting-started/first-run-onboarding' },
+          { text: 'Local Development Flow', link: '/getting-started/local-development-flow' },
           { text: 'User Guide', link: '/user/day-to-day-usage-guide' },
           { text: 'Troubleshooting', link: '/support/common-failures-and-remediation' }
         ]

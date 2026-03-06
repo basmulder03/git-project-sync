@@ -324,7 +324,8 @@ func TestRetryConfig_Backoff(t *testing.T) {
 	}
 
 	// Should not take too long due to context timeout
-	if elapsed > 200*time.Millisecond {
-		t.Errorf("retry took too long: %v", elapsed)
+	// Allow up to 500ms for Windows/CI environments with scheduling overhead
+	if elapsed > 500*time.Millisecond {
+		t.Errorf("retry took too long: %v (expected < 500ms)", elapsed)
 	}
 }

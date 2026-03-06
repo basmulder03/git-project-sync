@@ -13,7 +13,7 @@ Use this file as your entry point before implementing anything.
 7. `docs/reference/configuration-schema.md`
 8. `docs/reference/pat-permission-requirements.md`
 9. `ai/backlog.yaml`
-10. Current sprint file (`ai/sprint-01.yaml` ... `ai/sprint-09.yaml`)
+10. Current sprint file (`ai/sprint-01.yaml` ... `ai/sprint-10.yaml`)
 11. `ai/RUNBOOK.md`
 12. `ai/skills/skills.yaml` and relevant skill file(s)
 

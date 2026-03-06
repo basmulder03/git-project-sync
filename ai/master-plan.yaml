@@ -24,6 +24,7 @@ source_of_truth:
   - ai/sprint-07.yaml
   - ai/sprint-08.yaml
   - ai/sprint-09.yaml
+  - ai/sprint-10.yaml
   - ai/RUNBOOK.md
 
 execution_order:
@@ -96,6 +97,13 @@ execution_order:
     depends_on:
       - S7
       - S8
+    must_complete_before:
+      - S10
+  - sprint: S10
+    file: ai/sprint-10.yaml
+    objective: Implementation closure for remaining CLI gaps and full TUI parity with command palette + guided flows
+    depends_on:
+      - S9
 
 governance:
   required_commit_policy:

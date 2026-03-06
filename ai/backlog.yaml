@@ -130,3 +130,24 @@ epics:
         title: Automate documentation site build/deploy from docs-only changes
       - id: E8-T7
         title: Add recurring README and operator docs refresh checklist
+
+  - id: E9
+    title: CLI implementation closure and full TUI parity
+    priority: high
+    owner: cli-tui
+    tasks:
+      - id: E9-T1
+        title: Replace CLI stub command groups with full daemon/install/service implementation
+        acceptance_ref: "docs/reference/cli-command-specification.md#daemon-control"
+      - id: E9-T2
+        title: Implement missing CLI commands and remove placeholder behaviors
+        acceptance_ref: "docs/reference/cli-command-specification.md"
+      - id: E9-T3
+        title: Add shared application command layer for CLI and TUI reuse
+      - id: E9-T4
+        title: Implement TUI command palette for full command surface access
+      - id: E9-T5
+        title: Implement guided TUI workflows for every CLI command group
+      - id: E9-T6
+        title: Add CLI-TUI parity matrix tests and drift guardrails in CI
+        acceptance_ref: "docs/engineering/acceptance-test-matrix.md"

@@ -1,37 +1,58 @@
 schema_version: 1
-
 workspace:
-  root: /path/to/workspace
-  layout: provider-account-repo
-  create_missing_paths: true
-
+    root: /path/to/workspace
+    layout: provider-account-repo
+    create_missing_paths: true
 state:
-  db_path: /path/to/state.db
-  persist_events_days: 30
-
+    db_path: /path/to/state.db
+    persist_events_days: 30
 daemon:
-  interval_seconds: 300
-  jitter_seconds: 30
-  max_parallel_repos: 4
-  operation_timeout_seconds: 120
-  retry:
-    max_attempts: 3
-    base_backoff_seconds: 2
-
+    interval_seconds: 300
+    jitter_seconds: 30
+    max_parallel_repos: 4
+    max_parallel_per_source: 2
+    operation_timeout_seconds: 120
+    retry:
+        max_attempts: 3
+        base_backoff_seconds: 2
 update:
-  channel: stable
-  auto_check: true
-  auto_apply: false
-
+    channel: stable
+    auto_check: true
+    auto_apply: false
 logging:
-  level: info
-  format: json
-  redact_secrets: true
-
+    level: info
+    format: json
+    redact_secrets: true
 cache:
-  provider_ttl_seconds: 900
-  branch_ttl_seconds: 120
-
-sources: []
-
+    provider_ttl_seconds: 900
+    branch_ttl_seconds: 120
+governance:
+    default_policy:
+        include_repo_patterns: []
+        exclude_repo_patterns: []
+        protected_repo_patterns: []
+        allowed_sync_windows: []
+    source_policies: {}
+sources:
+    - id: bas-mulder
+      provider: github
+      account: bas-mulder
+      organization: ""
+      host: github.com
+      enabled: true
+      credential_ref: keyring://git-project-sync/sources/bas-mulder
+    - id: basmulder03
+      provider: github
+      account: basmulder03
+      organization: ""
+      host: github.com
+      enabled: true
+      credential_ref: keyring://git-project-sync/sources/basmulder03
+    - id: rr-wfm
+      provider: azuredevops
+      account: rr-wfm
+      organization: ""
+      host: dev.azure.com
+      enabled: true
+      credential_ref: keyring://git-project-sync/sources/rr-wfm
 repos: []

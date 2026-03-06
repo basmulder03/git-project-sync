@@ -1,0 +1,153 @@
+version: 1
+sprint:
+  id: S10
+  name: Implementation Closure and CLI-TUI Parity
+  goal: Close all known not-yet-implemented behavior and deliver a production-usable TUI that can execute everything syncctl can execute.
+  duration_days: 10
+
+tasks:
+  - id: S10-T01
+    issue_title: "feat(cli): replace daemon/install/service stubs with full command implementations"
+    title: Replace CLI stub command groups with real daemon, install, service, and uninstall behavior
+    backlog_refs: [E4-T1, E6-T1, E6-T2, E9-T1]
+    files:
+      - cmd/syncctl/main.go
+      - cmd/syncctl/daemon_cmd.go
+      - cmd/syncctl/install_cmd.go
+      - cmd/syncctl/service_cmd.go
+      - internal/core/install/linux_systemd.go
+      - internal/core/install/windows_taskscheduler.go
+      - docs/reference/cli-command-specification.md
+    implementation_notes:
+      - Replace current stub command groups for daemon/install/service.
+      - Add uninstall command support required by CLI spec.
+      - Ensure outputs are stable and exit codes follow CLI rules.
+      - Preserve platform safety and privilege checks via install preflight findings.
+    acceptance_criteria:
+      - "syncctl daemon start|stop|restart|status|logs execute without stub output"
+      - "syncctl install --user|--system and syncctl uninstall --user|--system are implemented"
+      - "syncctl service register|unregister are implemented"
+      - "all new commands return usage errors as exit code 2"
+    tests:
+      - "go test ./cmd/syncctl/... ./internal/core/install/..."
+    commit_checkpoint: "feat(cli): implement daemon/install/service command groups"
+
+  - id: S10-T02
+    issue_title: "feat(cli): implement missing repo clone and config set commands"
+    title: Implement missing CLI commands from spec and remove placeholder responses
+    backlog_refs: [E4-T1, E4-T2, E9-T2]
+    files:
+      - cmd/syncctl/repo_cmd.go
+      - cmd/syncctl/config_cmd.go
+      - cmd/syncctl/cache_cmd.go
+      - internal/core/workspace/*.go
+      - docs/reference/cli-command-specification.md
+    implementation_notes:
+      - Implement repo clone workflow including --into managed behavior.
+      - Add config set for supported keys with type-aware validation.
+      - Replace cache refresh/clear no-op logic with persisted cache metadata operations.
+      - Ensure command behavior is traceable and script-friendly.
+    acceptance_criteria:
+      - "syncctl repo clone no longer prints not implemented"
+      - "syncctl config set <key> <value> updates persisted config"
+      - "syncctl cache refresh/clear produce real state transitions"
+      - "doctor/stats/events remain compatible with new cache behavior"
+    tests:
+      - "go test ./cmd/syncctl/... ./internal/core/..."
+      - "go test ./tests/integration/..."
+    commit_checkpoint: "feat(cli): complete repo clone, config set, and cache behavior"
+
+  - id: S10-T03
+    issue_title: "refactor(app): create shared command use-case layer for CLI and TUI"
+    title: Introduce a shared application command layer and make CLI a thin adapter
+    backlog_refs: [E4-T1, E5-T3, E9-T3]
+    files:
+      - internal/app/commands/**/*.go
+      - cmd/syncctl/**/*cmd.go
+      - internal/core/daemon/service_api.go
+    implementation_notes:
+      - Move command business logic into internal app services with typed request/response models.
+      - Keep CLI formatter concerns in cmd/syncctl.
+      - Centralize validation and reason-coded error mapping.
+      - Establish one command catalog that TUI can consume directly.
+    acceptance_criteria:
+      - "CLI command handlers invoke shared use-case layer instead of duplicating logic"
+      - "request validation and reason-code mapping are consistent across commands"
+      - "new layer is covered with unit tests"
+    tests:
+      - "go test ./internal/app/... ./cmd/syncctl/..."
+    commit_checkpoint: "refactor(app): extract shared command layer for CLI and TUI"
+
+  - id: S10-T04
+    issue_title: "feat(tui): add command palette with raw command execution parity"
+    title: Add TUI command palette that exposes the full CLI command surface
+    backlog_refs: [E5-T3, E9-T4]
+    files:
+      - internal/ui/tui/app.go
+      - internal/ui/tui/dashboard.go
+      - internal/ui/tui/actions.go
+      - internal/ui/tui/command_palette.go
+      - cmd/synctui/main.go
+    implementation_notes:
+      - Add searchable command palette with argument prompts and validation hints.
+      - Bind palette to shared command catalog.
+      - Add action progress, result summaries, and error surface with reason codes.
+      - Keep keyboard navigation consistent and discoverable.
+    acceptance_criteria:
+      - "every syncctl top-level command group is reachable through palette"
+      - "palette can execute read and mutation commands with confirmation where needed"
+      - "operator can re-run last command from history"
+    tests:
+      - "go test ./internal/ui/tui/... ./cmd/synctui/..."
+    commit_checkpoint: "feat(tui): implement command palette with command parity"
+
+  - id: S10-T05
+    issue_title: "feat(tui): guided workflows for all CLI command groups"
+    title: Build guided TUI workflows for source, auth, repo, sync, daemon, workspace, state, cache, events, trace, update, and install/service
+    backlog_refs: [E5-T1, E5-T2, E5-T3, E9-T5]
+    files:
+      - internal/ui/tui/**/*.go
+      - cmd/synctui/main.go
+      - docs/user/day-to-day-usage-guide.md
+    implementation_notes:
+      - Add structured forms and action screens that map 1:1 to CLI groups.
+      - Improve list/detail views for repos, sources, runs, events, and traces.
+      - Add confirmation modals for destructive or risky actions.
+      - Add empty-state guidance and remediation hints.
+    acceptance_criteria:
+      - "TUI guided screens can execute every command group defined in CLI spec"
+      - "TUI interaction quality supports practical operator workflows"
+      - "all mutation flows provide explicit confirmation and outcome messages"
+    tests:
+      - "go test ./internal/ui/tui/... ./cmd/synctui/..."
+    commit_checkpoint: "feat(tui): add guided parity workflows across all command groups"
+
+  - id: S10-T06
+    issue_title: "test(parity): enforce CLI-TUI parity matrix and CI drift guardrails"
+    title: Add parity matrix, automated parity tests, and docs updates
+    backlog_refs: [E8-T1, E8-T2, E9-T6]
+    files:
+      - docs/engineering/acceptance-test-matrix.md
+      - docs/reference/cli-command-specification.md
+      - docs/user/day-to-day-usage-guide.md
+      - tests/integration/parity/**/*_test.go
+      - .github/workflows/ci.yml
+    implementation_notes:
+      - Add machine-readable parity matrix mapping CLI commands to TUI palette and guided routes.
+      - Add tests to fail on missing parity coverage.
+      - Document parity guarantees and known exclusions if any.
+    acceptance_criteria:
+      - "parity matrix exists and is enforced in CI"
+      - "new command additions fail CI when not wired into TUI pathways"
+      - "operator docs describe both palette and guided workflows"
+    tests:
+      - "go test ./tests/integration/... ./cmd/syncctl/... ./cmd/synctui/..."
+      - "go test ./..."
+    commit_checkpoint: "test(parity): enforce CLI-TUI parity matrix in CI"
+
+definition_of_done:
+  - All tasks S10-T01..S10-T06 merged.
+  - syncctl no longer contains user-facing "not implemented yet" behavior.
+  - TUI exposes full CLI capability through command palette and guided workflows.
+  - Parity checks are automated and enforced in CI.
+  - Updated operator docs describe end-to-end usage for CLI and TUI.

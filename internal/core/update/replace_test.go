@@ -65,3 +65,27 @@ func TestReplaceBinaryWithRollbackRestoresOnFailure(t *testing.T) {
 		t.Fatalf("target content after rollback=%q want old", string(got))
 	}
 }
+
+func TestReplaceBinaryWithRollbackInstallsWhenTargetMissing(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "syncd")
+	candidate := filepath.Join(dir, "candidate")
+
+	if err := os.WriteFile(candidate, []byte("new"), 0o755); err != nil {
+		t.Fatalf("write candidate: %v", err)
+	}
+
+	if err := ReplaceBinaryWithRollback(target, candidate); err != nil {
+		t.Fatalf("replace with missing target: %v", err)
+	}
+
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read installed target: %v", err)
+	}
+	if string(got) != "new" {
+		t.Fatalf("target content=%q want new", string(got))
+	}
+}

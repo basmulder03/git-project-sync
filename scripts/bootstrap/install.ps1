@@ -36,6 +36,39 @@ Invoke-WebRequest -Uri "$baseUrl/syncd_windows_amd64.exe" -OutFile $syncdPath
 Invoke-WebRequest -Uri "$baseUrl/syncctl_windows_amd64.exe" -OutFile $syncctlPath
 Invoke-WebRequest -Uri "$baseUrl/synctui_windows_amd64.exe" -OutFile $synctuiPath
 
+function Sync-ActiveBinary {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$DownloadedPath,
+    [Parameter(Mandatory = $true)]
+    [string]$CommandName,
+    [Parameter(Mandatory = $true)]
+    [string]$DefaultPath
+  )
+
+  $cmd = Get-Command $CommandName -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $cmd -or -not $cmd.Source) {
+    return
+  }
+
+  $activePath = $cmd.Source
+  if ($activePath -ieq $DefaultPath) {
+    return
+  }
+
+  try {
+    Copy-Item -LiteralPath $DownloadedPath -Destination $activePath -Force
+    Write-Host "Updated active $CommandName at $activePath"
+  }
+  catch {
+    Write-Warning "Active $CommandName path is not writable: $activePath"
+  }
+}
+
+Sync-ActiveBinary -DownloadedPath $syncdPath -CommandName "syncd.exe" -DefaultPath $syncdPath
+Sync-ActiveBinary -DownloadedPath $syncctlPath -CommandName "syncctl.exe" -DefaultPath $syncctlPath
+Sync-ActiveBinary -DownloadedPath $synctuiPath -CommandName "synctui.exe" -DefaultPath $synctuiPath
+
 $env:BIN_PATH = $syncdPath
 $env:CONFIG_PATH = $configPath
 

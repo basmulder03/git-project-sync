@@ -15,7 +15,7 @@ func TestClassifyExitCode(t *testing.T) {
 	}{
 		{name: "nil", err: nil, want: 0},
 		{name: "unknown command", err: errors.New("unknown command \"oops\""), want: 2},
-		{name: "required flag", err: errors.New("required flag: --manifest-url"), want: 2},
+		{name: "required argument", err: errors.New("required argument"), want: 2},
 		{name: "runtime", err: errors.New("open sqlite db: permission denied"), want: 1},
 	}
 

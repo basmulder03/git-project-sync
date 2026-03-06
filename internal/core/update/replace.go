@@ -29,6 +29,16 @@ type ApplyResult struct {
 }
 
 func ReplaceBinaryWithRollback(targetPath, candidatePath string) error {
+	if _, err := os.Stat(targetPath); err != nil {
+		if os.IsNotExist(err) {
+			if renameErr := os.Rename(candidatePath, targetPath); renameErr != nil {
+				return ApplyError{Cause: fmt.Errorf("install new binary: %w", renameErr), RollbackPerformed: false}
+			}
+			return nil
+		}
+		return ApplyError{Cause: fmt.Errorf("inspect current binary: %w", err), RollbackPerformed: false}
+	}
+
 	backupPath := backupPathFor(targetPath)
 
 	if err := os.Rename(targetPath, backupPath); err != nil {

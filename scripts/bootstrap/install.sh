@@ -95,6 +95,41 @@ install -m 0755 "$SYNC_D_FILE" "$BIN_DIR/syncd"
 install -m 0755 "$SYNC_CTL_FILE" "$BIN_DIR/syncctl"
 install -m 0755 "$SYNC_TUI_FILE" "$BIN_DIR/synctui"
 
+ACTIVE_SYNC_D="$(command -v syncd 2>/dev/null || true)"
+ACTIVE_SYNC_CTL="$(command -v syncctl 2>/dev/null || true)"
+ACTIVE_SYNC_TUI="$(command -v synctui 2>/dev/null || true)"
+
+sync_active_binary() {
+  local src="$1"
+  local active="$2"
+  local label="$3"
+
+  if [[ -z "$active" ]]; then
+    return
+  fi
+  if [[ "$active" == "$BIN_DIR/$label" ]]; then
+    return
+  fi
+
+  if [[ -e "$active" && -w "$active" ]]; then
+    install -m 0755 "$src" "$active"
+    echo "updated active $label at $active"
+    return
+  fi
+
+  if [[ -w "$(dirname "$active")" ]]; then
+    install -m 0755 "$src" "$active"
+    echo "updated active $label at $active"
+    return
+  fi
+
+  echo "warning: active $label path is not writable: $active"
+}
+
+sync_active_binary "$SYNC_D_FILE" "$ACTIVE_SYNC_D" "syncd"
+sync_active_binary "$SYNC_CTL_FILE" "$ACTIVE_SYNC_CTL" "syncctl"
+sync_active_binary "$SYNC_TUI_FILE" "$ACTIVE_SYNC_TUI" "synctui"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 

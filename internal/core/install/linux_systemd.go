@@ -62,6 +62,11 @@ func (i *LinuxSystemdInstaller) Install(mode Mode) error {
 		return err
 	}
 
+	// Migrate any legacy systemd timer unit (git-project-sync.timer) that may
+	// have been left behind by an earlier install approach. Errors are ignored –
+	// if the timer does not exist the commands simply fail silently.
+	i.migrateFromTimer(userFlag)
+
 	if err := os.MkdirAll(filepath.Dir(servicePath), 0o755); err != nil {
 		return &ReasonError{Code: ReasonInstallServiceDirCreateFailed, Message: "failed to create service directory", Hint: "check directory permissions and parent path", Err: err}
 	}
@@ -78,6 +83,22 @@ func (i *LinuxSystemdInstaller) Install(mode Mode) error {
 	}
 
 	return nil
+}
+
+// migrateFromTimer disables and removes any legacy timer-based install
+// (git-project-sync.timer + git-project-sync-oneshot.service) that predates
+// the current persistent-service approach. Errors are silently ignored because
+// the timer may simply not exist on most systems.
+func (i *LinuxSystemdInstaller) migrateFromTimer(userFlag []string) {
+	timerUnit := strings.TrimSuffix(i.unitName(), ".service") + ".timer"
+	oneshotUnit := strings.TrimSuffix(i.unitName(), ".service") + "-oneshot.service"
+
+	// Disable and stop the timer.
+	_ = i.run("systemctl", append(userFlag, "disable", "--now", timerUnit)...)
+	// Remove the oneshot service too if present.
+	_ = i.run("systemctl", append(userFlag, "disable", "--now", oneshotUnit)...)
+	// Reload so systemd forgets about the removed units.
+	_ = i.run("systemctl", append(userFlag, "daemon-reload")...)
 }
 
 func (i *LinuxSystemdInstaller) Uninstall(mode Mode) error {

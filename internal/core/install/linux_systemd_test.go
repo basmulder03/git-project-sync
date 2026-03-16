@@ -40,11 +40,20 @@ func TestLinuxSystemdInstallUserMode(t *testing.T) {
 		t.Fatalf("service file missing binary path: %s", string(content))
 	}
 
-	if len(calls) != 2 {
-		t.Fatalf("expected two systemctl calls, got %d: %+v", len(calls), calls)
+	// Calls: migration (disable timer, disable oneshot, daemon-reload) +
+	// install (daemon-reload, enable --now) = 5 total.
+	if len(calls) < 5 {
+		t.Fatalf("expected at least 5 systemctl calls (migration+install), got %d: %+v", len(calls), calls)
 	}
-	if !strings.Contains(calls[0], "--user daemon-reload") {
-		t.Fatalf("unexpected first systemctl call: %s", calls[0])
+
+	// The last two calls must be daemon-reload then enable --now.
+	enableCall := calls[len(calls)-1]
+	if !strings.Contains(enableCall, "enable") || !strings.Contains(enableCall, "--now") {
+		t.Fatalf("last call should be systemctl enable --now, got: %s", enableCall)
+	}
+	reloadCall := calls[len(calls)-2]
+	if !strings.Contains(reloadCall, "daemon-reload") {
+		t.Fatalf("second-to-last call should be systemctl daemon-reload, got: %s", reloadCall)
 	}
 }
 
@@ -116,5 +125,38 @@ func TestLinuxSystemdPreflightReportsMissingDependency(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected %s finding, got %+v", ReasonInstallDependencyMissing, findings)
+	}
+}
+
+func TestLinuxSystemdInstallMigratesLegacyTimer(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	serviceDir := filepath.Join(root, "user-systemd")
+	var calls []string
+	installer := NewLinuxSystemdInstaller("/usr/local/bin/syncd", "/tmp/config.yaml")
+	installer.UserServiceDir = serviceDir
+	installer.goos = "linux"
+	installer.lookPath = func(string) (string, error) { return "/usr/bin/systemctl", nil }
+	installer.stat = func(string) (os.FileInfo, error) { return nil, nil }
+	installer.run = func(name string, args ...string) error {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return nil
+	}
+
+	if err := installer.Install(ModeUser); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	// Verify that the timer disable call is present in the migration phase.
+	timerDisabled := false
+	for _, c := range calls {
+		if strings.Contains(c, "disable") && strings.Contains(c, ".timer") {
+			timerDisabled = true
+			break
+		}
+	}
+	if !timerDisabled {
+		t.Fatalf("expected systemctl disable .timer migration call, calls: %+v", calls)
 	}
 }

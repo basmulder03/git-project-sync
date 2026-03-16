@@ -76,13 +76,29 @@ func ensureConfigExists(configPath string) error {
 	return nil
 }
 
-// tryElevateForInstall attempts to re-launch the current process with
-// Administrator privileges on Windows. If relaunched is true the caller must
-// exit immediately (the elevated child has already done the work). On
-// non-Windows platforms this is a no-op that always returns false.
+// tryElevateForInstall attempts to re-launch the current process with elevated
+// privileges when the current operation requires them.
+//
+//   - Windows: always needs Administrator (sc.exe create requires it regardless
+//     of user/system mode), so elevation is attempted unconditionally.
+//   - Linux: only system-mode installs need root. Elevation is attempted when
+//     --system is present in os.Args.
+//
+// If relaunched is true, the caller must exit immediately — the elevated child
+// has already performed the work.
 func tryElevateForInstall() (relaunched bool, err error) {
-	if runtime.GOOS != "windows" {
+	switch runtime.GOOS {
+	case "windows":
+		return install.TryElevate(os.Args[1:])
+	case "linux":
+		// Only elevate when --system is explicitly requested.
+		for _, arg := range os.Args[1:] {
+			if arg == "--system" {
+				return install.TryElevate(os.Args[1:])
+			}
+		}
+		return false, nil
+	default:
 		return false, nil
 	}
-	return install.TryElevate(os.Args[1:])
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -43,27 +44,37 @@ func newUpdateCommand(configPath *string) *cobra.Command {
 	var outputPath string
 	var binaryPath string
 	var desiredVersion string
+	var syncdPath string
 	applyCmd := &cobra.Command{
 		Use:   "apply",
-		Short: "Download, verify, and apply update artifact",
+		Short: "Download, verify, and apply update for all binaries (syncctl + syncd)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			target := binaryPath
-			if target == "" {
-				target = outputPath
+			// Resolve the syncctl target binary path.
+			syncctlTarget := binaryPath
+			if syncctlTarget == "" {
+				syncctlTarget = outputPath
 			}
-			if target == "" {
+			if syncctlTarget == "" {
 				execPath, err := os.Executable()
 				if err == nil {
-					target = execPath
+					syncctlTarget = execPath
 				} else {
-					target = filepath.Join(".", "syncctl")
+					syncctlTarget = filepath.Join(".", syncctlBinaryName())
 				}
+			}
+
+			// Resolve the syncd target binary path.
+			// Default: sibling of syncctl in the same directory.
+			syncdTarget := syncdPath
+			if syncdTarget == "" {
+				syncdTarget = filepath.Join(filepath.Dir(syncctlTarget), syncdBinaryName())
 			}
 
 			updater := update.NewUpdater(currentVersion)
 
-			artifact := update.Artifact{}
-			targetVersion := ""
+			var manifest update.Manifest
+			var targetVersion string
+
 			if strings.TrimSpace(manifestURL) != "" {
 				result, err := updater.Check(context.Background(), manifestURL, channel)
 				if err != nil {
@@ -73,7 +84,7 @@ func newUpdateCommand(configPath *string) *cobra.Command {
 					cmd.Printf("no update available (current=%s latest=%s channel=%s)\n", currentVersion, result.Manifest.Version, result.Manifest.Channel)
 					return nil
 				}
-				artifact = result.Artifact
+				manifest = result.Manifest
 				targetVersion = result.Manifest.Version
 			} else {
 				candidates, err := updater.ListCandidates(context.Background(), repo, channel, includePrerelease)
@@ -102,7 +113,7 @@ func newUpdateCommand(configPath *string) *cobra.Command {
 				if strings.TrimSpace(desiredVersion) == "" {
 					cmd.Printf("applying latest available version %s (use --version to choose a specific version)\n", selected.Version)
 				}
-				artifact = selected.Artifact
+				manifest = selected.Manifest
 				targetVersion = selected.Version
 			}
 
@@ -111,18 +122,47 @@ func newUpdateCommand(configPath *string) *cobra.Command {
 			traceID := fmt.Sprintf("update-%d", time.Now().UTC().UnixNano())
 			recordUpdateEvent(api, traceID, "info", "update_started", "update apply started")
 
-			applyResult, err := updater.Apply(context.Background(), artifact, target, targetVersion)
-			if err != nil {
-				if applyErr, ok := err.(update.ApplyError); ok && applyErr.RollbackPerformed {
-					recordUpdateEvent(api, traceID, "warn", "update_rollback", "update failed and rollback completed")
-				}
-				recordUpdateEvent(api, traceID, "error", "update_failed", err.Error())
-				return err
+			// Build the component → target-path map.
+			// We only include syncd if the binary currently exists on disk;
+			// this avoids failing an update just because syncd was never
+			// installed in this particular environment.
+			componentPaths := map[string]string{
+				"syncctl": syncctlTarget,
+			}
+			if _, err := os.Stat(syncdTarget); err == nil {
+				componentPaths["syncd"] = syncdTarget
 			}
 
-			recordUpdateEvent(api, traceID, "info", "update_succeeded", "update applied successfully")
+			results := updater.ApplyAll(context.Background(), manifest, componentPaths, targetVersion)
 
-			cmd.Printf("applied verified update %s to %s\n", applyResult.Version, applyResult.TargetPath)
+			anyErr := false
+			for _, r := range results {
+				if r.Err != nil {
+					anyErr = true
+					if applyErr, ok := r.Err.(update.ApplyError); ok && applyErr.RollbackPerformed {
+						recordUpdateEvent(api, traceID, "warn", "update_rollback",
+							fmt.Sprintf("component %s update failed and rollback completed", r.Component))
+						cmd.Printf("rollback performed for %s: %v\n", r.Component, r.Err)
+					} else {
+						recordUpdateEvent(api, traceID, "error", "update_failed",
+							fmt.Sprintf("component %s: %v", r.Component, r.Err))
+						cmd.Printf("error updating %s: %v\n", r.Component, r.Err)
+					}
+				} else {
+					cmd.Printf("applied verified update %s to %s\n", r.Version, r.TargetPath)
+				}
+			}
+
+			if len(results) == 0 {
+				cmd.Printf("no matching artifacts found in manifest for this platform\n")
+			}
+
+			if anyErr {
+				recordUpdateEvent(api, traceID, "error", "update_failed", "one or more component updates failed")
+				return fmt.Errorf("one or more component updates failed")
+			}
+
+			recordUpdateEvent(api, traceID, "info", "update_succeeded", "all component updates applied successfully")
 			return nil
 		},
 	}
@@ -134,12 +174,29 @@ func newUpdateCommand(configPath *string) *cobra.Command {
 		command.Flags().BoolVar(&includePrerelease, "include-prerelease", false, "Include prerelease versions")
 		command.Flags().StringVar(&currentVersion, "current-version", version, "Current binary version")
 	}
-	applyCmd.Flags().StringVar(&outputPath, "output", "", "Output artifact path")
-	applyCmd.Flags().StringVar(&binaryPath, "binary-path", "", "Target binary path for atomic replacement")
+	applyCmd.Flags().StringVar(&outputPath, "output", "", "Output path for the syncctl artifact (deprecated, use --binary-path)")
+	applyCmd.Flags().StringVar(&binaryPath, "binary-path", "", "Target path for syncctl binary (defaults to the running executable)")
+	applyCmd.Flags().StringVar(&syncdPath, "syncd-path", "", "Target path for syncd binary (defaults to syncd sibling of syncctl)")
 	applyCmd.Flags().StringVar(&desiredVersion, "version", "", "Specific target version to apply")
 
 	updateCmd.AddCommand(checkCmd, applyCmd)
 	return updateCmd
+}
+
+// syncctlBinaryName returns the OS-appropriate name for the syncctl binary.
+func syncctlBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return "syncctl.exe"
+	}
+	return "syncctl"
+}
+
+// syncdBinaryName returns the OS-appropriate name for the syncd binary.
+func syncdBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return "syncd.exe"
+	}
+	return "syncd"
 }
 
 func runUpdateCheck(cmd *cobra.Command, updater *update.Updater, manifestURL, repo, channel string, includePrerelease bool) error {

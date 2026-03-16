@@ -5,32 +5,27 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-if ($Mode -eq "system") {
-  $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-  if (-not $isAdmin) {
-    throw "System uninstall requires Administrator privileges"
+# Require Administrator – sc.exe delete requires elevation.
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+  throw "Uninstalling a Windows Service requires Administrator privileges. Re-run this script in an elevated shell."
+}
+
+$serviceName = "GitProjectSync"
+
+Write-Host "Stopping service '$serviceName' (if running)..."
+& sc.exe stop $serviceName 2>&1 | Out-Null
+# Give the service a moment to stop before deleting it.
+Start-Sleep -Seconds 2
+
+$result = & sc.exe delete $serviceName 2>&1
+if ($LASTEXITCODE -ne 0) {
+  # 1060 = ERROR_SERVICE_DOES_NOT_EXIST – treat as already uninstalled.
+  if ($result -match "1060") {
+    Write-Host "Service '$serviceName' was not found (already removed)."
+  } else {
+    throw "sc.exe delete $serviceName failed (exit $LASTEXITCODE): $result"
   }
-}
-
-$taskName = "GitProjectSync"
-
-if ($env:CONFIG_PATH) {
-  $configPath = $env:CONFIG_PATH
-} elseif ($Mode -eq "system") {
-  $configPath = "$env:ProgramData\git-project-sync\config.yaml"
 } else {
-  $configPath = "$env:APPDATA\git-project-sync\config.yaml"
+  Write-Host "Uninstalled Windows Service '$serviceName' in $Mode mode"
 }
-
-try {
-  schtasks /Delete /F /TN $taskName | Out-Null
-} catch {
-  Write-Host "Task '$taskName' not found or already removed"
-}
-
-$launcherPath = Join-Path (Split-Path -Parent $configPath) "run-syncd.cmd"
-if (Test-Path -LiteralPath $launcherPath -PathType Leaf) {
-  Remove-Item -LiteralPath $launcherPath -Force
-}
-
-Write-Host "Uninstalled scheduled task '$taskName' in $Mode mode"

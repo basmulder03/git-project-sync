@@ -159,7 +159,7 @@ func (osDaemonController) Start(mode install.Mode) error {
 		_, err := runCommand("systemctl", append(systemctlModeArgs(mode), "start", "git-project-sync.service")...)
 		return err
 	case "windows":
-		_, err := runCommand("schtasks", "/Run", "/TN", "GitProjectSync")
+		_, err := runCommand("sc.exe", "start", "GitProjectSync")
 		return err
 	default:
 		return fmt.Errorf("unsupported OS %q", runtime.GOOS)
@@ -172,7 +172,7 @@ func (osDaemonController) Stop(mode install.Mode) error {
 		_, err := runCommand("systemctl", append(systemctlModeArgs(mode), "stop", "git-project-sync.service")...)
 		return err
 	case "windows":
-		_, err := runCommand("schtasks", "/End", "/TN", "GitProjectSync")
+		_, err := runCommand("sc.exe", "stop", "GitProjectSync")
 		return err
 	default:
 		return fmt.Errorf("unsupported OS %q", runtime.GOOS)
@@ -195,14 +195,20 @@ func (osDaemonController) Status(mode install.Mode) (string, error) {
 		}
 		return strings.TrimSpace(out), nil
 	case "windows":
-		out, err := runCommand("schtasks", "/Query", "/TN", "GitProjectSync", "/FO", "LIST")
+		out, err := runCommand("sc.exe", "query", "GitProjectSync")
 		if err != nil {
 			return "unknown", err
 		}
+		// Parse the STATE line from sc.exe query output, e.g.:
+		//   STATE              : 4  RUNNING
 		for _, line := range strings.Split(out, "\n") {
 			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(strings.ToLower(trimmed), "status:") {
-				return strings.TrimSpace(strings.TrimPrefix(trimmed, "Status:")), nil
+			if strings.HasPrefix(trimmed, "STATE") {
+				// Extract the human-readable state token after the numeric code.
+				parts := strings.Fields(trimmed)
+				if len(parts) >= 3 {
+					return strings.ToLower(parts[len(parts)-1]), nil
+				}
 			}
 		}
 		return "unknown", nil

@@ -24,7 +24,7 @@ func defaultServiceInstaller(binaryPath, configPath string) (serviceInstaller, e
 	case "linux":
 		return install.NewLinuxSystemdInstaller(binaryPath, configPath), nil
 	case "windows":
-		return install.NewWindowsTaskSchedulerInstaller(binaryPath, configPath), nil
+		return install.NewWindowsServiceInstaller(binaryPath, configPath), nil
 	default:
 		return nil, fmt.Errorf("unsupported OS %q", runtime.GOOS)
 	}
@@ -74,4 +74,15 @@ func ensureConfigExists(configPath string) error {
 		return err
 	}
 	return nil
+}
+
+// tryElevateForInstall attempts to re-launch the current process with
+// Administrator privileges on Windows. If relaunched is true the caller must
+// exit immediately (the elevated child has already done the work). On
+// non-Windows platforms this is a no-op that always returns false.
+func tryElevateForInstall() (relaunched bool, err error) {
+	if runtime.GOOS != "windows" {
+		return false, nil
+	}
+	return install.TryElevate(os.Args[1:])
 }

@@ -16,6 +16,11 @@ type Manifest struct {
 }
 
 type Artifact struct {
+	// Component identifies which binary this artifact replaces.
+	// Known values: "syncctl", "syncd".
+	// An empty Component is treated as "syncctl" for backwards compatibility
+	// with manifests produced before multi-binary upgrade support was added.
+	Component string `json:"component,omitempty"`
 	OS        string `json:"os"`
 	Arch      string `json:"arch"`
 	URL       string `json:"url"`

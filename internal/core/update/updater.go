@@ -111,11 +111,84 @@ func (u *Updater) Apply(ctx context.Context, artifact Artifact, targetBinaryPath
 	return ApplyResult{TargetPath: targetBinaryPath, Version: version}, nil
 }
 
+// ComponentResult holds the outcome of updating a single component binary.
+type ComponentResult struct {
+	Component  string
+	TargetPath string
+	Version    string
+	Err        error
+}
+
+// ApplyAll applies every artifact in the manifest that matches the current
+// platform, writing each component binary to its resolved target path.
+// componentPaths maps a component name (e.g. "syncctl", "syncd") to the
+// on-disk path where the binary should be installed. Components not present
+// in the map are skipped.
+func (u *Updater) ApplyAll(ctx context.Context, manifest Manifest, componentPaths map[string]string, version string) []ComponentResult {
+	platform := artifactsForPlatform(manifest.Artifacts, runtime.GOOS, runtime.GOARCH)
+
+	// Deduplicate: keep the first artifact per component encountered.
+	seen := map[string]Artifact{}
+	for _, a := range platform {
+		comp := a.Component
+		if comp == "" {
+			comp = "syncctl" // backwards compat
+		}
+		if _, ok := seen[comp]; !ok {
+			seen[comp] = a
+		}
+	}
+
+	var results []ComponentResult
+	for comp, targetPath := range componentPaths {
+		artifact, ok := seen[comp]
+		if !ok {
+			// No artifact for this component in the manifest – skip silently.
+			continue
+		}
+		result, err := u.Apply(ctx, artifact, targetPath, version)
+		results = append(results, ComponentResult{
+			Component:  comp,
+			TargetPath: result.TargetPath,
+			Version:    result.Version,
+			Err:        err,
+		})
+	}
+	return results
+}
+
 func matchArtifact(artifacts []Artifact, osName, arch string) (Artifact, bool) {
+	return matchComponentArtifact(artifacts, "", osName, arch)
+}
+
+// matchComponentArtifact finds the first artifact matching the given component,
+// OS, and architecture. When component is empty it matches the first artifact
+// whose Component field is also empty (or "syncctl" for backwards compat).
+func matchComponentArtifact(artifacts []Artifact, component, osName, arch string) (Artifact, bool) {
 	for _, artifact := range artifacts {
-		if strings.EqualFold(artifact.OS, osName) && strings.EqualFold(artifact.Arch, arch) {
+		if !strings.EqualFold(artifact.OS, osName) || !strings.EqualFold(artifact.Arch, arch) {
+			continue
+		}
+		if component == "" {
+			// Backwards compat: treat empty component as "syncctl"
+			if artifact.Component == "" || strings.EqualFold(artifact.Component, "syncctl") {
+				return artifact, true
+			}
+		} else if strings.EqualFold(artifact.Component, component) {
 			return artifact, true
 		}
 	}
 	return Artifact{}, false
+}
+
+// artifactsForPlatform returns all artifacts that match the given OS and arch,
+// grouped by component. This is used by the multi-binary upgrade path.
+func artifactsForPlatform(artifacts []Artifact, osName, arch string) []Artifact {
+	var out []Artifact
+	for _, a := range artifacts {
+		if strings.EqualFold(a.OS, osName) && strings.EqualFold(a.Arch, arch) {
+			out = append(out, a)
+		}
+	}
+	return out
 }

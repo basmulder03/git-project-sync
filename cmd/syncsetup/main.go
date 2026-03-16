@@ -406,7 +406,7 @@ func newInstaller(_ install.Mode, goos, binPath, configPath string) (serviceInst
 	case "linux":
 		return install.NewLinuxSystemdInstaller(binPath, configPath), nil
 	case "windows":
-		return install.NewWindowsTaskSchedulerInstaller(binPath, configPath), nil
+		return install.NewWindowsServiceInstaller(binPath, configPath), nil
 	default:
 		return nil, fmt.Errorf("unsupported OS: %s", goos)
 	}

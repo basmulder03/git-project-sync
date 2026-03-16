@@ -175,7 +175,7 @@ func defaultInstallPreflight(mode install.Mode) []install.Finding {
 	case "linux":
 		return install.NewLinuxSystemdInstaller(binaryPath, configPath).Preflight(mode)
 	case "windows":
-		return install.NewWindowsTaskSchedulerInstaller(binaryPath, configPath).Preflight(mode)
+		return install.NewWindowsServiceInstaller(binaryPath, configPath).Preflight(mode)
 	default:
 		return []install.Finding{{
 			Severity: "critical",

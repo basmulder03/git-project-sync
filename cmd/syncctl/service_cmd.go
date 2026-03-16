@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/spf13/cobra"
 )
 
@@ -21,6 +24,13 @@ func newServiceCommand(configPath *string) *cobra.Command {
 		Use:   "register",
 		Short: "Register and start service",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// On Windows, service creation always requires Administrator.
+			if relaunched, elErr := tryElevateForInstall(); elErr != nil {
+				return fmt.Errorf("elevation failed: %w", elErr)
+			} else if relaunched {
+				os.Exit(0)
+			}
+
 			mode, err := resolveInstallMode(userFlag, systemFlag)
 			if err != nil {
 				return err
@@ -51,6 +61,13 @@ func newServiceCommand(configPath *string) *cobra.Command {
 		Use:   "unregister",
 		Short: "Unregister and stop service",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// On Windows, service deletion always requires Administrator.
+			if relaunched, elErr := tryElevateForInstall(); elErr != nil {
+				return fmt.Errorf("elevation failed: %w", elErr)
+			} else if relaunched {
+				os.Exit(0)
+			}
+
 			mode, err := resolveInstallMode(userFlag, systemFlag)
 			if err != nil {
 				return err

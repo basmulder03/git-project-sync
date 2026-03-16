@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestWindowsInstallScriptsContainTaskRegistrationFlow(t *testing.T) {
+func TestWindowsInstallScriptsContainServiceRegistrationFlow(t *testing.T) {
 	t.Parallel()
 
 	if runtime.GOOS != "windows" {
@@ -39,12 +39,13 @@ func TestWindowsInstallScriptsContainTaskRegistrationFlow(t *testing.T) {
 		}
 	}
 
-	for _, want := range []string{"schtasks", "/Create", "/Query", "syncd.exe", "--config", "Add-ToPath", "SetEnvironmentVariable", "Set-Content"} {
+	// install.ps1 now uses Windows Service (sc.exe) instead of Task Scheduler.
+	for _, want := range []string{"sc.exe", "create", "syncd.exe", "--config", "Add-ToPath", "Set-Content"} {
 		if !strings.Contains(string(installContent), want) {
 			t.Fatalf("install.ps1 missing %q", want)
 		}
 	}
-	for _, want := range []string{"schtasks", "/Delete"} {
+	for _, want := range []string{"sc.exe", "delete"} {
 		if !strings.Contains(string(uninstallContent), want) {
 			t.Fatalf("uninstall.ps1 missing %q", want)
 		}

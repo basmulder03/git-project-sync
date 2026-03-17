@@ -114,15 +114,11 @@ func topLevelGroupsFromSyncctlMain(t *testing.T, path string) []string {
 		t.Fatalf("read syncctl main: %v", err)
 	}
 	s := string(data)
-	start := strings.Index(s, "root.AddCommand(")
-	if start < 0 {
+	blockMatch := regexp.MustCompile(`(?s)root\.AddCommand\((.*?)\)\s*return\s+root`).FindStringSubmatch(s)
+	if len(blockMatch) < 2 {
 		t.Fatal("root.AddCommand block not found")
 	}
-	end := strings.Index(s[start:], ")\n\n\treturn root")
-	if end < 0 {
-		t.Fatal("root.AddCommand block end not found")
-	}
-	block := s[start : start+end]
+	block := blockMatch[1]
 	re := regexp.MustCompile(`new([A-Za-z0-9]+)Command`)
 	matches := re.FindAllStringSubmatch(block, -1)
 	if len(matches) == 0 {

@@ -32,10 +32,6 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("open sqlite db: %w", err)
 	}
 
-	// Limit to a single writer connection to avoid SQLITE_BUSY contention.
-	// Readers share the same connection pool; WAL mode allows concurrent reads.
-	db.SetMaxOpenConns(1)
-
 	store := &SQLiteStore{db: db, dbPath: dbPath}
 	if err := store.EnsureSchema(); err != nil {
 		_ = db.Close()
@@ -160,6 +156,11 @@ func (s *SQLiteStore) EnsureSchema() error {
 	// on the hot-path event-append workload.
 	if _, err := s.db.Exec(`PRAGMA synchronous=NORMAL;`); err != nil {
 		return fmt.Errorf("set synchronous mode: %w", err)
+	}
+	// Allow concurrent openers (e.g. CLI + daemon) to wait up to 5 s for a
+	// write lock instead of returning SQLITE_BUSY immediately.
+	if _, err := s.db.Exec(`PRAGMA busy_timeout=5000;`); err != nil {
+		return fmt.Errorf("set busy timeout: %w", err)
 	}
 
 	version, err := s.schemaVersion()

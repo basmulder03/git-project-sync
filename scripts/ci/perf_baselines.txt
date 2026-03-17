@@ -1,0 +1,12 @@
+BenchmarkFairOrderTasks/sources1_repos10-20 3337
+BenchmarkFairOrderTasks/sources4_repos100-20 104531
+BenchmarkFairOrderTasks/sources4_repos330-20 479248
+BenchmarkFairOrderTasks/sources8_repos500-20 1175404
+BenchmarkRunCycle/parallel4_repos50-20 9077467
+BenchmarkRunCycle/parallel8_repos200-20 34735410
+BenchmarkRunCycle/parallel16_repos330-20 65907060
+BenchmarkAppendEvent-20 91727
+BenchmarkListEvents-20 211020
+BenchmarkListEventsByTrace-20 322271
+BenchmarkPutRepoState-20 71225
+BenchmarkListRepoStates-20 211100

@@ -70,6 +70,34 @@ jobs:
           name: coverage-report
           path: coverage/
 
+  perf:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run benchmark suite
+        shell: bash
+        run: |
+          go test ./internal/core/daemon/... -run '^$' -bench=. -benchtime=3s -benchmem -count=1
+          go test ./internal/core/state/...  -run '^$' -bench=. -benchtime=3s -benchmem -count=1
+
+      - name: Performance regression gate
+        shell: bash
+        run: bash ./scripts/ci/perf_gate.sh
+
+      - name: Upload perf results
+        uses: actions/upload-artifact@v7
+        with:
+          name: perf-results
+          path: coverage/perf_results.txt
+
   security:
     runs-on: ubuntu-latest
 
@@ -99,7 +127,7 @@ jobs:
 
   acceptance-closure:
     runs-on: ubuntu-latest
-    needs: [test, coverage, security]
+    needs: [test, coverage, perf, security]
 
     steps:
       - name: Checkout

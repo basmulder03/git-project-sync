@@ -32,6 +32,10 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("open sqlite db: %w", err)
 	}
 
+	// Limit to a single writer connection to avoid SQLITE_BUSY contention.
+	// Readers share the same connection pool; WAL mode allows concurrent reads.
+	db.SetMaxOpenConns(1)
+
 	store := &SQLiteStore{db: db, dbPath: dbPath}
 	if err := store.EnsureSchema(); err != nil {
 		_ = db.Close()
@@ -151,6 +155,11 @@ func copyFile(src, dst string) error {
 func (s *SQLiteStore) EnsureSchema() error {
 	if _, err := s.db.Exec(`PRAGMA journal_mode=WAL;`); err != nil {
 		return fmt.Errorf("set journal mode: %w", err)
+	}
+	// NORMAL durability is safe with WAL and dramatically reduces fsync overhead
+	// on the hot-path event-append workload.
+	if _, err := s.db.Exec(`PRAGMA synchronous=NORMAL;`); err != nil {
+		return fmt.Errorf("set synchronous mode: %w", err)
 	}
 
 	version, err := s.schemaVersion()
@@ -926,6 +935,21 @@ func (s *SQLiteStore) applyMigration(version int) error {
 		// discovered_repos.  URLs were stored as https://<token>@<host>/…;
 		// we rewrite them to the clean https://<host>/… form.
 		if err := s.stripPATsFromDiscoveredRepos(); err != nil {
+			return err
+		}
+	case 5:
+		// Performance indexes: add composite and covering indexes that were
+		// missing from the initial schema and are hit on every scheduler cycle.
+		if _, err := s.db.Exec(`
+			-- Fast trace-id lookup used by ListEventsByTrace (previously full-scan).
+			CREATE INDEX IF NOT EXISTS idx_events_trace_id ON events(trace_id);
+
+			-- Fast in-flight run-state queries: WHERE completed_at IS NULL.
+			CREATE INDEX IF NOT EXISTS idx_run_state_completed_at ON run_state(completed_at);
+
+			-- Covering index for repo_state ordered listing (most-recent-first).
+			CREATE INDEX IF NOT EXISTS idx_repo_state_updated_at ON repo_state(updated_at DESC);
+		`); err != nil {
 			return err
 		}
 	default:

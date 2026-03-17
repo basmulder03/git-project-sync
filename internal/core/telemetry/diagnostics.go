@@ -17,22 +17,14 @@ func SummarizeRecentEvents(events []Event, now time.Time) EventSummary {
 		now = time.Now().UTC()
 	}
 
-	summary := EventSummary{}
-	cutoff := now.Add(-1 * time.Hour)
-	for _, event := range events {
-		if event.CreatedAt.Before(cutoff) {
-			continue
-		}
-		summary.TotalLastHour++
-		switch event.Level {
-		case "error":
-			summary.ErrorsLastHour++
-		case "warn", "warning":
-			summary.WarnsLastHour++
-		}
+	// Reuse BuildMetrics so both summary and full metrics are computed in a
+	// single pass over the events slice.
+	m := BuildMetrics(events, now)
+	return EventSummary{
+		ErrorsLastHour: int(m.RecentErrors),
+		WarnsLastHour:  int(m.RecentWarns),
+		TotalLastHour:  int(m.RecentTotal),
 	}
-
-	return summary
 }
 
 func HealthScore(criticalCount, warningCount int) int {
@@ -64,6 +56,11 @@ type MetricsSnapshot struct {
 	ErrorEvents int64
 	WarnEvents  int64
 
+	// Last-hour counters (computed in the same pass as the aggregate counters).
+	RecentTotal  int64
+	RecentErrors int64
+	RecentWarns  int64
+
 	// Health score [0..100]
 	HealthScore int
 
@@ -72,10 +69,14 @@ type MetricsSnapshot struct {
 }
 
 // BuildMetrics computes a MetricsSnapshot from a slice of events.
+// It also fills in the EventSummary fields so callers that previously called
+// both BuildMetrics and SummarizeRecentEvents can use a single pass.
 func BuildMetrics(events []Event, now time.Time) MetricsSnapshot {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+
+	cutoff := now.Add(-1 * time.Hour)
 
 	var m MetricsSnapshot
 	m.Timestamp = now.UTC().Format(time.RFC3339)
@@ -107,6 +108,17 @@ func BuildMetrics(events []Event, now time.Time) MetricsSnapshot {
 			m.UpdateApplied++
 		default:
 			m.OtherEvents++
+		}
+
+		// Accumulate last-hour summary in the same pass.
+		if !e.CreatedAt.Before(cutoff) {
+			m.RecentTotal++
+			switch e.Level {
+			case "error":
+				m.RecentErrors++
+			case "warn", "warning":
+				m.RecentWarns++
+			}
 		}
 	}
 

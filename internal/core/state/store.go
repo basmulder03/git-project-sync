@@ -2,7 +2,7 @@ package state
 
 import "time"
 
-const CurrentSchemaVersion = 4
+const CurrentSchemaVersion = 5
 
 type Store interface {
 	EnsureSchema() error

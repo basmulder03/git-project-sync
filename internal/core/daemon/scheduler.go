@@ -125,8 +125,9 @@ func fairOrderTasks(tasks []RepoTask) []RepoTask {
 		return append([]RepoTask(nil), tasks...)
 	}
 
-	bySource := map[string][]RepoTask{}
-	sourceOrder := make([]string, 0)
+	// Pre-size the by-source map with a capacity hint to reduce rehashing.
+	bySource := make(map[string][]RepoTask, 8)
+	sourceOrder := make([]string, 0, 8)
 	for _, task := range tasks {
 		key := sourceBucketKey(task.Source.ID)
 		if _, exists := bySource[key]; !exists {
@@ -293,18 +294,18 @@ func (s *Scheduler) sourceWait(sourceID string) time.Duration {
 
 	s.rateLimitMu.Lock()
 	until, ok := s.sourceBackoff[sourceID]
-	s.rateLimitMu.Unlock()
 	if !ok {
+		s.rateLimitMu.Unlock()
 		return 0
 	}
 
 	remaining := until.Sub(s.now().UTC())
 	if remaining <= 0 {
-		s.rateLimitMu.Lock()
 		delete(s.sourceBackoff, sourceID)
 		s.rateLimitMu.Unlock()
 		return 0
 	}
+	s.rateLimitMu.Unlock()
 
 	return remaining
 }

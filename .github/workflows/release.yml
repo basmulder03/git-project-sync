@@ -28,6 +28,10 @@ on:
         description: "Rollback decision checklist reviewed"
         required: true
         type: boolean
+  schedule:
+    # Weekly LTS/maintenance scan — every Monday at 06:00 UTC.
+    # Runs against all active release/* branches and main.
+    - cron: "0 6 * * 1"
 
 permissions:
   contents: write
@@ -228,3 +232,86 @@ jobs:
           files: |
             dist/*
           generate_release_notes: true
+
+  # ── LTS / Maintenance scan ────────────────────────────────────────────────
+  # Runs weekly (cron) on main and on any release/* branch that is currently
+  # in the LTS window.  Checks for new vulnerabilities and stale dependencies;
+  # opens an issue labelled `lts-maintenance` if any check fails.
+  maintenance:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Vulnerability scan
+        id: vuln
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT=0
+          $(go env GOPATH)/bin/govulncheck ./... || RESULT=$?
+          echo "exit_code=$RESULT" >> "$GITHUB_OUTPUT"
+
+      - name: Dependency freshness check
+        id: deps
+        shell: bash
+        run: |
+          set -euo pipefail
+          STALE=$(go list -m -u all 2>/dev/null | grep -c '\[' || true)
+          echo "stale_count=$STALE" >> "$GITHUB_OUTPUT"
+
+      - name: Secret scan (maintenance)
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --source . --no-git --redact --exit-code 1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+        id: secrets
+
+      - name: Open maintenance issue on failure
+        if: >
+          steps.vuln.outputs.exit_code != '0' ||
+          steps.deps.outputs.stale_count != '0' ||
+          steps.secrets.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = context.ref.replace('refs/heads/', '');
+            const lines = [
+              `## LTS Maintenance Alert — \`${branch}\``,
+              '',
+              `**Run:** ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              '',
+              '| Check | Result |',
+              '| --- | --- |',
+              `| govulncheck | ${{ steps.vuln.outputs.exit_code == '0' && 'PASS' || 'FAIL' }} |`,
+              `| Stale dependencies | ${{ steps.deps.outputs.stale_count }} module(s) with updates |`,
+              `| Secret scan | ${{ steps.secrets.outcome }} |`,
+              '',
+              'Please triage and resolve before the next scheduled run.',
+              '',
+              'Reference: `docs/LTS_POLICY.md`',
+            ];
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[lts-maintenance] Weekly scan failure on ${branch}`,
+              body: lines.join('\n'),
+              labels: ['lts-maintenance'],
+            });

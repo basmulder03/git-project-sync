@@ -13,6 +13,7 @@ Use this checklist before promoting a tag to a production release.
 
 - [ ] `test` job passed on Linux and Windows (`go test ./...`, integration suite, reliability subset).
 - [ ] `coverage` job passed with package threshold enforcement (`scripts/ci/coverage.sh`).
+- [ ] `perf` job passed; no benchmark regression beyond tolerance defined in `scripts/ci/perf_baselines.txt`.
 - [ ] `security` job passed:
   - [ ] `govulncheck ./...` returned no unresolved vulnerabilities.
   - [ ] `gitleaks` secret scan returned no findings.
@@ -40,6 +41,16 @@ Use this checklist before promoting a tag to a production release.
 - [ ] No unresolved critical incidents or rollback blockers in operations tracker.
 - [ ] Final approval recorded by release owner.
 
+## LTS Promotion (major version releases only)
+
+Complete these steps when releasing a new major version that triggers the previous major line entering LTS.
+
+- [ ] LTS branch `release/vX.Y` created from the previous GA tag.
+- [ ] `docs/LTS_POLICY.md` version table updated with correct release date and EOL date.
+- [ ] Weekly maintenance CI job confirmed active on the new LTS branch.
+- [ ] Announcement published in repository Releases notes describing LTS timeline.
+- [ ] All open backport-eligible PRs against `main` are evaluated for cherry-pick to `release/vX.Y`.
+
 ## Rollback Decision Checklist
 
 - [ ] Previous stable artifacts are available and checksummed.
@@ -47,3 +58,4 @@ Use this checklist before promoting a tag to a production release.
 - [ ] Rollback owner and execution channel are identified.
 - [ ] Verification commands after rollback are prepared (`syncctl --version`, `syncctl doctor`, `syncctl stats show`).
 - [ ] Customer/operator communication template for rollback is prepared.
+

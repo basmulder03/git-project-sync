@@ -60,6 +60,14 @@ func NewScheduler(cfg config.DaemonConfig, logger *slog.Logger, locks *RepoLockM
 	}
 }
 
+// SetNow replaces the internal clock function used by the scheduler.
+// This is intended for testing only — it allows callers to pin the clock to a
+// specific instant so that maintenance-window and backoff logic can be
+// exercised deterministically.
+func (s *Scheduler) SetNow(fn func() time.Time) {
+	s.now = fn
+}
+
 func (s *Scheduler) RunCycle(ctx context.Context, traceID string, tasks []RepoTask, dryRun bool) {
 	maxParallelRepos := s.cfg.MaxParallelRepos
 	if maxParallelRepos < 1 {

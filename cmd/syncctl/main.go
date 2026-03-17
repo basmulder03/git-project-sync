@@ -36,6 +36,7 @@ func newRootCommand() *cobra.Command {
 	// Print a one-time hint when SSH is enabled but the user hasn't yet
 	// decided about the SSH remote migration.  Informational only; does not
 	// block any command.
+	// Also runs a post-update version sync check when the CLI was just updated.
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		// Only hint in interactive sessions (not when piped/scripted).
 		fi, err := os.Stdout.Stat()
@@ -43,10 +44,18 @@ func newRootCommand() *cobra.Command {
 		if !isTTY {
 			return nil
 		}
-		// Skip the hint for the migration command itself.
-		if cmd.CommandPath() == "syncctl auth ssh migrate" {
+		// Skip startup checks for the migration command itself and the update
+		// apply command (which replaces binaries and therefore runs in the
+		// middle of the sync process).
+		cmdPath := cmd.CommandPath()
+		if cmdPath == "syncctl auth ssh migrate" || cmdPath == "syncctl update apply" {
 			return nil
 		}
+
+		// Post-update companion version sync.  Runs only when syncctl was
+		// updated since the last invocation; non-fatal in all cases.
+		postUpdateVersionSync(cmd.Context(), os.Stderr, version, configPath)
+
 		cfg, cfgErr := config.Load(configPath)
 		if cfgErr != nil {
 			return nil // config may not exist yet; don't block

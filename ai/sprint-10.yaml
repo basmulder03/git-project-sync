@@ -93,6 +93,7 @@ tasks:
       - Bind palette to shared command catalog.
       - Add action progress, result summaries, and error surface with reason codes.
       - Keep keyboard navigation consistent and discoverable.
+      - Implement centered palette overlay with keyboard selection (`up/down`, `tab` autocomplete) and command history re-run.
     acceptance_criteria:
       - "every syncctl top-level command group is reachable through palette"
       - "palette can execute read and mutation commands with confirmation where needed"
@@ -114,6 +115,7 @@ tasks:
       - Improve list/detail views for repos, sources, runs, events, and traces.
       - Add confirmation modals for destructive or risky actions.
       - Add empty-state guidance and remediation hints.
+      - Deliver dashboard-grade TUI visuals (panelized layout, focus rings, animated activity pulse, mini-metric bars, explicit focus context).
     acceptance_criteria:
       - "TUI guided screens can execute every command group defined in CLI spec"
       - "TUI interaction quality supports practical operator workflows"

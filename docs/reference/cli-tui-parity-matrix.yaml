@@ -1,0 +1,79 @@
+version: 1
+description: Top-level CLI command-group parity between syncctl and synctui.
+groups:
+  - group: doctor
+    cli_example: "syncctl doctor"
+    tui_palette: "doctor"
+    tui_guided: "status dashboard"
+  - group: source
+    cli_example: "syncctl source list"
+    tui_palette: "source list"
+    tui_guided: "command palette"
+  - group: repo
+    cli_example: "syncctl repo list"
+    tui_palette: "repo list"
+    tui_guided: "repos tab"
+  - group: workspace
+    cli_example: "syncctl workspace show"
+    tui_palette: "workspace show"
+    tui_guided: "command palette"
+  - group: sync
+    cli_example: "syncctl sync all"
+    tui_palette: "sync all"
+    tui_guided: "quick action (s)"
+  - group: discover
+    cli_example: "syncctl discover"
+    tui_palette: "discover"
+    tui_guided: "command palette"
+  - group: daemon
+    cli_example: "syncctl daemon status"
+    tui_palette: "daemon status"
+    tui_guided: "status dashboard"
+  - group: config
+    cli_example: "syncctl config show"
+    tui_palette: "config show"
+    tui_guided: "command palette"
+  - group: auth
+    cli_example: "syncctl auth status"
+    tui_palette: "auth status"
+    tui_guided: "command palette"
+  - group: cache
+    cli_example: "syncctl cache refresh all"
+    tui_palette: "cache refresh all"
+    tui_guided: "cache tab + quick action (c)"
+  - group: stats
+    cli_example: "syncctl stats show"
+    tui_palette: "stats show"
+    tui_guided: "command palette"
+  - group: events
+    cli_example: "syncctl events list"
+    tui_palette: "events list"
+    tui_guided: "logs tab"
+  - group: trace
+    cli_example: "syncctl trace show latest"
+    tui_palette: "trace show latest"
+    tui_guided: "quick action (t)"
+  - group: state
+    cli_example: "syncctl state check"
+    tui_palette: "state check"
+    tui_guided: "command palette"
+  - group: install
+    cli_example: "syncctl install --user"
+    tui_palette: "install --user"
+    tui_guided: "command palette"
+  - group: uninstall
+    cli_example: "syncctl uninstall --user"
+    tui_palette: "uninstall --user"
+    tui_guided: "command palette"
+  - group: service
+    cli_example: "syncctl service register --user"
+    tui_palette: "service register --user"
+    tui_guided: "command palette"
+  - group: update
+    cli_example: "syncctl update status"
+    tui_palette: "update status"
+    tui_guided: "command palette"
+  - group: maintenance
+    cli_example: "syncctl maintenance status"
+    tui_palette: "maintenance status"
+    tui_guided: "status dashboard"

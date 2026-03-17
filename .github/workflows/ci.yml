@@ -38,6 +38,9 @@ jobs:
       - name: Integration tests
         run: go test ./tests/integration/...
 
+      - name: CLI/TUI parity matrix tests
+        run: go test ./tests/integration/parity/...
+
       - name: Reliability and failure-injection tests
         run: go test ./tests/integration/... -run 'TestDaemonSoak|TestFailureInjection|TestRateLimit' -count=1
 
@@ -151,6 +154,7 @@ jobs:
           set -euo pipefail
           test -f docs/engineering/acceptance-test-matrix.md
           test -f docs/release/release-candidate-checklist.md
+          test -f docs/reference/cli-tui-parity-matrix.yaml
           grep -q "## Verification Mapping" docs/engineering/acceptance-test-matrix.md
           grep -q "## Release Candidate Gate" docs/release/release-candidate-checklist.md
           grep -q "## Rollback Decision Checklist" docs/release/release-candidate-checklist.md

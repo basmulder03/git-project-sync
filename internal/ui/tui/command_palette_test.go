@@ -76,7 +76,7 @@ func TestCommandPaletteHasCoreCommandGroups(t *testing.T) {
 	for _, group := range []string{
 		"doctor", "source", "repo", "workspace", "sync", "discover",
 		"daemon", "config", "auth", "cache", "stats", "events",
-		"trace", "state", "maintenance", "update",
+		"trace", "state", "maintenance", "update", "install", "uninstall", "service",
 	} {
 		if !have[group] {
 			t.Fatalf("palette missing command group %q", group)

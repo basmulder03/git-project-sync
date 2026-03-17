@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -76,9 +78,10 @@ func run() int {
 	engine := coresync.NewEngine(coregit.NewClient(), logger)
 
 	actionExec := &actionExecutor{
-		cfg:    cfg,
-		api:    daemon.NewServiceAPI(store),
-		engine: engine,
+		cfg:        cfg,
+		configPath: *configPath,
+		api:        daemon.NewServiceAPI(store),
+		engine:     engine,
 	}
 
 	model := tui.NewModel(provider, actionExec)
@@ -99,9 +102,11 @@ type statusProvider struct {
 }
 
 type actionExecutor struct {
-	cfg    config.Config
-	api    *daemon.ServiceAPI
-	engine *coresync.Engine
+	cfg        config.Config
+	configPath string
+	api        *daemon.ServiceAPI
+	engine     *coresync.Engine
+	cliRunner  func(ctx context.Context, args []string) (string, error)
 }
 
 func (e *actionExecutor) Execute(ctx context.Context, request tui.ActionRequest) (string, error) {
@@ -348,7 +353,62 @@ func (e *actionExecutor) runCommand(ctx context.Context, raw string) (string, er
 		}
 	}
 
-	return "", fmt.Errorf("unsupported command %q", raw)
+	return e.runViaCLI(ctx, raw)
+}
+
+func (e *actionExecutor) runViaCLI(ctx context.Context, raw string) (string, error) {
+	parts := strings.Fields(strings.TrimSpace(raw))
+	if len(parts) == 0 {
+		return "", fmt.Errorf("command is required")
+	}
+
+	args := make([]string, 0, len(parts)+2)
+	if strings.TrimSpace(e.configPath) != "" {
+		args = append(args, "--config", e.configPath)
+	}
+	args = append(args, parts...)
+
+	runner := e.cliRunner
+	if runner == nil {
+		runner = runSyncctlCommand
+	}
+	out, err := runner(ctx, args)
+	if err != nil {
+		return "", err
+	}
+	trimmed := strings.TrimSpace(out)
+	if trimmed == "" {
+		return fmt.Sprintf("command completed: syncctl %s", strings.Join(parts, " ")), nil
+	}
+	return trimmed, nil
+}
+
+func runSyncctlCommand(ctx context.Context, args []string) (string, error) {
+	bin, err := resolveSyncctlBinary()
+	if err != nil {
+		return "", err
+	}
+	cmd := exec.CommandContext(ctx, bin, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("syncctl %s: %w (%s)", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+	}
+	return string(out), nil
+}
+
+func resolveSyncctlBinary() (string, error) {
+	if p, err := exec.LookPath("syncctl"); err == nil {
+		return p, nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("locate syncctl: %w", err)
+	}
+	candidate := filepath.Join(filepath.Dir(exe), "syncctl")
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate, nil
+	}
+	return "", fmt.Errorf("syncctl binary not found in PATH or alongside synctui")
 }
 
 func (p *statusProvider) DashboardStatus(ctx context.Context) (tui.DashboardStatus, error) {

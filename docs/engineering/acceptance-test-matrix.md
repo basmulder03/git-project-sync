@@ -133,6 +133,11 @@
     - Then sync is skipped with explicit `policy_*` reason code and no mutation
     - And `syncctl doctor` reports governance/source-policy drift with remediation hints
 
+26. CLI/TUI parity matrix guardrail
+    - A machine-readable CLI/TUI parity matrix exists.
+    - CI fails if `syncctl` top-level command groups are not represented in the matrix.
+    - CI fails if matrix-mapped TUI palette commands are missing.
+
 ## Verification Mapping
 
 Each acceptance item is mapped to a primary automated/manual verification path for release closure.
@@ -164,5 +169,6 @@ Each acceptance item is mapped to a primary automated/manual verification path f
 | 23 | Manual runbook review in `docs/operations/incident-response-playbook.md` and `docs/operations/service-operations-guide.md` | manual |
 | 24 | `go test ./internal/core/daemon/... ./tests/integration/...` (scale fairness tests) | automated |
 | 25 | `go test ./internal/core/sync/... ./cmd/syncctl/... ./tests/integration/...` (policy enforcement + doctor governance diagnostics) | automated |
+| 26 | `go test ./tests/integration/parity/...` + matrix file review | automated + manual |
 
 Release candidate closure requires all automated checks green and all manual checks signed in `docs/release/release-candidate-checklist.md`.

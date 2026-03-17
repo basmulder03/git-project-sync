@@ -10,6 +10,12 @@ Binary name: `syncctl`
   - includes health score and actionable findings (locks/runs, source auth, recent failures, cache config)
   - includes governance drift and workspace layout drift findings with remediation hints
 
+## CLI/TUI Parity Contract
+
+- Top-level command-group parity is defined in `docs/reference/cli-tui-parity-matrix.yaml`.
+- `synctui` command palette must expose every `syncctl` top-level command group.
+- Parity is enforced by automated tests in `tests/integration/parity/`.
+
 ### Exit Codes
 
 - `0`: success

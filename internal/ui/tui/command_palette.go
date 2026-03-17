@@ -235,7 +235,19 @@ func defaultPaletteEntries() []PaletteEntry {
 		{Command: "trace show latest", Description: "show newest trace details"},
 		{Command: "config show", Description: "show resolved configuration"},
 		{Command: "workspace show", Description: "show workspace settings"},
+		{Command: "install --user", Description: "install daemon service in user mode"},
+		{Command: "uninstall --user", Description: "unregister daemon service in user mode"},
+		{Command: "service register --user", Description: "register and start service in user mode"},
+		{Command: "service unregister --user", Description: "unregister and stop service in user mode"},
 		{Command: "update status", Description: "show update channel and automation settings"},
 		{Command: "state check", Description: "check sqlite integrity"},
 	}
+}
+
+// PaletteCatalog returns a copy of the command palette catalog.
+func PaletteCatalog() []PaletteEntry {
+	entries := defaultPaletteEntries()
+	out := make([]PaletteEntry, len(entries))
+	copy(out, entries)
+	return out
 }

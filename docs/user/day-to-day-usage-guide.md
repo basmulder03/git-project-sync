@@ -42,6 +42,25 @@ syncctl sync all
 
 - `synctui`: runtime dashboard for status, repos, cache, logs, and triage.
 
+### Dashboard Controls
+
+- `h` / `left`, `l` / `right`: switch tabs.
+- `tab`: switch focused status panel (overview vs recent errors).
+- `r`: refresh now.
+- `s`: run `sync all`.
+- `c`: run `cache refresh all`.
+- `t`: run trace drill-down for latest trace.
+- `/`: open command palette.
+- `!`: re-run the last palette command.
+
+### Command Palette
+
+- The palette is searchable and supports:
+  - `up`/`down` (or `j`/`k`) to select suggestions.
+  - `tab` to autocomplete the selected suggestion.
+  - `enter` to execute.
+- Palette parity with CLI top-level groups is tracked in `docs/reference/cli-tui-parity-matrix.yaml`.
+
 ## State and Recovery
 
 Back up local state DB:

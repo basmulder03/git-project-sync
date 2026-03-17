@@ -37,12 +37,29 @@ func TestRunCommandStateCheck(t *testing.T) {
 	}
 }
 
-func TestRunCommandUnsupported(t *testing.T) {
+func TestRunCommandFallbackToSyncctl(t *testing.T) {
 	t.Parallel()
 
 	exec := testActionExecutor(t)
-	if _, err := exec.runCommand(context.Background(), "source add"); err == nil {
-		t.Fatal("expected unsupported command error")
+	exec.configPath = "/tmp/test-config.yaml"
+	captured := make([]string, 0)
+	exec.cliRunner = func(_ context.Context, args []string) (string, error) {
+		captured = append(captured, strings.Join(args, " "))
+		return "ok", nil
+	}
+
+	out, err := exec.runCommand(context.Background(), "source add github demo")
+	if err != nil {
+		t.Fatalf("runCommand fallback failed: %v", err)
+	}
+	if !strings.Contains(out, "ok") {
+		t.Fatalf("unexpected fallback output: %q", out)
+	}
+	if len(captured) != 1 {
+		t.Fatalf("expected one cli fallback invocation, got %d", len(captured))
+	}
+	if !strings.Contains(captured[0], "--config /tmp/test-config.yaml source add github demo") {
+		t.Fatalf("unexpected fallback args: %q", captured[0])
 	}
 }
 

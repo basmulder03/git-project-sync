@@ -10,9 +10,13 @@ import (
 
 func saveMinimalConfig(t *testing.T) string {
 	t.Helper()
-	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
 	cfg := config.Default()
 	cfg.Workspace.Root = t.TempDir()
+	// Use a per-test DB path to prevent SQLITE_BUSY when parallel tests
+	// share the same process and default DB path.
+	cfg.State.DBPath = filepath.Join(dir, "state.db")
 	if err := config.Save(configPath, cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}

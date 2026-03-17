@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
+	"github.com/basmulder03/git-project-sync/internal/core/maintenance"
 	"github.com/basmulder03/git-project-sync/internal/core/providers"
 	coresync "github.com/basmulder03/git-project-sync/internal/core/sync"
 	"github.com/basmulder03/git-project-sync/internal/core/telemetry"
@@ -165,6 +166,26 @@ func (s *Scheduler) RunPeriodic(ctx context.Context, tasks []RepoTask, dryRun bo
 }
 
 func (s *Scheduler) runTaskWithRetry(ctx context.Context, traceID string, task RepoTask, dryRun bool) {
+	// Maintenance window check — block all mutating operations while active.
+	if mw, desc := maintenance.ActiveWindow(s.cfg.MaintenanceWindows, s.now()); mw != nil {
+		s.logger.Info("repo sync skipped: maintenance window active",
+			"trace_id", traceID,
+			"repo_path", task.Repo.Path,
+			"reason_code", maintenance.ReasonCode,
+			"window", desc,
+			"next_allowed", maintenance.NextAllowed(s.cfg.MaintenanceWindows, s.now()),
+		)
+		s.recordEvent(ctx, telemetry.Event{
+			TraceID:    traceID,
+			RepoPath:   task.Repo.Path,
+			Level:      "warn",
+			ReasonCode: maintenance.ReasonCode,
+			Message:    "sync suppressed by maintenance window: " + desc,
+			CreatedAt:  s.now().UTC(),
+		})
+		return
+	}
+
 	maxAttempts := s.cfg.Retry.MaxAttempts
 	if maxAttempts < 1 {
 		maxAttempts = 1

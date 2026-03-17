@@ -88,6 +88,7 @@ func newRootCommand() *cobra.Command {
 		newUninstallCommand(&configPath),
 		newServiceCommand(&configPath),
 		newUpdateCommand(&configPath),
+		newMaintenanceCommand(&configPath),
 	)
 
 	return root

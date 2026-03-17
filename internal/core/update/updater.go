@@ -16,6 +16,10 @@ import (
 type Updater struct {
 	CurrentVersion string
 	Client         *http.Client
+	// BaseURL overrides the GitHub API base URL. When empty,
+	// the package-level githubAPIBaseURL variable is used.
+	// Set this in tests to avoid mutating shared global state.
+	BaseURL string
 }
 
 type CheckResult struct {

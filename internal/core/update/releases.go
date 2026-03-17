@@ -133,7 +133,11 @@ func (u *Updater) SelectCandidate(candidates []ReleaseCandidate, desiredVersion 
 }
 
 func (u *Updater) fetchGitHubReleases(ctx context.Context, repo string) ([]githubRelease, error) {
-	base, err := url.Parse(strings.TrimSpace(githubAPIBaseURL))
+	apiBase := githubAPIBaseURL
+	if u.BaseURL != "" {
+		apiBase = u.BaseURL
+	}
+	base, err := url.Parse(strings.TrimSpace(apiBase))
 	if err != nil {
 		return nil, fmt.Errorf("parse github api base url: %w", err)
 	}

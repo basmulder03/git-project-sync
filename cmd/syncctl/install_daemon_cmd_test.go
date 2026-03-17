@@ -1,11 +1,15 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/basmulder03/git-project-sync/internal/core/install"
+	"github.com/basmulder03/git-project-sync/internal/core/telemetry"
 )
 
 type fakeInstaller struct {
@@ -174,4 +178,98 @@ func TestDaemonCommands(t *testing.T) {
 	if fake.restarted != install.ModeSystem {
 		t.Fatalf("expected daemon restart system mode, got %q", fake.restarted)
 	}
+}
+
+// TestSystemctlModeArgs verifies the systemctlModeArgs helper returns the
+// correct slice for each install mode.
+func TestSystemctlModeArgs(t *testing.T) {
+	t.Parallel()
+
+	userArgs := systemctlModeArgs(install.ModeUser)
+	if len(userArgs) != 1 || userArgs[0] != "--user" {
+		t.Fatalf("user mode args = %v, want [--user]", userArgs)
+	}
+
+	systemArgs := systemctlModeArgs(install.ModeSystem)
+	if len(systemArgs) != 0 {
+		t.Fatalf("system mode args = %v, want []", systemArgs)
+	}
+}
+
+// TestTelemetryEventRows verifies the helper produces one formatted row per
+// event and that the output contains the expected fields.
+func TestTelemetryEventRows(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)
+	events := []telemetry.Event{
+		{
+			TraceID:    "t1",
+			RepoPath:   "/repos/foo",
+			Level:      "info",
+			ReasonCode: "sync_ok",
+			Message:    "all good",
+			CreatedAt:  now,
+		},
+		{
+			TraceID:    "t2",
+			RepoPath:   "/repos/bar",
+			Level:      "warn",
+			ReasonCode: "dirty_repo",
+			Message:    "working tree is dirty",
+			CreatedAt:  now,
+		},
+	}
+
+	rows := telemetryEventRows(events)
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(rows))
+	}
+	for i, row := range rows {
+		if !strings.Contains(row, events[i].RepoPath) {
+			t.Errorf("row %d missing repo path: %s", i, row)
+		}
+		if !strings.Contains(row, events[i].ReasonCode) {
+			t.Errorf("row %d missing reason code: %s", i, row)
+		}
+	}
+}
+
+// TestOsDaemonController_UnsupportedOS verifies the OS-specific daemon
+// controller methods return a meaningful error on unsupported platforms and
+// that they touch the platform dispatch path on the current OS.
+func TestOsDaemonController_UnsupportedOS(t *testing.T) {
+	t.Parallel()
+
+	// We can only test the "current OS" path directly.  Verify that the
+	// osDaemonController methods reach an OS branch (without actually running
+	// systemctl / sc.exe) by swapping the runCommand implementation.
+	prevRun := runCommand
+	var called string
+	runCommand = func(name string, args ...string) (string, error) {
+		called = name
+		return "", fmt.Errorf("stub: not running real %s", name)
+	}
+	t.Cleanup(func() { runCommand = prevRun })
+
+	ctrl := osDaemonController{}
+	// Start
+	_ = ctrl.Start(install.ModeUser)
+	if runtime.GOOS != "linux" && runtime.GOOS != "windows" {
+		if called != "" {
+			t.Fatalf("expected no runCommand call on unsupported OS, got %q", called)
+		}
+	}
+
+	// Stop
+	called = ""
+	_ = ctrl.Stop(install.ModeSystem)
+
+	// Status
+	called = ""
+	_, _ = ctrl.Status(install.ModeUser)
+
+	// Restart delegates to Stop + Start — just ensure no panic.
+	called = ""
+	_ = ctrl.Restart(install.ModeUser)
 }

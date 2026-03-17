@@ -182,11 +182,6 @@ func TestVersionSyncer_Sync_AppliesOutOfSyncOnly(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Override the global GitHub API base URL for this test.
-	prevBase := githubAPIBaseURL
-	githubAPIBaseURL = server.URL
-	t.Cleanup(func() { githubAPIBaseURL = prevBase })
-
 	// Create a temp target directory with an existing "syncd" binary placeholder.
 	tmpDir := t.TempDir()
 	syncdTarget := filepath.Join(tmpDir, binaryName("syncd"))
@@ -196,6 +191,10 @@ func TestVersionSyncer_Sync_AppliesOutOfSyncOnly(t *testing.T) {
 
 	u := NewUpdater("v2.0.0")
 	u.Client = server.Client()
+	// Point the updater directly at the test server so we don't mutate the
+	// shared package-level githubAPIBaseURL variable (which would cause a
+	// data race when tests run in parallel).
+	u.BaseURL = server.URL
 
 	syncer := &VersionSyncer{
 		CLIVersion: "v2.0.0",

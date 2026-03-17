@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/basmulder03/git-project-sync/internal/core/notify"
 	"github.com/basmulder03/git-project-sync/internal/core/state"
 	"github.com/basmulder03/git-project-sync/internal/core/telemetry"
 )
 
 type ServiceAPI struct {
-	store state.Store
+	store      state.Store
+	dispatcher *notify.Dispatcher
 }
 
 type RepoStatus struct {
@@ -37,15 +39,30 @@ func NewServiceAPI(store state.Store) *ServiceAPI {
 	return &ServiceAPI{store: store}
 }
 
-func (s *ServiceAPI) RecordEvent(_ context.Context, event telemetry.Event) error {
-	return s.store.AppendEvent(state.Event{
+// WithDispatcher attaches a notification dispatcher to the API.
+// RecordEvent will fan-out to all configured sinks after persisting.
+func (s *ServiceAPI) WithDispatcher(d *notify.Dispatcher) *ServiceAPI {
+	s.dispatcher = d
+	return s
+}
+
+func (s *ServiceAPI) RecordEvent(ctx context.Context, event telemetry.Event) error {
+	if err := s.store.AppendEvent(state.Event{
 		TraceID:    event.TraceID,
 		RepoPath:   event.RepoPath,
 		Level:      event.Level,
 		ReasonCode: event.ReasonCode,
 		Message:    event.Message,
 		CreatedAt:  event.CreatedAt,
-	})
+	}); err != nil {
+		return err
+	}
+
+	if s.dispatcher != nil {
+		s.dispatcher.Dispatch(ctx, event)
+	}
+
+	return nil
 }
 
 func (s *ServiceAPI) ListEvents(limit int) ([]telemetry.Event, error) {

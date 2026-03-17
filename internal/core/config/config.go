@@ -15,17 +15,49 @@ import (
 const CurrentSchemaVersion = 1
 
 type Config struct {
-	SchemaVersion int              `yaml:"schema_version"`
-	Workspace     WorkspaceConfig  `yaml:"workspace"`
-	State         StateConfig      `yaml:"state"`
-	Daemon        DaemonConfig     `yaml:"daemon"`
-	Update        UpdateConfig     `yaml:"update"`
-	Logging       LoggingConfig    `yaml:"logging"`
-	Cache         CacheConfig      `yaml:"cache"`
-	Governance    GovernanceConfig `yaml:"governance"`
-	SSH           SSHConfig        `yaml:"ssh"`
-	Sources       []SourceConfig   `yaml:"sources"`
-	Repos         []RepoConfig     `yaml:"repos"`
+	SchemaVersion int                 `yaml:"schema_version"`
+	Workspace     WorkspaceConfig     `yaml:"workspace"`
+	State         StateConfig         `yaml:"state"`
+	Daemon        DaemonConfig        `yaml:"daemon"`
+	Update        UpdateConfig        `yaml:"update"`
+	Logging       LoggingConfig       `yaml:"logging"`
+	Cache         CacheConfig         `yaml:"cache"`
+	Governance    GovernanceConfig    `yaml:"governance"`
+	SSH           SSHConfig           `yaml:"ssh"`
+	Notifications NotificationsConfig `yaml:"notifications"`
+	Sources       []SourceConfig      `yaml:"sources"`
+	Repos         []RepoConfig        `yaml:"repos"`
+}
+
+// NotificationsConfig holds optional outbound notification sinks.
+// Payloads are always redacted: no token values, paths, or secrets.
+type NotificationsConfig struct {
+	// Sinks is the ordered list of outbound notification targets.
+	Sinks []NotificationSinkConfig `yaml:"sinks"`
+}
+
+// NotificationSinkConfig configures a single outbound notification sink.
+type NotificationSinkConfig struct {
+	// Name is a human-readable label for this sink (used in logs).
+	Name string `yaml:"name"`
+
+	// Type selects the sink implementation. Supported: "webhook", "slack", "teams".
+	Type string `yaml:"type"`
+
+	// URL is the endpoint to POST the event payload to.
+	// Must not contain embedded credentials. Secrets must be in the OS keyring.
+	URL string `yaml:"url"`
+
+	// MinSeverity controls the minimum event level that triggers a notification.
+	// Accepted values: "info", "warn", "error". Defaults to "error".
+	MinSeverity string `yaml:"min_severity"`
+
+	// ReasonCodes, when non-empty, restricts notifications to events whose
+	// ReasonCode matches one of the listed values.  Empty means all reasons pass.
+	ReasonCodes []string `yaml:"reason_codes"`
+
+	// Enabled allows a sink to be temporarily disabled without removing it.
+	Enabled bool `yaml:"enabled"`
 }
 
 type WorkspaceConfig struct {
@@ -96,13 +128,31 @@ type StateConfig struct {
 }
 
 type DaemonConfig struct {
-	IntervalSeconds          int         `yaml:"interval_seconds"`
-	DiscoveryIntervalSeconds int         `yaml:"discovery_interval_seconds"` // How often to run discovery+clone (0 = only at startup)
-	JitterSeconds            int         `yaml:"jitter_seconds"`
-	MaxParallelRepos         int         `yaml:"max_parallel_repos"`
-	MaxParallelPerSource     int         `yaml:"max_parallel_per_source"`
-	OperationTimeoutSeconds  int         `yaml:"operation_timeout_seconds"`
-	Retry                    RetryConfig `yaml:"retry"`
+	IntervalSeconds          int                 `yaml:"interval_seconds"`
+	DiscoveryIntervalSeconds int                 `yaml:"discovery_interval_seconds"` // How often to run discovery+clone (0 = only at startup)
+	JitterSeconds            int                 `yaml:"jitter_seconds"`
+	MaxParallelRepos         int                 `yaml:"max_parallel_repos"`
+	MaxParallelPerSource     int                 `yaml:"max_parallel_per_source"`
+	OperationTimeoutSeconds  int                 `yaml:"operation_timeout_seconds"`
+	Retry                    RetryConfig         `yaml:"retry"`
+	MaintenanceWindows       []MaintenanceWindow `yaml:"maintenance_windows"`
+}
+
+// MaintenanceWindow defines a recurring calendar window during which all
+// mutating sync operations are suppressed.  Unlike governance AllowedSyncWindows
+// (which restrict when sync is allowed), a MaintenanceWindow explicitly BLOCKS
+// sync. It applies globally across all sources and repos.
+type MaintenanceWindow struct {
+	// Name is a short human-readable label emitted in skip-reason log lines.
+	Name string `yaml:"name"`
+
+	// Days lists the calendar days this window applies to.
+	// Valid values: "monday" .. "sunday" (or three-letter abbreviations).
+	Days []string `yaml:"days"`
+
+	// Start and End are 24-hour HH:MM clock times (inclusive start, exclusive end).
+	Start string `yaml:"start"`
+	End   string `yaml:"end"`
 }
 
 type RetryConfig struct {
@@ -337,6 +387,42 @@ func (c Config) Validate() error {
 
 	if c.Daemon.Retry.MaxAttempts <= 0 {
 		return errors.New("daemon.retry.max_attempts must be > 0")
+	}
+
+	for i, mw := range c.Daemon.MaintenanceWindows {
+		if len(mw.Days) == 0 {
+			return fmt.Errorf("daemon.maintenance_windows[%d].days must not be empty", i)
+		}
+		for _, day := range mw.Days {
+			if _, ok := dayNameToWeekday(day); !ok {
+				return fmt.Errorf("daemon.maintenance_windows[%d].days contains invalid day %q", i, day)
+			}
+		}
+		if _, err := parseClock(mw.Start); err != nil {
+			return fmt.Errorf("daemon.maintenance_windows[%d].start: %w", i, err)
+		}
+		if _, err := parseClock(mw.End); err != nil {
+			return fmt.Errorf("daemon.maintenance_windows[%d].end: %w", i, err)
+		}
+	}
+
+	for i, sink := range c.Notifications.Sinks {
+		if strings.TrimSpace(sink.Name) == "" {
+			return fmt.Errorf("notifications.sinks[%d].name must not be empty", i)
+		}
+		switch strings.ToLower(strings.TrimSpace(sink.Type)) {
+		case "webhook", "slack", "teams":
+		default:
+			return fmt.Errorf("notifications.sinks[%d].type %q is not supported (use webhook, slack, or teams)", i, sink.Type)
+		}
+		if strings.TrimSpace(sink.URL) == "" {
+			return fmt.Errorf("notifications.sinks[%d].url must not be empty", i)
+		}
+		switch strings.ToLower(strings.TrimSpace(sink.MinSeverity)) {
+		case "", "info", "warn", "error":
+		default:
+			return fmt.Errorf("notifications.sinks[%d].min_severity %q is not valid (use info, warn, or error)", i, sink.MinSeverity)
+		}
 	}
 
 	if err := validatePolicy(c.Governance.DefaultPolicy, "governance.default_policy"); err != nil {

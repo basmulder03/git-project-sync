@@ -3,6 +3,7 @@ package ssh_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -23,8 +24,11 @@ func TestGenerateKeyPair_Ed25519(t *testing.T) {
 	if err != nil {
 		t.Fatalf("private key stat: %v", err)
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Errorf("private key mode = %o, want 600", info.Mode().Perm())
+	// Windows does not enforce POSIX permission bits; skip the mode check there.
+	if runtime.GOOS != "windows" {
+		if info.Mode().Perm() != 0o600 {
+			t.Errorf("private key mode = %o, want 600", info.Mode().Perm())
+		}
 	}
 
 	// Public key file must exist.

@@ -1,6 +1,7 @@
 package ssh
 
 import (
+	"runtime"
 	"testing"
 )
 
@@ -59,9 +60,13 @@ func TestManualWSLToWindows(t *testing.T) {
 }
 
 // TestShellEscapePathUnix verifies POSIX single-quote escaping (used on Linux/WSL).
-// We cannot easily test the Windows branch without running on Windows, but we
-// cover the logic through the exported helper indirectly.
+// This test only applies to non-Windows platforms because Windows uses a
+// different quoting strategy (double-quotes) and the test expectations are
+// specifically for the POSIX branch.
 func TestShellEscapePathUnix(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX single-quote escaping is not used on Windows")
+	}
 	cases := []struct {
 		in   string
 		want string
@@ -113,6 +118,9 @@ func TestManagerEnsureSSHConfigEntry_DualSync(t *testing.T) {
 
 // TestManagerGitEnv verifies the GIT_SSH_COMMAND format for WSL-side git.
 func TestManagerGitEnv(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("GIT_SSH_COMMAND path format differs on native Windows; use TestManagerGitEnvWindows")
+	}
 	m := NewManager("/mnt/c/gps/ssh", "/home/alice/.ssh/config", nil)
 
 	key, val := m.GitEnv("github-alice")

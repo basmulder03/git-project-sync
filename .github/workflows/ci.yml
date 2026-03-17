@@ -41,6 +41,13 @@ jobs:
       - name: Reliability and failure-injection tests
         run: go test ./tests/integration/... -run 'TestDaemonSoak|TestFailureInjection|TestRateLimit' -count=1
 
+      - name: Integration flake-rerun (determinism gate)
+        shell: bash
+        run: |
+          # Run the full integration suite 3 times to surface intermittent failures.
+          # Tests tagged [QUARANTINE] are excluded until stabilised (see docs/engineering/test-strategy-and-coverage.md).
+          go test ./tests/integration/... -count=3 -timeout=120s
+
       - name: Build binaries
         run: |
           go build ./cmd/syncctl

@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
+	"github.com/basmulder03/git-project-sync/internal/core/telemetry"
 )
 
 func newStatsCommand(configPath *string) *cobra.Command {
@@ -138,5 +140,69 @@ func newStatsCommand(configPath *string) *cobra.Command {
 	showCmd.Flags().StringVar(&since, "since", "", "Filter events since RFC3339 timestamp")
 	showCmd.Flags().StringVar(&until, "until", "", "Filter events until RFC3339 timestamp")
 
+	statsCmd.AddCommand(newStatsExportCommand(configPath))
+
 	return statsCmd
+}
+
+// newStatsExportCommand returns `syncctl stats export`.
+// It renders a MetricsSnapshot in prometheus or openmetrics format for
+// scraping by external monitoring tools.
+func newStatsExportCommand(configPath *string) *cobra.Command {
+	var format string
+	var since string
+	var until string
+
+	cmd := &cobra.Command{
+		Use:   "export",
+		Short: "Export metrics in a format suitable for external monitoring tools",
+		Long: `Export runtime counters (sync outcomes, retries, policy skips, health score)
+in Prometheus text format or OpenMetrics format for ingestion by monitoring
+systems such as Prometheus, Datadog, or Grafana.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			_, err := config.Load(*configPath)
+			if err != nil {
+				return err
+			}
+
+			api, closer, err := loadServiceAPI(*configPath)
+			if err != nil {
+				return err
+			}
+			defer closer()
+
+			events, err := api.ListEvents(10000)
+			if err != nil {
+				return err
+			}
+
+			sinceTime, untilTime, err := parseTimeWindow(since, until)
+			if err != nil {
+				return err
+			}
+			events = filterEvents(events, "", "", nil, sinceTime, untilTime)
+
+			snap := telemetry.BuildMetrics(events, time.Now().UTC())
+
+			switch strings.ToLower(strings.TrimSpace(format)) {
+			case "", "prometheus":
+				cmd.Print(telemetry.FormatPrometheus(snap))
+			case "openmetrics":
+				cmd.Print(telemetry.FormatOpenMetrics(snap))
+			case "json":
+				data, err := json.MarshalIndent(snap, "", "  ")
+				if err != nil {
+					return err
+				}
+				cmd.Println(string(data))
+			default:
+				return fmt.Errorf("invalid format %q (use prometheus, openmetrics, or json)", format)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&format, "format", "prometheus", "Output format: prometheus, openmetrics, json")
+	cmd.Flags().StringVar(&since, "since", "", "Filter events since RFC3339 timestamp")
+	cmd.Flags().StringVar(&until, "until", "", "Filter events until RFC3339 timestamp")
+	return cmd
 }

@@ -46,6 +46,45 @@ func TestRunCommandUnsupported(t *testing.T) {
 	}
 }
 
+func TestRunCommandDoctor(t *testing.T) {
+	t.Parallel()
+
+	exec := testActionExecutor(t)
+	out, err := exec.runCommand(context.Background(), "doctor")
+	if err != nil {
+		t.Fatalf("runCommand doctor failed: %v", err)
+	}
+	if !strings.Contains(out, "doctor:") {
+		t.Fatalf("unexpected output: %s", out)
+	}
+}
+
+func TestRunCommandDiscover(t *testing.T) {
+	t.Parallel()
+
+	exec := testActionExecutor(t)
+	out, err := exec.runCommand(context.Background(), "discover")
+	if err != nil {
+		t.Fatalf("runCommand discover failed: %v", err)
+	}
+	if !strings.Contains(out, "discover:") {
+		t.Fatalf("unexpected output: %s", out)
+	}
+}
+
+func TestRunCommandMaintenanceStatus(t *testing.T) {
+	t.Parallel()
+
+	exec := testActionExecutor(t)
+	out, err := exec.runCommand(context.Background(), "maintenance status")
+	if err != nil {
+		t.Fatalf("runCommand maintenance status failed: %v", err)
+	}
+	if !strings.Contains(out, "maintenance status:") {
+		t.Fatalf("unexpected output: %s", out)
+	}
+}
+
 func testActionExecutor(t *testing.T) *actionExecutor {
 	t.Helper()
 

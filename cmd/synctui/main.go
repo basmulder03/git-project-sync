@@ -6,17 +6,17 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/basmulder03/git-project-sync/internal/app/commands"
 	"github.com/basmulder03/git-project-sync/internal/core/config"
 	"github.com/basmulder03/git-project-sync/internal/core/daemon"
 	coregit "github.com/basmulder03/git-project-sync/internal/core/git"
 	"github.com/basmulder03/git-project-sync/internal/core/logging"
+	"github.com/basmulder03/git-project-sync/internal/core/maintenance"
 	"github.com/basmulder03/git-project-sync/internal/core/state"
 	coresync "github.com/basmulder03/git-project-sync/internal/core/sync"
 	"github.com/basmulder03/git-project-sync/internal/core/workspace"
@@ -81,12 +81,9 @@ func run() int {
 		engine: engine,
 	}
 
-	app := tui.NewApp(provider, os.Stdin, os.Stdout)
-	app.SetExecutor(actionExec)
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	if err := app.Run(ctx); err != nil {
+	model := tui.NewModel(provider, actionExec)
+	p := tea.NewProgram(model)
+	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "synctui: %v\n", err)
 		return 1
 	}
@@ -174,12 +171,52 @@ func (e *actionExecutor) runCommand(ctx context.Context, raw string) (string, er
 	}
 
 	switch parts[0] {
+	case "doctor":
+		if len(parts) == 1 {
+			events, err := e.api.ListEvents(500)
+			if err != nil {
+				return "", err
+			}
+			runs, err := e.api.InFlightRuns(200)
+			if err != nil {
+				return "", err
+			}
+			missingCreds := 0
+			for _, source := range e.cfg.Sources {
+				if source.Enabled && source.CredentialRef == "" {
+					missingCreds++
+				}
+			}
+			return fmt.Sprintf("doctor: events=%d in_flight=%d missing_credentials=%d", len(events), len(runs), missingCreds), nil
+		}
 	case "sync":
 		if len(parts) == 2 && parts[1] == "all" {
 			return e.syncAll(ctx)
 		}
+	case "discover":
+		if len(parts) == 1 {
+			resolved, err := workspace.ResolveRunRepos(e.cfg)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("discover: repos=%d skipped=%d", len(resolved.Repos), len(resolved.Skipped)), nil
+		}
+	case "auth":
+		if len(parts) == 2 && parts[1] == "status" {
+			enabledSources := 0
+			sshEnabled := e.cfg.SSH.Enabled
+			for _, source := range e.cfg.Sources {
+				if source.Enabled {
+					enabledSources++
+				}
+			}
+			return fmt.Sprintf("auth: enabled_sources=%d ssh_enabled=%t", enabledSources, sshEnabled), nil
+		}
 	case "cache":
 		if len(parts) >= 2 {
+			if parts[1] == "show" {
+				return fmt.Sprintf("cache: provider_ttl=%ds branch_ttl=%ds", e.cfg.Cache.ProviderTTLSeconds, e.cfg.Cache.BranchTTLSeconds), nil
+			}
 			target := commands.CacheTargetAll
 			if len(parts) >= 3 {
 				target = commands.CacheTarget(parts[2])
@@ -280,6 +317,20 @@ func (e *actionExecutor) runCommand(ctx context.Context, raw string) (string, er
 				}
 			}
 			return fmt.Sprintf("daemon status: %s", health), nil
+		}
+	case "maintenance":
+		if len(parts) == 2 && parts[1] == "status" {
+			now := time.Now().UTC()
+			mw, desc := maintenance.ActiveWindow(e.cfg.Daemon.MaintenanceWindows, now)
+			if mw == nil {
+				return fmt.Sprintf("maintenance status: inactive windows=%d", len(e.cfg.Daemon.MaintenanceWindows)), nil
+			}
+			nextAllowed := maintenance.NextAllowed(e.cfg.Daemon.MaintenanceWindows, now)
+			return fmt.Sprintf("maintenance status: active window=%s next_allowed=%s", desc, nextAllowed.Format(time.RFC3339)), nil
+		}
+	case "update":
+		if len(parts) == 2 && parts[1] == "status" {
+			return fmt.Sprintf("update: channel=%s auto_check=%t auto_apply=%t", e.cfg.Update.Channel, e.cfg.Update.AutoCheck, e.cfg.Update.AutoApply), nil
 		}
 	case "state":
 		if len(parts) == 2 && parts[1] == "check" {

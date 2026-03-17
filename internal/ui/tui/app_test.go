@@ -1,11 +1,12 @@
 package tui
 
 import (
-	"bytes"
 	"context"
 	"strings"
 	"testing"
 	"time"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 type fakeProvider struct{}
@@ -23,41 +24,46 @@ func (e *fakeExecutor) Execute(_ context.Context, request ActionRequest) (string
 	return "ok", nil
 }
 
-func TestAppRunQuitsOnQKey(t *testing.T) {
+func TestModelQuitOnQKey(t *testing.T) {
 	t.Parallel()
 
-	in := bytes.NewBufferString("q")
-	out := &bytes.Buffer{}
-	app := NewApp(fakeProvider{}, in, out)
-	app.refreshInterval = time.Hour
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	if err := app.Run(ctx); err != nil {
-		t.Fatalf("app run failed: %v", err)
+	m := NewModel(fakeProvider{}, nil)
+	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Text: "q", Code: 'q'}))
+	if cmd == nil {
+		t.Fatal("expected quit cmd")
 	}
-
-	if !strings.Contains(out.String(), "Git Project Sync - TUI") {
-		t.Fatalf("expected tui output header, got: %s", out.String())
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatalf("expected QuitMsg, got %T", cmd())
 	}
 }
 
-func TestAppCommandPaletteRunsCommand(t *testing.T) {
+func TestModelPaletteRunsCommand(t *testing.T) {
 	t.Parallel()
 
-	in := bytes.NewBufferString("/sync all\nq")
-	out := &bytes.Buffer{}
-	app := NewApp(fakeProvider{}, in, out)
-	app.refreshInterval = time.Hour
 	executor := &fakeExecutor{}
-	app.SetExecutor(executor)
+	m := NewModel(fakeProvider{}, executor)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
+	sequence := []tea.KeyPressMsg{
+		tea.KeyPressMsg(tea.Key{Text: "/", Code: '/'}),
+		tea.KeyPressMsg(tea.Key{Text: "s", Code: 's'}),
+		tea.KeyPressMsg(tea.Key{Text: "y", Code: 'y'}),
+		tea.KeyPressMsg(tea.Key{Text: "n", Code: 'n'}),
+		tea.KeyPressMsg(tea.Key{Text: "c", Code: 'c'}),
+		tea.KeyPressMsg(tea.Key{Text: " ", Code: ' '}),
+		tea.KeyPressMsg(tea.Key{Text: "a", Code: 'a'}),
+		tea.KeyPressMsg(tea.Key{Text: "l", Code: 'l'}),
+		tea.KeyPressMsg(tea.Key{Text: "l", Code: 'l'}),
+		tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}),
+	}
 
-	if err := app.Run(ctx); err != nil {
-		t.Fatalf("app run failed: %v", err)
+	for _, key := range sequence {
+		_, cmd := m.Update(key)
+		if cmd != nil {
+			msg := cmd()
+			if msg != nil {
+				_, _ = m.Update(msg)
+			}
+		}
 	}
 
 	if len(executor.requests) == 0 {
@@ -68,5 +74,64 @@ func TestAppCommandPaletteRunsCommand(t *testing.T) {
 	}
 	if executor.requests[0].Command != "sync all" {
 		t.Fatalf("unexpected command %q", executor.requests[0].Command)
+	}
+}
+
+func TestModelRerunLastCommand(t *testing.T) {
+	t.Parallel()
+
+	executor := &fakeExecutor{}
+	m := NewModel(fakeProvider{}, executor)
+
+	// First run a command from palette.
+	sequence := []tea.KeyPressMsg{
+		tea.KeyPressMsg(tea.Key{Text: "/", Code: '/'}),
+		tea.KeyPressMsg(tea.Key{Text: "s", Code: 's'}),
+		tea.KeyPressMsg(tea.Key{Text: "y", Code: 'y'}),
+		tea.KeyPressMsg(tea.Key{Text: "n", Code: 'n'}),
+		tea.KeyPressMsg(tea.Key{Text: "c", Code: 'c'}),
+		tea.KeyPressMsg(tea.Key{Text: " ", Code: ' '}),
+		tea.KeyPressMsg(tea.Key{Text: "a", Code: 'a'}),
+		tea.KeyPressMsg(tea.Key{Text: "l", Code: 'l'}),
+		tea.KeyPressMsg(tea.Key{Text: "l", Code: 'l'}),
+		tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}),
+	}
+	for _, key := range sequence {
+		_, cmd := m.Update(key)
+		if cmd != nil {
+			msg := cmd()
+			if msg != nil {
+				_, _ = m.Update(msg)
+			}
+		}
+	}
+
+	// Re-run last command using '!'.
+	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Text: "!", Code: '!'}))
+	if cmd == nil {
+		t.Fatal("expected rerun command")
+	}
+	if msg := cmd(); msg != nil {
+		_, _ = m.Update(msg)
+	}
+
+	if len(executor.requests) != 2 {
+		t.Fatalf("expected 2 executed commands, got %d", len(executor.requests))
+	}
+	if executor.requests[1].Type != ActionRunCommand {
+		t.Fatalf("expected rerun to execute command action, got %q", executor.requests[1].Type)
+	}
+	if executor.requests[1].Command != "sync all" {
+		t.Fatalf("expected rerun command sync all, got %q", executor.requests[1].Command)
+	}
+}
+
+func TestModelRerunWithoutHistoryShowsMessage(t *testing.T) {
+	t.Parallel()
+
+	m := NewModel(fakeProvider{}, &fakeExecutor{})
+	_, _ = m.Update(tea.KeyPressMsg(tea.Key{Text: "!", Code: '!'}))
+	if !strings.Contains(m.lastMessage, "no command history") {
+		t.Fatalf("expected no-history message, got %q", m.lastMessage)
 	}
 }

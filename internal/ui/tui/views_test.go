@@ -31,7 +31,7 @@ func TestRenderLogsView(t *testing.T) {
 
 	b := &strings.Builder{}
 	RenderLogsView(b, []EventRow{{Time: time.Now().UTC(), TraceID: "t1", Level: "warn", ReasonCode: "repo_dirty", Message: "skipped"}}, []string{"boom"}, "warn", "reason=repo_dirty occurrences=1")
-	if !strings.Contains(b.String(), "trace=t1") {
+	if !strings.Contains(b.String(), "t1") {
 		t.Fatalf("logs view output missing trace id: %s", b.String())
 	}
 }

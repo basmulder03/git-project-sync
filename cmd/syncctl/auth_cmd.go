@@ -24,6 +24,7 @@ func newAuthCommand(configPath *string) *cobra.Command {
 		newAuthLoginCommand(configPath),
 		newAuthTestCommand(configPath),
 		newAuthLogoutCommand(configPath),
+		newAuthSSHCommand(configPath),
 	)
 
 	return authCmd

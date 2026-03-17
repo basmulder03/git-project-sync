@@ -21,7 +21,8 @@ type RemoteRepository struct {
 	Owner         string    // account/org name
 	Name          string    // repository name
 	FullName      string    // owner/name (for matching)
-	CloneURL      string    // HTTPS clone URL
+	CloneURL      string    // HTTPS clone URL (no embedded credentials)
+	SSHCloneURL   string    // SSH clone URL using the per-source alias (preferred)
 	DefaultBranch string    // main, master, etc.
 	IsArchived    bool      // whether repo is archived
 	IsDisabled    bool      // whether repo is disabled
@@ -29,6 +30,16 @@ type RemoteRepository struct {
 	SizeKB        int64     // repository size in KB
 	Visibility    string    // public, private, internal
 	UpdatedAt     time.Time // last update time
+}
+
+// PreferredCloneURL returns the SSH clone URL when available, otherwise
+// the HTTPS clone URL.  Callers should use this method to respect the
+// SSH-first preference without needing to know which is set.
+func (r *RemoteRepository) PreferredCloneURL() string {
+	if r.SSHCloneURL != "" {
+		return r.SSHCloneURL
+	}
+	return r.CloneURL
 }
 
 // ListOptions provides filtering options for repository discovery

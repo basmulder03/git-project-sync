@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
+	coressh "github.com/basmulder03/git-project-sync/internal/core/ssh"
 )
 
 // GitHubClient implements RepositoryDiscoveryClient for GitHub
@@ -173,7 +174,8 @@ func (c *GitHubClient) fetchPage(ctx context.Context, url string, opts ListOptio
 			Owner:         gr.Owner.Login,
 			Name:          gr.Name,
 			FullName:      gr.FullName,
-			CloneURL:      c.buildAuthenticatedCloneURL(gr.CloneURL),
+			CloneURL:      c.cleanHTTPSCloneURL(gr.CloneURL),
+			SSHCloneURL:   c.buildSSHCloneURL(gr.Owner.Login, gr.Name),
 			DefaultBranch: gr.DefaultBranch,
 			IsArchived:    gr.Archived,
 			IsDisabled:    gr.Disabled,
@@ -239,7 +241,8 @@ func (c *GitHubClient) GetRepositoryMetadata(ctx context.Context, owner, repo st
 		Owner:         gr.Owner.Login,
 		Name:          gr.Name,
 		FullName:      gr.FullName,
-		CloneURL:      c.buildAuthenticatedCloneURL(gr.CloneURL),
+		CloneURL:      c.cleanHTTPSCloneURL(gr.CloneURL),
+		SSHCloneURL:   c.buildSSHCloneURL(gr.Owner.Login, gr.Name),
 		DefaultBranch: gr.DefaultBranch,
 		IsArchived:    gr.Archived,
 		IsDisabled:    gr.Disabled,
@@ -250,13 +253,36 @@ func (c *GitHubClient) GetRepositoryMetadata(ctx context.Context, owner, repo st
 	}, nil
 }
 
-// buildAuthenticatedCloneURL constructs a clone URL with embedded token
-func (c *GitHubClient) buildAuthenticatedCloneURL(cloneURL string) string {
-	// Convert https://github.com/owner/repo.git to https://token@github.com/owner/repo.git
-	if strings.HasPrefix(cloneURL, "https://") {
-		return strings.Replace(cloneURL, "https://", "https://"+c.token+"@", 1)
+// cleanHTTPSCloneURL ensures the HTTPS clone URL has no embedded credentials.
+func (c *GitHubClient) cleanHTTPSCloneURL(cloneURL string) string {
+	if !strings.HasPrefix(cloneURL, "https://") {
+		return cloneURL
+	}
+	rest := cloneURL[len("https://"):]
+	if idx := strings.Index(rest, "@"); idx >= 0 {
+		host := rest[idx+1:]
+		if strings.Contains(strings.SplitN(host, "/", 2)[0], ".") {
+			return "https://" + host
+		}
 	}
 	return cloneURL
+}
+
+// buildSSHCloneURL constructs the SSH clone URL for a GitHub repository,
+// using the per-source SSH config alias when available.
+func (c *GitHubClient) buildSSHCloneURL(owner, repo string) string {
+	// Use the SSH config alias for this source so git picks the correct key.
+	alias := coressh.AliasForSource(c.source.ID)
+	hostname := c.source.SSH.SSHHost
+	if hostname == "" {
+		// Derive SSH hostname from the API base URL for GitHub Enterprise.
+		if c.source.Host != "" && c.source.Host != "github.com" {
+			hostname = c.source.Host
+		} else {
+			hostname = "github.com"
+		}
+	}
+	return coressh.CloneURLForGitHub(owner, repo, hostname, alias)
 }
 
 // getVisibility determines the visibility of a repository

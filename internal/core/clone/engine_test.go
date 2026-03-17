@@ -5,11 +5,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
 	"github.com/basmulder03/git-project-sync/internal/core/providers/api"
+	coressh "github.com/basmulder03/git-project-sync/internal/core/ssh"
 )
 
 func TestEngine_ValidatePreClone(t *testing.T) {
@@ -327,5 +329,178 @@ func TestRetryConfig_Backoff(t *testing.T) {
 	// Allow up to 500ms for Windows/CI environments with scheduling overhead
 	if elapsed > 500*time.Millisecond {
 		t.Errorf("retry took too long: %v (expected < 500ms)", elapsed)
+	}
+}
+
+// --- SSH preference tests ---
+
+func TestResolveCloneParams_SSHPreferred(t *testing.T) {
+	sshDir := t.TempDir()
+
+	// Generate a real SSH key so HasKey returns true.
+	privPath := coressh.PrivateKeyPathForSource(sshDir, "github-acme")
+	if _, err := coressh.GenerateKeyPair(privPath, coressh.KeyTypeEd25519, "test"); err != nil {
+		t.Fatalf("GenerateKeyPair: %v", err)
+	}
+
+	mgr := coressh.NewManager(sshDir, "/tmp/ssh_config_unused", nil)
+
+	cfg := config.Config{
+		SSH: config.SSHConfig{Enabled: true},
+		Sources: []config.SourceConfig{
+			{ID: "github-acme", Provider: "github", Enabled: true},
+		},
+	}
+
+	engine := NewEngineWithSSH(cfg, mgr)
+
+	repo := api.RemoteRepository{
+		SourceID:    "github-acme",
+		Provider:    "github",
+		Owner:       "acme",
+		Name:        "myrepo",
+		CloneURL:    "https://github.com/acme/myrepo.git",
+		SSHCloneURL: "git@gps-github-acme:acme/myrepo.git",
+	}
+
+	cloneURL, envKey, _, usedSSH := engine.resolveCloneParams(repo)
+
+	if !usedSSH {
+		t.Error("expected SSH to be used when key exists and SSH is enabled")
+	}
+	if cloneURL != repo.SSHCloneURL {
+		t.Errorf("expected SSH clone URL %q, got %q", repo.SSHCloneURL, cloneURL)
+	}
+	if envKey != "GIT_SSH_COMMAND" {
+		t.Errorf("expected GIT_SSH_COMMAND env key, got %q", envKey)
+	}
+}
+
+func TestResolveCloneParams_FallsBackToHTTPS_WhenSSHDisabled(t *testing.T) {
+	sshDir := t.TempDir()
+
+	// Generate a key — but SSH is globally disabled.
+	privPath := coressh.PrivateKeyPathForSource(sshDir, "github-acme")
+	if _, err := coressh.GenerateKeyPair(privPath, coressh.KeyTypeEd25519, "test"); err != nil {
+		t.Fatalf("GenerateKeyPair: %v", err)
+	}
+
+	mgr := coressh.NewManager(sshDir, "/tmp/ssh_config_unused", nil)
+
+	cfg := config.Config{
+		SSH: config.SSHConfig{Enabled: false},
+		Sources: []config.SourceConfig{
+			{ID: "github-acme", Provider: "github", Enabled: true},
+		},
+	}
+
+	engine := NewEngineWithSSH(cfg, mgr)
+
+	repo := api.RemoteRepository{
+		SourceID:    "github-acme",
+		Provider:    "github",
+		CloneURL:    "https://github.com/acme/myrepo.git",
+		SSHCloneURL: "git@gps-github-acme:acme/myrepo.git",
+	}
+
+	_, _, _, usedSSH := engine.resolveCloneParams(repo)
+	if usedSSH {
+		t.Error("expected HTTPS fallback when SSH is globally disabled")
+	}
+}
+
+func TestResolveCloneParams_FallsBackToHTTPS_WhenNoKey(t *testing.T) {
+	sshDir := t.TempDir()
+	// No key generated — manager has empty SSH dir.
+	mgr := coressh.NewManager(sshDir, "/tmp/ssh_config_unused", nil)
+
+	cfg := config.Config{
+		SSH: config.SSHConfig{Enabled: true},
+		Sources: []config.SourceConfig{
+			{ID: "github-acme", Provider: "github", Enabled: true},
+		},
+	}
+
+	engine := NewEngineWithSSH(cfg, mgr)
+
+	repo := api.RemoteRepository{
+		SourceID:    "github-acme",
+		Provider:    "github",
+		CloneURL:    "https://github.com/acme/myrepo.git",
+		SSHCloneURL: "git@gps-github-acme:acme/myrepo.git",
+	}
+
+	cloneURL, _, _, usedSSH := engine.resolveCloneParams(repo)
+	if usedSSH {
+		t.Error("expected HTTPS fallback when no SSH key exists")
+	}
+	if cloneURL != repo.CloneURL {
+		t.Errorf("expected HTTPS clone URL, got %q", cloneURL)
+	}
+}
+
+func TestResolveCloneParams_FallsBackToHTTPS_WhenNoSSHCloneURL(t *testing.T) {
+	sshDir := t.TempDir()
+
+	privPath := coressh.PrivateKeyPathForSource(sshDir, "github-acme")
+	if _, err := coressh.GenerateKeyPair(privPath, coressh.KeyTypeEd25519, "test"); err != nil {
+		t.Fatalf("GenerateKeyPair: %v", err)
+	}
+
+	mgr := coressh.NewManager(sshDir, "/tmp/ssh_config_unused", nil)
+
+	cfg := config.Config{
+		SSH: config.SSHConfig{Enabled: true},
+		Sources: []config.SourceConfig{
+			{ID: "github-acme", Provider: "github", Enabled: true},
+		},
+	}
+
+	engine := NewEngineWithSSH(cfg, mgr)
+
+	// SSHCloneURL is empty — e.g. for an older repo entry without it.
+	repo := api.RemoteRepository{
+		SourceID:    "github-acme",
+		Provider:    "github",
+		CloneURL:    "https://github.com/acme/myrepo.git",
+		SSHCloneURL: "",
+	}
+
+	_, _, _, usedSSH := engine.resolveCloneParams(repo)
+	if usedSSH {
+		t.Error("expected HTTPS fallback when SSHCloneURL is empty")
+	}
+}
+
+func TestSetEnv_AddsNew(t *testing.T) {
+	env := []string{"FOO=bar"}
+	result := setEnv(env, "GIT_SSH_COMMAND", "ssh -i /key")
+	found := false
+	for _, v := range result {
+		if v == "GIT_SSH_COMMAND=ssh -i /key" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("setEnv did not add new variable: %v", result)
+	}
+}
+
+func TestSetEnv_Replaces(t *testing.T) {
+	env := []string{"GIT_SSH_COMMAND=old-value", "OTHER=x"}
+	result := setEnv(env, "GIT_SSH_COMMAND", "new-value")
+	for _, v := range result {
+		if strings.HasPrefix(v, "GIT_SSH_COMMAND=") && v != "GIT_SSH_COMMAND=new-value" {
+			t.Errorf("setEnv did not replace value: got %q", v)
+		}
+	}
+	count := 0
+	for _, v := range result {
+		if strings.HasPrefix(v, "GIT_SSH_COMMAND=") {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly one GIT_SSH_COMMAND, got %d", count)
 	}
 }

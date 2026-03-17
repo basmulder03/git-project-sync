@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
+	coressh "github.com/basmulder03/git-project-sync/internal/core/ssh"
 )
 
 // AzureDevOpsClient implements RepositoryDiscoveryClient for Azure DevOps
@@ -194,6 +195,7 @@ func (c *AzureDevOpsClient) listReposInProject(ctx context.Context, projectName 
 			Name:          ar.Name,
 			FullName:      fmt.Sprintf("%s/%s/%s", c.source.Account, ar.Project.Name, ar.Name),
 			CloneURL:      c.cleanCloneURL(ar.RemoteURL),
+			SSHCloneURL:   c.buildSSHCloneURL(c.source.Account, ar.Project.Name, ar.Name),
 			DefaultBranch: c.normalizeDefaultBranch(ar.DefaultBranch),
 			IsArchived:    false, // Azure doesn't have archive concept
 			IsDisabled:    ar.IsDisabled,
@@ -262,6 +264,7 @@ func (c *AzureDevOpsClient) GetRepositoryMetadata(ctx context.Context, owner, re
 		Name:          ar.Name,
 		FullName:      fmt.Sprintf("%s/%s/%s", c.source.Account, ar.Project.Name, ar.Name),
 		CloneURL:      c.cleanCloneURL(ar.RemoteURL),
+		SSHCloneURL:   c.buildSSHCloneURL(c.source.Account, ar.Project.Name, ar.Name),
 		DefaultBranch: c.normalizeDefaultBranch(ar.DefaultBranch),
 		IsArchived:    false,
 		IsDisabled:    ar.IsDisabled,
@@ -270,6 +273,20 @@ func (c *AzureDevOpsClient) GetRepositoryMetadata(ctx context.Context, owner, re
 		Visibility:    "private",
 		UpdatedAt:     time.Now(),
 	}, nil
+}
+
+// buildSSHCloneURL constructs the SSH clone URL for an Azure DevOps repository.
+func (c *AzureDevOpsClient) buildSSHCloneURL(org, project, repo string) string {
+	alias := coressh.AliasForSource(c.source.ID)
+	sshHost := c.source.SSH.SSHHost
+	if sshHost == "" {
+		if c.source.Host != "" && c.source.Host != "dev.azure.com" {
+			// Azure DevOps Server: use the custom host for SSH too.
+			sshHost = c.source.Host
+		}
+		// sshHost="" → coressh.CloneURLForAzureDevOps will use the default
+	}
+	return coressh.CloneURLForAzureDevOps(org, project, repo, alias)
 }
 
 // cleanCloneURL removes any username@ prefix from Azure DevOps URLs

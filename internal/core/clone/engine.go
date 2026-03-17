@@ -13,6 +13,7 @@ import (
 	"github.com/basmulder03/git-project-sync/internal/core/config"
 	"github.com/basmulder03/git-project-sync/internal/core/git"
 	"github.com/basmulder03/git-project-sync/internal/core/providers/api"
+	coressh "github.com/basmulder03/git-project-sync/internal/core/ssh"
 	"github.com/basmulder03/git-project-sync/internal/core/workspace"
 )
 
@@ -20,13 +21,26 @@ import (
 type Engine struct {
 	Git    *git.Client
 	Config config.Config
+
+	// SSHManager, when non-nil, is used to derive per-source SSH credentials.
+	// If nil, SSH key management is disabled and the clone falls back to HTTPS.
+	SSHManager *coressh.Manager
 }
 
-// NewEngine creates a new clone engine
+// NewEngine creates a new clone engine.
 func NewEngine(cfg config.Config) *Engine {
 	return &Engine{
 		Git:    git.NewClient(),
 		Config: cfg,
+	}
+}
+
+// NewEngineWithSSH creates a clone engine that prefers SSH transport.
+func NewEngineWithSSH(cfg config.Config, sshManager *coressh.Manager) *Engine {
+	return &Engine{
+		Git:        git.NewClient(),
+		Config:     cfg,
+		SSHManager: sshManager,
 	}
 }
 
@@ -38,6 +52,8 @@ type CloneResult struct {
 	Error      error
 	Duration   time.Duration
 	ReasonCode string
+	// UsedSSH reports whether SSH transport was used for this clone.
+	UsedSSH bool
 }
 
 // CloneRepository clones a single repository to the workspace
@@ -86,8 +102,12 @@ func (e *Engine) CloneRepository(ctx context.Context, repo api.RemoteRepository,
 		return result
 	}
 
+	// Determine clone URL and SSH env to use.
+	cloneURL, sshEnvKey, sshEnvVal, usedSSH := e.resolveCloneParams(repo)
+	result.UsedSSH = usedSSH
+
 	// Perform the clone
-	if err := e.cloneRepo(ctx, repo.CloneURL, targetPath); err != nil {
+	if err := e.cloneRepo(ctx, cloneURL, targetPath, sshEnvKey, sshEnvVal); err != nil {
 		// Cleanup on failure
 		_ = os.RemoveAll(targetPath)
 		result.Error = err
@@ -143,6 +163,41 @@ func (e *Engine) CloneRepositories(ctx context.Context, repos []api.RemoteReposi
 	return results
 }
 
+// resolveCloneParams determines the URL and optional GIT_SSH_COMMAND env
+// variable for a clone.  SSH is preferred when:
+//  1. The global ssh.enabled flag is true (default), AND
+//  2. A per-source private key file exists in the SSH manager.
+//
+// If both conditions hold, the SSH clone URL (with alias) is used together
+// with GIT_SSH_COMMAND so no credential manager or ssh-agent is needed.
+// Otherwise we fall back to HTTPS.
+func (e *Engine) resolveCloneParams(repo api.RemoteRepository) (cloneURL, sshEnvKey, sshEnvVal string, usedSSH bool) {
+	// Find the source config for this repo.
+	src := e.findSource(repo.SourceID)
+
+	sshEnabled := e.Config.SSHEnabledForSource(src)
+
+	if sshEnabled && e.SSHManager != nil && e.SSHManager.HasKey(repo.SourceID) && repo.SSHCloneURL != "" {
+		envKey, envVal := e.SSHManager.GitEnv(repo.SourceID)
+		return repo.SSHCloneURL, envKey, envVal, true
+	}
+
+	// Fallback: clean HTTPS URL (no embedded token — use git credential manager
+	// or the token via the PAT migration strip path).
+	return repo.CloneURL, "", "", false
+}
+
+// findSource looks up the source config for a given source ID.
+// Returns an empty SourceConfig if not found.
+func (e *Engine) findSource(sourceID string) config.SourceConfig {
+	for _, src := range e.Config.Sources {
+		if src.ID == sourceID {
+			return src
+		}
+	}
+	return config.SourceConfig{}
+}
+
 // validatePreClone performs pre-clone validation checks
 func (e *Engine) validatePreClone(targetPath string) error {
 	// Check if path already exists
@@ -187,11 +242,22 @@ func (e *Engine) checkDiskSpace(targetPath string) error {
 	return nil
 }
 
-// cloneRepo performs the actual git clone operation
-func (e *Engine) cloneRepo(ctx context.Context, cloneURL, targetPath string) error {
-	// Use git.Client's run method indirectly by creating a temporary wrapper
-	// Since we need to clone to a new directory, we'll use exec directly here
+// cloneRepo performs the actual git clone operation.
+// sshEnvKey/sshEnvVal, when non-empty, are added to the subprocess environment
+// so that git uses the correct SSH key without relying on ssh-agent.
+func (e *Engine) cloneRepo(ctx context.Context, cloneURL, targetPath, sshEnvKey, sshEnvVal string) error {
 	cmd := exec.CommandContext(ctx, "git", "clone", "--quiet", cloneURL, targetPath)
+
+	// Inherit the current environment.
+	cmd.Env = os.Environ()
+
+	// Override / add GIT_SSH_COMMAND when SSH key is specified.
+	if sshEnvKey != "" && sshEnvVal != "" {
+		cmd.Env = setEnv(cmd.Env, sshEnvKey, sshEnvVal)
+	}
+
+	// Prevent git from interactively prompting for credentials.
+	cmd.Env = setEnv(cmd.Env, "GIT_TERMINAL_PROMPT", "0")
 
 	stderr := &bytes.Buffer{}
 	cmd.Stderr = stderr
@@ -223,4 +289,16 @@ func (e *Engine) verifyClone(repoPath string) error {
 	}
 
 	return nil
+}
+
+// setEnv sets or replaces an environment variable in the slice.
+func setEnv(env []string, key, value string) []string {
+	prefix := key + "="
+	for i, v := range env {
+		if strings.HasPrefix(v, prefix) {
+			env[i] = prefix + value
+			return env
+		}
+	}
+	return append(env, prefix+value)
 }

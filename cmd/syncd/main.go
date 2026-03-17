@@ -86,6 +86,14 @@ func run() int {
 	}
 
 	logger.Info("syncd started", "mode", "daemon", "workspace_root", cfg.Workspace.Root)
+
+	// Remind the operator to opt in to SSH migration if SSH is enabled and no
+	// decision has been recorded yet.  The daemon is non-interactive so we can
+	// only log; the user must run `syncctl auth ssh migrate` manually.
+	if cfg.SSH.Enabled && cfg.SSH.MigrationOptIn == "" {
+		logger.Warn("ssh migration pending: run 'syncctl auth ssh migrate' to rewrite HTTPS remotes to SSH, or set ssh.migration_opt_in: declined to suppress this message")
+	}
+
 	return runDaemon(ctx, *configPath)
 }
 

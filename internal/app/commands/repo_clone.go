@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/basmulder03/git-project-sync/internal/core/config"
+	coressh "github.com/basmulder03/git-project-sync/internal/core/ssh"
 	"github.com/basmulder03/git-project-sync/internal/core/workspace"
 )
 
@@ -29,6 +30,8 @@ func ResolveCloneDestination(cfg config.Config, source config.SourceConfig, repo
 	return expectedPath, nil
 }
 
+// BuildCloneURL builds an HTTPS clone URL for the given source and repo slug.
+// Prefer BuildSSHCloneURL when SSH is enabled.
 func BuildCloneURL(source config.SourceConfig, repoSlug string) string {
 	host := strings.TrimSpace(source.Host)
 	if host == "" {
@@ -51,6 +54,55 @@ func BuildCloneURL(source config.SourceConfig, repoSlug string) string {
 		return fmt.Sprintf("https://%s/%s.git", host, repoSlug)
 	}
 	return fmt.Sprintf("https://%s/%s/%s.git", host, owner, repoSlug)
+}
+
+// BuildSSHCloneURL builds an SSH clone URL for the given source and repo slug.
+// The URL uses the per-source SSH config alias so that git automatically
+// selects the correct identity file.
+//
+// For GitHub:   git@gps-<sourceID>:owner/repo.git
+// For Azure:    ssh://git@gps-<sourceID>/v3/org/project/repo
+func BuildSSHCloneURL(source config.SourceConfig, repoSlug string) string {
+	alias := coressh.AliasForSource(source.ID)
+	provider := strings.ToLower(strings.TrimSpace(source.Provider))
+
+	switch provider {
+	case "azure", "azuredevops":
+		org := strings.TrimSpace(source.Organization)
+		if org == "" {
+			org = strings.TrimSpace(source.Account)
+		}
+		// repoSlug is expected to be "project/repo" or just "repo".
+		parts := strings.SplitN(repoSlug, "/", 2)
+		if len(parts) == 2 {
+			return coressh.CloneURLForAzureDevOps(org, parts[0], parts[1], alias)
+		}
+		return coressh.CloneURLForAzureDevOps(org, org, repoSlug, alias)
+
+	default: // github
+		owner := strings.TrimSpace(source.Organization)
+		if owner == "" {
+			owner = strings.TrimSpace(source.Account)
+		}
+		hostname := strings.TrimSpace(source.Host)
+		if hostname == "" {
+			hostname = "github.com"
+		}
+		if strings.Contains(repoSlug, "/") {
+			parts := strings.SplitN(repoSlug, "/", 2)
+			return coressh.CloneURLForGitHub(parts[0], parts[1], hostname, alias)
+		}
+		return coressh.CloneURLForGitHub(owner, repoSlug, hostname, alias)
+	}
+}
+
+// PreferredCloneURL returns the SSH clone URL when SSH is enabled for the
+// source, otherwise the HTTPS clone URL.
+func PreferredCloneURL(cfg config.Config, source config.SourceConfig, repoSlug string, sshKeyExists bool) string {
+	if cfg.SSHEnabledForSource(source) && sshKeyExists {
+		return BuildSSHCloneURL(source, repoSlug)
+	}
+	return BuildCloneURL(source, repoSlug)
 }
 
 func defaultSourceHost(provider string) string {

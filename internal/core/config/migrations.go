@@ -68,6 +68,15 @@ func DefaultMigrations() *MigrationRegistry {
 		Apply:       migrateStripPATFromOrigins,
 	})
 
+	// Register migration: Opt-in SSH remote migration
+	// This rewrites HTTPS origins to SSH for all workspace repos when the user
+	// has explicitly opted in (ssh.migration_opt_in == "accepted").
+	registry.Register(Migration{
+		Version:     "20260317_ssh_remotes",
+		Description: "Rewrite git remote origin URLs from HTTPS to SSH (opt-in)",
+		Apply:       migrateRemotesToSSH,
+	})
+
 	return registry
 }
 

@@ -50,3 +50,45 @@ func TestAzureDevOpsClient_cleanCloneURL(t *testing.T) {
 		})
 	}
 }
+
+func TestRemoteRepository_PreferredCloneURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		repo     RemoteRepository
+		expected string
+	}{
+		{
+			name: "SSH clone URL present — prefer SSH",
+			repo: RemoteRepository{
+				CloneURL:    "https://github.com/acme/repo.git",
+				SSHCloneURL: "git@gps-github-acme:acme/repo.git",
+			},
+			expected: "git@gps-github-acme:acme/repo.git",
+		},
+		{
+			name: "SSH clone URL empty — fallback to HTTPS",
+			repo: RemoteRepository{
+				CloneURL:    "https://github.com/acme/repo.git",
+				SSHCloneURL: "",
+			},
+			expected: "https://github.com/acme/repo.git",
+		},
+		{
+			name: "both empty",
+			repo: RemoteRepository{
+				CloneURL:    "",
+				SSHCloneURL: "",
+			},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.repo.PreferredCloneURL()
+			if got != tt.expected {
+				t.Errorf("PreferredCloneURL() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}

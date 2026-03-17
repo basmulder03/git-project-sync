@@ -23,6 +23,7 @@ type Config struct {
 	Logging       LoggingConfig    `yaml:"logging"`
 	Cache         CacheConfig      `yaml:"cache"`
 	Governance    GovernanceConfig `yaml:"governance"`
+	SSH           SSHConfig        `yaml:"ssh"`
 	Sources       []SourceConfig   `yaml:"sources"`
 	Repos         []RepoConfig     `yaml:"repos"`
 }
@@ -31,6 +32,62 @@ type WorkspaceConfig struct {
 	Root               string `yaml:"root"`
 	Layout             string `yaml:"layout"`
 	CreateMissingPaths bool   `yaml:"create_missing_paths"`
+}
+
+// SSHConfig holds global SSH preferences for git-project-sync.
+type SSHConfig struct {
+	// Enabled controls whether SSH is the preferred transport for git operations.
+	// When true (default), SSH URLs and SSH keys are used for clone/fetch/push.
+	// When false, HTTPS with token-based auth is used instead.
+	Enabled bool `yaml:"enabled"`
+
+	// KeyDir is the directory where managed SSH private keys are stored.
+	// Defaults to <app-config-dir>/ssh.
+	KeyDir string `yaml:"key_dir"`
+
+	// SSHConfigPath is the user SSH config file to update with Host blocks.
+	// Defaults to ~/.ssh/config.
+	SSHConfigPath string `yaml:"ssh_config_path"`
+
+	// GitHubOAuthClientID overrides the default OAuth app client ID used for
+	// the GitHub device-flow SSH key upload.  Leave empty to use the built-in
+	// default (github-cli compatible).
+	GitHubOAuthClientID string `yaml:"github_oauth_client_id"`
+
+	// MigrationOptIn records whether the user accepted the SSH migration offer
+	// on first startup.  "accepted", "declined", or "" (not yet prompted).
+	MigrationOptIn string `yaml:"migration_opt_in"`
+
+	// WSL holds settings for WSL ↔ native Windows SSH interoperability.
+	// These only take effect when the daemon/CLI is running inside WSL.
+	WSL WSLSSHConfig `yaml:"wsl"`
+}
+
+// WSLSSHConfig controls SSH interoperability between WSL and native Windows.
+// When the tool runs inside WSL, SSH keys and configuration can be stored on
+// the Windows filesystem so that both the WSL git client and the native
+// Windows git client share the same keys without duplication.
+type WSLSSHConfig struct {
+	// SyncToWindows, when true (default when running in WSL), mirrors every
+	// gps-* Host block written to the WSL SSH config into the Windows user SSH
+	// config (C:\Users\<user>\.ssh\config expressed as /mnt/c/...).
+	// Set to false to manage the two configs independently.
+	SyncToWindows *bool `yaml:"sync_to_windows"`
+
+	// UseWindowsKeyDir, when true (default when running in WSL), stores SSH
+	// private keys under the Windows LOCALAPPDATA directory
+	// (/mnt/c/Users/<user>/AppData/Local/git-project-sync/ssh expressed as a
+	// WSL path).  This means native Windows git can also read the keys without
+	// any duplication.  Set to false to store keys in the Linux-side KeyDir.
+	UseWindowsKeyDir *bool `yaml:"use_windows_key_dir"`
+
+	// WindowsKeyDir overrides the computed Windows key directory.  Leave empty
+	// to use the auto-detected Windows LOCALAPPDATA path.
+	WindowsKeyDir string `yaml:"windows_key_dir"`
+
+	// WindowsSSHConfigPath overrides the computed Windows SSH config path.
+	// Leave empty to use the auto-detected path (/mnt/c/Users/<user>/.ssh/config).
+	WindowsSSHConfigPath string `yaml:"windows_ssh_config_path"`
 }
 
 type StateConfig struct {
@@ -92,13 +149,33 @@ type SyncWindowConfig struct {
 }
 
 type SourceConfig struct {
-	ID            string `yaml:"id"`
-	Provider      string `yaml:"provider"`
-	Account       string `yaml:"account"`
-	Organization  string `yaml:"organization"`
-	Host          string `yaml:"host"`
-	Enabled       bool   `yaml:"enabled"`
-	CredentialRef string `yaml:"credential_ref"`
+	ID            string          `yaml:"id"`
+	Provider      string          `yaml:"provider"`
+	Account       string          `yaml:"account"`
+	Organization  string          `yaml:"organization"`
+	Host          string          `yaml:"host"`
+	Enabled       bool            `yaml:"enabled"`
+	CredentialRef string          `yaml:"credential_ref"`
+	SSH           SourceSSHConfig `yaml:"ssh"`
+}
+
+// SourceSSHConfig holds per-source SSH settings.
+type SourceSSHConfig struct {
+	// Enabled overrides the global ssh.enabled setting for this source.
+	// nil means "inherit from global".
+	Enabled *bool `yaml:"enabled"`
+
+	// KeyPath is the path to the private key for this source.
+	// If empty, the managed key path is used (derived from the source ID).
+	KeyPath string `yaml:"key_path"`
+
+	// SSHHost is the SSH hostname for this source (overrides the default for
+	// the provider, e.g. for GitHub Enterprise that uses a non-standard host).
+	SSHHost string `yaml:"ssh_host"`
+
+	// KeyUploaded records whether the public key has been successfully uploaded
+	// to the provider.  Used to skip re-upload on subsequent starts.
+	KeyUploaded bool `yaml:"key_uploaded"`
 }
 
 type RepoConfig struct {
@@ -170,6 +247,9 @@ func Default() Config {
 				AutoCloneIncludeArchived: false,
 			},
 			SourcePolicies: map[string]SyncPolicyConfig{},
+		},
+		SSH: SSHConfig{
+			Enabled: true, // SSH is the preferred transport by default.
 		},
 		Sources: []SourceConfig{},
 		Repos:   []RepoConfig{},

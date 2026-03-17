@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/basmulder03/git-project-sync/internal/core/config"
 )
 
 var version = "dev"
@@ -30,6 +32,30 @@ func newRootCommand() *cobra.Command {
 	root.CompletionOptions.DisableDefaultCmd = true
 
 	root.PersistentFlags().StringVar(&configPath, "config", defaultConfigPath(), "Path to config file")
+
+	// Print a one-time hint when SSH is enabled but the user hasn't yet
+	// decided about the SSH remote migration.  Informational only; does not
+	// block any command.
+	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		// Only hint in interactive sessions (not when piped/scripted).
+		fi, err := os.Stdout.Stat()
+		isTTY := err == nil && (fi.Mode()&os.ModeCharDevice) != 0
+		if !isTTY {
+			return nil
+		}
+		// Skip the hint for the migration command itself.
+		if cmd.CommandPath() == "syncctl auth ssh migrate" {
+			return nil
+		}
+		cfg, cfgErr := config.Load(configPath)
+		if cfgErr != nil {
+			return nil // config may not exist yet; don't block
+		}
+		if cfg.SSH.Enabled && cfg.SSH.MigrationOptIn == "" {
+			fmt.Fprintln(os.Stderr, "hint: SSH is enabled. Run 'syncctl auth ssh migrate' to switch existing repos from HTTPS to SSH remotes.")
+		}
+		return nil
+	}
 
 	root.Version = version
 	root.SetVersionTemplate("syncctl {{.Version}}\n")

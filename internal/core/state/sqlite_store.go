@@ -921,6 +921,13 @@ func (s *SQLiteStore) applyMigration(version int) error {
 		`); err != nil {
 			return err
 		}
+	case 4:
+		// Data migration: strip embedded PAT tokens from clone_url values in
+		// discovered_repos.  URLs were stored as https://<token>@<host>/…;
+		// we rewrite them to the clean https://<host>/… form.
+		if err := s.stripPATsFromDiscoveredRepos(); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unknown migration version %d", version)
 	}
@@ -930,6 +937,79 @@ func (s *SQLiteStore) applyMigration(version int) error {
 	}
 
 	return nil
+}
+
+// stripPATsFromDiscoveredRepos reads every row from discovered_repos and
+// rewrites any clone_url that contains an embedded credential.
+// This runs as part of schema migration version 4.
+func (s *SQLiteStore) stripPATsFromDiscoveredRepos() error {
+	rows, err := s.db.Query(`SELECT source_id, full_name, clone_url FROM discovered_repos`)
+	if err != nil {
+		return fmt.Errorf("read discovered_repos: %w", err)
+	}
+	defer rows.Close()
+
+	type repoRow struct {
+		sourceID string
+		fullName string
+		cloneURL string
+	}
+	var toFix []repoRow
+
+	for rows.Next() {
+		var r repoRow
+		if err := rows.Scan(&r.sourceID, &r.fullName, &r.cloneURL); err != nil {
+			return fmt.Errorf("scan discovered_repos row: %w", err)
+		}
+		if cleaned, changed := removeEmbeddedCredentialFromURL(r.cloneURL); changed {
+			r.cloneURL = cleaned
+			toFix = append(toFix, r)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate discovered_repos rows: %w", err)
+	}
+	rows.Close()
+
+	for _, r := range toFix {
+		if _, err := s.db.Exec(
+			`UPDATE discovered_repos SET clone_url = ? WHERE source_id = ? AND full_name = ?`,
+			r.cloneURL, r.sourceID, r.fullName,
+		); err != nil {
+			return fmt.Errorf("update clone_url for %s/%s: %w", r.sourceID, r.fullName, err)
+		}
+	}
+
+	return nil
+}
+
+// removeEmbeddedCredentialFromURL strips the userinfo (PAT token) from an
+// https:// URL.
+//
+//	"https://ghp_TOKEN@github.com/owner/repo.git" → "https://github.com/owner/repo.git", true
+//	"https://github.com/owner/repo.git"           → unchanged, false
+func removeEmbeddedCredentialFromURL(rawURL string) (string, bool) {
+	const prefix = "https://"
+	if !strings.HasPrefix(rawURL, prefix) {
+		return rawURL, false
+	}
+
+	rest := rawURL[len(prefix):]
+	atIdx := strings.Index(rest, "@")
+	if atIdx < 0 {
+		return rawURL, false
+	}
+
+	// Guard: the host part after "@" must contain a "." (e.g. "github.com")
+	// so we don't accidentally strip a genuine "org@" prefix that is part
+	// of the hostname rather than a credential.
+	hostPart := rest[atIdx+1:]
+	hostOnly := strings.SplitN(hostPart, "/", 2)[0]
+	if !strings.Contains(hostOnly, ".") {
+		return rawURL, false
+	}
+
+	return prefix + hostPart, true
 }
 
 func nullableTime(value time.Time) any {

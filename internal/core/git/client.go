@@ -85,6 +85,20 @@ func (c *Client) runNoOutput(ctx context.Context, repoPath string, args ...strin
 	return nil
 }
 
+// GetRemoteURL returns the current URL for the named remote (e.g. "origin").
+func (c *Client) GetRemoteURL(ctx context.Context, repoPath, remote string) (string, error) {
+	out, err := c.run(ctx, repoPath, "remote", "get-url", remote)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// SetRemoteURL updates the URL for the named remote (e.g. "origin").
+func (c *Client) SetRemoteURL(ctx context.Context, repoPath, remote, newURL string) error {
+	return c.runNoOutput(ctx, repoPath, "remote", "set-url", remote, newURL)
+}
+
 func exitCode(err error) int {
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {

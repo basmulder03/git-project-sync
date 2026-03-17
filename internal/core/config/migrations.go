@@ -61,6 +61,13 @@ func DefaultMigrations() *MigrationRegistry {
 		Apply:       migrateStateDatabaseToAppData,
 	})
 
+	// Register migration: Strip embedded PAT tokens from git remote origins
+	registry.Register(Migration{
+		Version:     "20260317_strip_pat_from_origins",
+		Description: "Remove embedded PAT tokens from git remote origin URLs in all workspace repos",
+		Apply:       migrateStripPATFromOrigins,
+	})
+
 	return registry
 }
 

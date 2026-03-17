@@ -151,6 +151,28 @@ func TestDefaultMigrations_ContainsStateDatabaseMigration(t *testing.T) {
 	}
 }
 
+func TestDefaultMigrations_ContainsStripPATMigration(t *testing.T) {
+	registry := DefaultMigrations()
+
+	found := false
+	for _, m := range registry.migrations {
+		if m.Version == "20260317_strip_pat_from_origins" {
+			found = true
+			if m.Description == "" {
+				t.Error("strip-PAT migration should have a description")
+			}
+			if m.Apply == nil {
+				t.Error("strip-PAT migration should have an Apply function")
+			}
+			break
+		}
+	}
+
+	if !found {
+		t.Error("strip-PAT-from-origins migration not found in default migrations")
+	}
+}
+
 func TestRunMigrations_ExecutesAllDefaults(t *testing.T) {
 	cfg := Default()
 

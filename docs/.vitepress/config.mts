@@ -14,6 +14,9 @@ export default defineConfig({
     }
   },
   themeConfig: {
+    search: {
+      provider: 'local'
+    },
     nav: [
       { text: 'Getting Started', link: '/getting-started/installation-and-service-registration' },
       { text: 'Operations', link: '/operations/service-operations-guide' },
@@ -43,6 +46,7 @@ export default defineConfig({
         text: 'Reference',
         items: [
           { text: 'CLI Command Specification', link: '/reference/cli-command-specification' },
+          { text: 'CLI-TUI Parity Matrix', link: '/reference/cli-tui-parity-matrix' },
           { text: 'Configuration Schema', link: '/reference/configuration-schema' },
           { text: 'PAT Permission Requirements', link: '/reference/pat-permission-requirements' },
           { text: 'Security Model and Controls', link: '/security/security-model-and-controls' }
@@ -59,6 +63,7 @@ export default defineConfig({
       {
         text: 'Release and Project',
         items: [
+          { text: 'LTS Policy', link: '/LTS_POLICY' },
           { text: 'Release Process and Automation', link: '/release/release-process-and-automation' },
           { text: 'Release Candidate Checklist', link: '/release/release-candidate-checklist' },
           { text: 'Product Requirements', link: '/project/product-requirements' },

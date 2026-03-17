@@ -2,6 +2,8 @@
 
 Welcome to the documentation hub for `git-project-sync`.
 
+Tip: use the search box in the top-right corner to quickly find command, config, and troubleshooting pages.
+
 Use these guides by role:
 
 - **Getting started**
@@ -16,7 +18,9 @@ Use these guides by role:
 - **Engineering and release**
   - `engineering/system-architecture.md`
   - `reference/cli-command-specification.md`
+  - `reference/cli-tui-parity-matrix.md`
   - `release/release-process-and-automation.md`
+  - `LTS_POLICY.md`
   - `engineering/test-strategy-and-coverage.md`
   - `engineering/acceptance-test-matrix.md`
   - `release/release-candidate-checklist.md`

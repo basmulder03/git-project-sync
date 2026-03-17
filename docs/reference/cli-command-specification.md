@@ -13,6 +13,7 @@ Binary name: `syncctl`
 ## CLI/TUI Parity Contract
 
 - Top-level command-group parity is defined in `docs/reference/cli-tui-parity-matrix.yaml`.
+- Human-readable parity reference is `docs/reference/cli-tui-parity-matrix.md`.
 - `synctui` command palette must expose every `syncctl` top-level command group.
 - Parity is enforced by automated tests in `tests/integration/parity/`.
 

@@ -138,6 +138,7 @@ tasks:
       - Add machine-readable parity matrix mapping CLI commands to TUI palette and guided routes.
       - Add tests to fail on missing parity coverage.
       - Document parity guarantees and known exclusions if any.
+      - Keep VitePress docs navigation/search aligned with parity and operator workflow updates.
     acceptance_criteria:
       - "parity matrix exists and is enforced in CI"
       - "new command additions fail CI when not wired into TUI pathways"
